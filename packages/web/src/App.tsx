@@ -1,21 +1,42 @@
 /**
  * 根组件 App
  *
- * 通用 AI Agent 平台的主界面入口
+ * 通用 AI Agent 平台的主界面入口。
+ *
+ * 布局：
+ * ┌──────────────────────────────────────┐
+ * │  Sidebar (w-64)  │  ChatArea (flex-1) │
+ * │  bg-gray-900     │  bg-gray-950       │
+ * │  border-r        │                    │
+ * └──────────────────────────────────────┘
+ *
+ * 状态：
+ * - activeSessionId：当前选中的会话
+ * - 无活跃会话时 ChatArea 显示引导文字
+ * - 选择/创建会话时切换 ChatArea
  */
+
+import { useState } from "react";
+import { Sidebar } from "./components/Sidebar.js";
+import { ChatArea } from "./components/ChatArea.js";
+
+// ---------------------------------------------------------------------------
+// 组件
+// ---------------------------------------------------------------------------
+
 export function App() {
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
-      <header className="text-center">
-        <h1 className="text-4xl font-bold text-gray-900">My Agent</h1>
-        <p className="mt-3 text-lg text-gray-600">通用 AI Agent 平台</p>
-      </header>
-      <main className="mt-10">
-        <div className="rounded-lg border border-gray-200 bg-white p-8 shadow-sm">
-          <p className="text-gray-500">🚀 项目已启动</p>
-          <p className="mt-2 text-sm text-gray-400">后续步骤将实现完整的 Agent 对话界面</p>
-        </div>
-      </main>
+    <div className="flex h-screen bg-gray-950 text-gray-100">
+      {/* ── 侧边栏 ── */}
+      <Sidebar
+        activeSessionId={activeSessionId}
+        onSelectSession={setActiveSessionId}
+      />
+
+      {/* ── 聊天区域 ── */}
+      <ChatArea sessionId={activeSessionId} />
     </div>
   );
 }
