@@ -8,11 +8,11 @@
  * - 子 Agent 编排（Agent 生命周期、主循环）
  */
 
-// LLM 抽象层（后续步骤实现）
-// export * from './llm/types.js';
-// export * from './llm/factory.js';
-// export * from './llm/protocol.js';
-// export * from './llm/retry.js';
+// LLM 抽象层
+export * from './llm/types.js';
+export * from './llm/factory.js';
+export * from './llm/protocol.js';
+export * from './llm/retry.js';
 
 // 工具层（后续步骤实现）
 // export * from './tools/registry.js';
