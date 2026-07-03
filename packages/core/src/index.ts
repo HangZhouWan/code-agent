@@ -14,9 +14,8 @@ export * from './llm/factory.js';
 export * from './llm/protocol.js';
 export * from './llm/retry.js';
 
-// 工具层（后续步骤实现）
-// export * from './tools/registry.js';
-// export * from './tools/base.js';
+// 工具层
+export * from './tools/index.js';
 
 // Agent Runtime（后续步骤实现）
 // export * from './harness/sandbox/types.js';
