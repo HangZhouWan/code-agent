@@ -19,7 +19,7 @@ import type { ToolPermission } from './types.js';
  * @example
  * ```ts
  * const registry = PermissionRegistry.createDefault();
- * const perm = registry.get('file.read'); // { toolName: 'file.read', defaultLevel: 'safe' }
+ * const perm = registry.get('file_read'); // { toolName: 'file_read', defaultLevel: 'safe' }
  * ```
  */
 export class PermissionRegistry {
@@ -40,7 +40,7 @@ export class PermissionRegistry {
   /**
    * 查询工具的权限策略
    *
-   * @param toolName - 工具名称，如 "file.read"
+   * @param toolName - 工具名称，如 "file_read"
    * @returns 权限策略，未注册时返回 undefined
    */
   get(toolName: string): ToolPermission | undefined {
@@ -60,9 +60,9 @@ export class PermissionRegistry {
    * 创建预置 12 个内置工具的默认权限配置
    *
    * 权限级别分配：
-   * - safe（静默放行）：file.read, file.list, file.search, code_search,
-   *                      git.status, git.diff, git.log, web.fetch
-   * - confirm（需确认）：file.write, shell.exec, git.commit, git.branch
+   * - safe（静默放行）：file_read, file_list, file_search, code_search,
+   *                      git_status, git_diff, git_log, web_fetch
+   * - confirm（需确认）：file_write, shell_exec, git_commit, git_branch
    *
    * @returns 预配置的 PermissionRegistry 实例
    */
@@ -71,21 +71,20 @@ export class PermissionRegistry {
 
     // ---- safe 级别：静默放行 ----
     const safeTools = [
-      'file.read',
-      'file.list',
-      'file.search',
+      'file_read',
+      'file_list',
       'code_search',
-      'git.status',
-      'git.diff',
-      'git.log',
-      'web.fetch',
+      'git_status',
+      'git_diff',
+      'git_log',
+      'web_fetch',
     ];
     for (const name of safeTools) {
       registry.register({ toolName: name, defaultLevel: 'safe' });
     }
 
     // ---- confirm 级别：需用户确认 ----
-    const confirmTools = ['file.write', 'shell.exec', 'git.commit', 'git.branch'];
+    const confirmTools = ['file_write', 'shell_exec', 'git_commit', 'git_branch'];
     for (const name of confirmTools) {
       registry.register({ toolName: name, defaultLevel: 'confirm' });
     }

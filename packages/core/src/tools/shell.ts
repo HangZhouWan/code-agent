@@ -53,7 +53,7 @@ const ALLOWED_COMMANDS = new Set([
 ]);
 
 export const shellExecTool: ToolDefinition = {
-  name: 'shell.exec',
+  name: 'shell_exec',
   description:
     '在工作区内执行一个 shell 命令。仅允许执行白名单中的命令（如 ls、cat、grep、git、npm 等）。' +
     '命令将在指定的工作目录（或默认工作区根目录）下执行。' +

@@ -51,18 +51,18 @@ describe('Orchestrator Types', () => {
     const task: SubTask = {
       id: 'task-1',
       description: 'Read config file',
-      tools: ['file.read'],
+      tools: ['file_read'],
       dependsOn: [],
     };
     expect(task.id).toBe('task-1');
-    expect(task.tools).toEqual(['file.read']);
+    expect(task.tools).toEqual(['file_read']);
   });
 
   it('SubTask should accept structure without dependsOn', () => {
     const task: SubTask = {
       id: 'task-2',
       description: 'Check git status',
-      tools: ['git.status'],
+      tools: ['git_status'],
     };
     expect(task.dependsOn).toBeUndefined();
   });
@@ -79,7 +79,7 @@ describe('Orchestrator Types', () => {
       task: {
         id: 'task-1',
         description: 'Read file',
-        tools: ['file.read'],
+        tools: ['file_read'],
       },
       output: {
         taskId: 'task-1',
@@ -110,9 +110,9 @@ describe('extractJsonArray', () => {
   });
 
   it('should extract JSON array when no code block present', () => {
-    const input = 'Here is the plan:\n[{"id": "task-1", "description": "Do stuff", "tools": ["file.read"]}]';
+    const input = 'Here is the plan:\n[{"id": "task-1", "description": "Do stuff", "tools": ["file_read"]}]';
     const result = extractJsonArray(input);
-    expect(result).toBe('[{"id": "task-1", "description": "Do stuff", "tools": ["file.read"]}]');
+    expect(result).toBe('[{"id": "task-1", "description": "Do stuff", "tools": ["file_read"]}]');
   });
 
   it('should handle pure JSON array without wrapping', () => {
@@ -139,13 +139,13 @@ describe('validateSubTask', () => {
     const item = {
       id: 'task-1',
       description: 'Read package.json',
-      tools: ['file.read'],
+      tools: ['file_read'],
       dependsOn: ['task-0'],
     };
     const result = validateSubTask(item, 0);
     expect(result.id).toBe('task-1');
     expect(result.description).toBe('Read package.json');
-    expect(result.tools).toEqual(['file.read']);
+    expect(result.tools).toEqual(['file_read']);
     expect(result.dependsOn).toEqual(['task-0']);
   });
 
@@ -258,8 +258,8 @@ describe('createOrchestratorGraph', () => {
 
   it('should produce plan when LLM returns valid subtasks', async () => {
     const planJson = JSON.stringify([
-      { id: 'task-1', description: 'Read package.json', tools: ['file.read'] },
-      { id: 'task-2', description: 'Check git status', tools: ['git.status'] },
+      { id: 'task-1', description: 'Read package.json', tools: ['file_read'] },
+      { id: 'task-2', description: 'Check git status', tools: ['git_status'] },
     ]);
     const model = new MockChatModel(planJson);
     const registry = ToolRegistry.createDefault();
@@ -277,11 +277,11 @@ describe('createOrchestratorGraph', () => {
 
   it('should handle subtasks with dependencies', async () => {
     const planJson = JSON.stringify([
-      { id: 'task-1', description: 'Read config', tools: ['file.read'] },
+      { id: 'task-1', description: 'Read config', tools: ['file_read'] },
       {
         id: 'task-2',
         description: 'Process config',
-        tools: ['file.write'],
+        tools: ['file_write'],
         dependsOn: ['task-1'],
       },
     ]);
@@ -308,7 +308,7 @@ describe('createOrchestratorGraph', () => {
   });
 
   it('should handle code-fenced JSON in planner response', async () => {
-    const planJson = '```json\n[{"id": "t1", "description": "Test", "tools": ["file.read"]}]\n```';
+    const planJson = '```json\n[{"id": "t1", "description": "Test", "tools": ["file_read"]}]\n```';
     const model = new MockChatModel(planJson);
     const registry = ToolRegistry.createDefault();
     const graph = createOrchestratorGraph(model, registry, './workspace');

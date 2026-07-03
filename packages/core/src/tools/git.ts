@@ -5,11 +5,11 @@
  * 所有操作均在 ctx.workspacePath 指定的仓库中执行。
  *
  * 五个工具：
- * - git.status: 查看工作区状态
- * - git.diff: 查看差异对比
- * - git.log: 查看提交日志
- * - git.commit: 创建提交
- * - git.branch: 列出/创建分支
+ * - git_status: 查看工作区状态
+ * - git_diff: 查看差异对比
+ * - git_log: 查看提交日志
+ * - git_commit: 创建提交
+ * - git_branch: 列出/创建分支
  */
 
 import { z } from 'zod';
@@ -27,13 +27,13 @@ function git(ctx: ToolContext) {
 }
 
 /**
- * git.status —— 查看工作区状态
+ * git_status —— 查看工作区状态
  *
  * 权限: safe（只读操作）
  * 返回 JSON 格式的状态信息，便于 LLM 解析
  */
 export const gitStatusTool: ToolDefinition = {
-  name: 'git.status',
+  name: 'git_status',
   description: '查看 Git 工作区的当前状态，包括已修改、已暂存和未跟踪的文件',
   schema: z.object({}),
   permission: 'safe',
@@ -44,13 +44,13 @@ export const gitStatusTool: ToolDefinition = {
 };
 
 /**
- * git.diff —— 查看差异对比
+ * git_diff —— 查看差异对比
  *
  * 权限: safe（只读操作）
  * 支持查看未暂存和已暂存的差异
  */
 export const gitDiffTool: ToolDefinition = {
-  name: 'git.diff',
+  name: 'git_diff',
   description: '查看工作区文件的差异对比。默认显示未暂存的变更，设置 staged=true 查看已暂存的变更',
   schema: z.object({
     staged: z.boolean().default(false).describe('是否仅显示已暂存 (staged) 的变更'),
@@ -64,13 +64,13 @@ export const gitDiffTool: ToolDefinition = {
 };
 
 /**
- * git.log —— 查看提交日志
+ * git_log —— 查看提交日志
  *
  * 权限: safe（只读操作）
  * 默认返回最近 20 条简略日志
  */
 export const gitLogTool: ToolDefinition = {
-  name: 'git.log',
+  name: 'git_log',
   description: '查看 Git 提交日志，默认显示最近 20 条记录',
   schema: z.object({
     maxCount: z.number().default(20).describe('最大返回的提交数量'),
@@ -88,13 +88,13 @@ export const gitLogTool: ToolDefinition = {
 };
 
 /**
- * git.commit —— 创建提交
+ * git_commit —— 创建提交
  *
  * 权限: confirm（写操作，需要用户确认）
  * 仅支持 message 参数，不处理 add 操作（需用户手动 git add）
  */
 export const gitCommitTool: ToolDefinition = {
-  name: 'git.commit',
+  name: 'git_commit',
   description: '创建新的 Git 提交。注意：需要先手动添加文件到暂存区（git add）',
   schema: z.object({
     message: z.string().describe('提交信息'),
@@ -107,13 +107,13 @@ export const gitCommitTool: ToolDefinition = {
 };
 
 /**
- * git.branch —— 列出或创建分支
+ * git_branch —— 列出或创建分支
  *
  * 权限: confirm（创建分支会修改仓库状态）
  * 不传 name 时列出所有本地分支，传入 name 时创建新分支
  */
 export const gitBranchTool: ToolDefinition = {
-  name: 'git.branch',
+  name: 'git_branch',
   description:
     '列出所有本地分支，或创建新分支。传入 name 参数时创建新分支并切换过去，不传时列出所有本地分支',
   schema: z.object({

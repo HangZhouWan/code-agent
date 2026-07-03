@@ -15,13 +15,13 @@ import { z } from 'zod';
 import type { ToolDefinition, ToolContext } from './base.js';
 
 /**
- * web.fetch —— 获取 URL 内容
+ * web_fetch —— 获取 URL 内容
  *
  * 权限: safe（只读网络请求）
  * 仅获取文本/JSON 内容，拒绝二进制数据。
  */
 export const webFetchTool: ToolDefinition = {
-  name: 'web.fetch',
+  name: 'web_fetch',
   description:
     '发送 HTTP GET 请求获取指定 URL 的文本内容。' +
     '适用于获取网页、API 响应、文档等。仅返回文本/JSON 类型的内容。',

@@ -8,9 +8,9 @@
  * - 路径穿越检测：拒绝通过 "../" 等方式访问工作区外的文件
  *
  * 三个工具：
- * - file.read: 读取文件内容（UTF-8）
- * - file.write: 写入文件，自动创建父目录
- * - file.list: 列出目录内容
+ * - file_read: 读取文件内容（UTF-8）
+ * - file_write: 写入文件，自动创建父目录
+ * - file_list: 列出目录内容
  */
 
 import { z } from 'zod';
@@ -48,12 +48,12 @@ function resolvePath(relativePath: string, ctx: ToolContext): string {
 // ═══════════════════════════════════════════════
 
 /**
- * file.read —— 读取工作区内的文件内容
+ * file_read —— 读取工作区内的文件内容
  *
  * 权限: safe（只读操作，不修改文件系统）
  */
 export const fileReadTool: ToolDefinition = {
-  name: 'file.read',
+  name: 'file_read',
   description:
     '读取工作区内的文件内容（UTF-8 编码）。支持读取任意文本文件，包括代码、配置、文档等。',
   schema: z.object({
@@ -68,13 +68,13 @@ export const fileReadTool: ToolDefinition = {
 };
 
 /**
- * file.write —— 写入内容到工作区文件
+ * file_write —— 写入内容到工作区文件
  *
  * 权限: confirm（写操作可能修改项目文件，需要用户确认）
  * 功能：如果父目录不存在则自动创建
  */
 export const fileWriteTool: ToolDefinition = {
-  name: 'file.write',
+  name: 'file_write',
   description:
     '将文本内容写入工作区的指定文件。如果文件所在目录不存在，会自动创建。会覆盖已存在的文件内容。',
   schema: z.object({
@@ -92,13 +92,13 @@ export const fileWriteTool: ToolDefinition = {
 };
 
 /**
- * file.list —— 列出目录内容
+ * file_list —— 列出目录内容
  *
  * 权限: safe（只读操作）
  * 以图标区分文件和目录，便于 LLM 理解目录结构
  */
 export const fileListTool: ToolDefinition = {
-  name: 'file.list',
+  name: 'file_list',
   description: '列出工作区内指定目录的内容，以图标区分文件和目录',
   schema: z.object({
     path: z.string().default('.').describe('相对于工作区的目录路径，默认为根目录'),

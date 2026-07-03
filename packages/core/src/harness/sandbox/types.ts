@@ -36,7 +36,7 @@ export interface PermissionResult {
  * 注册在 PermissionRegistry 中，定义某个工具名称对应的默认权限级别和可选的自定义参数校验。
  */
 export interface ToolPermission {
-  /** 工具名称，如 "file.read"、"shell.exec" */
+  /** 工具名称，如 "file_read"、"shell_exec" */
   toolName: string;
   /** 默认权限级别 */
   defaultLevel: PermissionLevel;

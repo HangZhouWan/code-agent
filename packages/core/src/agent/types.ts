@@ -16,7 +16,7 @@ export interface WorkerInput {
   taskId: string;
   /** 子任务的自然语言描述，Worker 的 System Prompt 直接使用 */
   description: string;
-  /** 允许使用的工具名称列表，如 ["file.read", "code_search"] */
+  /** 允许使用的工具名称列表，如 ["file_read", "code_search"] */
   tools: string[];
   /** 上下文摘要：依赖任务的结果或父 Agent 的背景信息 */
   context: string;

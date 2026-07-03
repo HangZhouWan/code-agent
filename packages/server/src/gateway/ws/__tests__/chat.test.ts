@@ -486,20 +486,20 @@ describe("ServerMessage 协议", () => {
   it("tool_start 消息应有 type、tool、args", () => {
     const msg = {
       type: "tool_start" as const,
-      tool: "file.read",
+      tool: "file_read",
       args: { path: "/test.txt" },
     };
     const json = JSON.stringify(msg);
     const parsed = JSON.parse(json);
     expect(parsed.type).toBe("tool_start");
-    expect(parsed.tool).toBe("file.read");
+    expect(parsed.tool).toBe("file_read");
     expect(parsed.args.path).toBe("/test.txt");
   });
 
   it("tool_end 消息应有 type、tool、result", () => {
     const msg = {
       type: "tool_end" as const,
-      tool: "file.read",
+      tool: "file_read",
       result: "File content here",
     };
     const json = JSON.stringify(msg);
@@ -512,14 +512,14 @@ describe("ServerMessage 协议", () => {
     const msg = {
       type: "confirm_required" as const,
       callId: "call-123",
-      tool: "shell.exec",
+      tool: "shell_exec",
       args: { command: "rm -rf ./tmp" },
     };
     const json = JSON.stringify(msg);
     const parsed = JSON.parse(json);
     expect(parsed.type).toBe("confirm_required");
     expect(parsed.callId).toBe("call-123");
-    expect(parsed.tool).toBe("shell.exec");
+    expect(parsed.tool).toBe("shell_exec");
   });
 
   it("done 消息应有 type 和 finalResponse", () => {

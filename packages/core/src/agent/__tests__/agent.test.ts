@@ -54,7 +54,7 @@ describe('Agent Types', () => {
     const input: WorkerInput = {
       taskId: 'task-1',
       description: 'Read package.json',
-      tools: ['file.read'],
+      tools: ['file_read'],
       context: 'Previous task completed successfully.',
       workspacePath: './workspace',
       maxIterations: 10,
@@ -63,7 +63,7 @@ describe('Agent Types', () => {
 
     expect(input.taskId).toBe('task-1');
     expect(input.description).toBe('Read package.json');
-    expect(input.tools).toEqual(['file.read']);
+    expect(input.tools).toEqual(['file_read']);
     expect(input.maxIterations).toBe(10);
     expect(input.timeoutMs).toBe(30000);
   });
@@ -72,7 +72,7 @@ describe('Agent Types', () => {
     const input: WorkerInput = {
       taskId: 'task-2',
       description: 'Check git status',
-      tools: ['git.status'],
+      tools: ['git_status'],
       context: '',
       workspacePath: './workspace',
     };
@@ -106,7 +106,7 @@ describe('Agent Types', () => {
     const awaiting: WorkerOutput = {
       taskId: 't4',
       status: 'awaiting_approval',
-      error: 'Tool "file.write" requires user confirmation',
+      error: 'Tool "file_write" requires user confirmation',
     };
     expect(awaiting.status).toBe('awaiting_approval');
   });

@@ -67,7 +67,7 @@ ${toolDescriptions}
  * const output = await worker.run({
  *   taskId: 'task-1',
  *   description: 'Read package.json and report the version',
- *   tools: ['file.read'],
+ *   tools: ['file_read'],
  *   context: '',
  *   workspacePath: './workspace',
  * });

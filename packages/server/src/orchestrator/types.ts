@@ -17,7 +17,7 @@ export interface SubTask {
   id: string;
   /** 子任务的自然语言描述，将作为 Worker 的任务描述 */
   description: string;
-  /** 该子任务需要的工具列表，如 ["file.read", "code_search"] */
+  /** 该子任务需要的工具列表，如 ["file_read", "code_search"] */
   tools: string[];
   /**
    * 依赖的前置任务 ID 列表

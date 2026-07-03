@@ -63,9 +63,9 @@ describe('ToolRegistry', () => {
     const registry = ToolRegistry.createDefault();
     registry.register(fileReadTool);
 
-    const def = registry.get('file.read');
+    const def = registry.get('file_read');
     expect(def).toBeDefined();
-    expect(def?.name).toBe('file.read');
+    expect(def?.name).toBe('file_read');
     expect(def?.permission).toBe('safe');
   });
 
@@ -111,9 +111,9 @@ describe('ToolRegistry', () => {
     const all = registry.listAll();
     expect(all).toHaveLength(3);
     const names = all.map((t) => t.name);
-    expect(names).toContain('file.read');
-    expect(names).toContain('file.write');
-    expect(names).toContain('file.list');
+    expect(names).toContain('file_read');
+    expect(names).toContain('file_write');
+    expect(names).toContain('file_list');
   });
 
   it('getToolsForAgent 应根据 capability 过滤工具', async () => {
@@ -126,15 +126,15 @@ describe('ToolRegistry', () => {
 
       const ctx = makeCtx(workspacePath);
       const tools = registry.getToolsForAgent(
-        { tools: ['file.read', 'file.write'], paths: [workspacePath] },
+        { tools: ['file_read', 'file_write'], paths: [workspacePath] },
         ctx,
       );
 
       expect(tools).toHaveLength(2);
       const names = tools.map((t) => t.name);
-      expect(names).toContain('file.read');
-      expect(names).toContain('file.write');
-      expect(names).not.toContain('shell.exec');
+      expect(names).toContain('file_read');
+      expect(names).toContain('file_write');
+      expect(names).not.toContain('shell_exec');
     } finally {
       await cleanupTempWorkspace(workspacePath);
     }
@@ -148,13 +148,13 @@ describe('ToolRegistry', () => {
 
       const ctx = makeCtx(workspacePath);
       const tools = registry.getToolsForAgent(
-        { tools: ['file.read', 'nonexistent.tool'], paths: [workspacePath] },
+        { tools: ['file_read', 'nonexistent.tool'], paths: [workspacePath] },
         ctx,
       );
 
       // 不存在的工具应被跳过
       expect(tools).toHaveLength(1);
-      expect(tools[0].name).toBe('file.read');
+      expect(tools[0].name).toBe('file_read');
     } finally {
       await cleanupTempWorkspace(workspacePath);
     }
@@ -247,7 +247,7 @@ describe('文件工具', () => {
     await cleanupTempWorkspace(workspacePath);
   });
 
-  describe('file.read', () => {
+  describe('file_read', () => {
     it('应读取文件内容', async () => {
       const result = await fileReadTool.execute({ path: 'test.txt' }, makeCtx(workspacePath));
       expect(result).toBe('Hello, World!');
@@ -274,7 +274,7 @@ describe('文件工具', () => {
     });
   });
 
-  describe('file.write', () => {
+  describe('file_write', () => {
     it('应写入文件内容', async () => {
       const ctx = makeCtx(workspacePath);
       const result = await fileWriteTool.execute(
@@ -311,7 +311,7 @@ describe('文件工具', () => {
     });
   });
 
-  describe('file.list', () => {
+  describe('file_list', () => {
     it('应列出根目录内容', async () => {
       const result = await fileListTool.execute({ path: '.' }, makeCtx(workspacePath));
       expect(result).toContain('📄 test.txt');
@@ -456,7 +456,7 @@ describe('Git 工具', () => {
     await cleanupTempWorkspace(workspacePath);
   });
 
-  describe('git.status', () => {
+  describe('git_status', () => {
     it('应返回 JSON 状态信息', async () => {
       const result = await gitStatusTool.execute({}, makeCtx(workspacePath));
       const parsed = JSON.parse(result);
@@ -465,7 +465,7 @@ describe('Git 工具', () => {
     });
   });
 
-  describe('git.diff', () => {
+  describe('git_diff', () => {
     it('修改文件后应有差异', async () => {
       await fs.appendFile(path.join(workspacePath, 'README.md'), '\nNew line');
       const result = await gitDiffTool.execute({ staged: false }, makeCtx(workspacePath));
@@ -479,14 +479,14 @@ describe('Git 工具', () => {
     });
   });
 
-  describe('git.log', () => {
+  describe('git_log', () => {
     it('应返回提交日志', async () => {
       const result = await gitLogTool.execute({ maxCount: 5 }, makeCtx(workspacePath));
       expect(result).toContain('initial commit');
     });
   });
 
-  describe('git.branch', () => {
+  describe('git_branch', () => {
     it('应列出分支', async () => {
       const result = await gitBranchTool.execute({}, makeCtx(workspacePath));
       expect(result).toContain('main');
@@ -539,7 +539,7 @@ describe('Web 工具', () => {
 // ═════════════════════════════════════════════
 
 describe('工具权限标签', () => {
-  it('safe 权限工具：file.read, file.list, code_search, git.status, git.diff, git.log, web.fetch', () => {
+  it('safe 权限工具：file_read, file_list, code_search, git_status, git_diff, git_log, web_fetch', () => {
     const safeTools = [
       fileReadTool,
       fileListTool,
@@ -554,7 +554,7 @@ describe('工具权限标签', () => {
     }
   });
 
-  it('confirm 权限工具：file.write, shell.exec, git.commit, git.branch', () => {
+  it('confirm 权限工具：file_write, shell_exec, git_commit, git_branch', () => {
     const confirmTools = [fileWriteTool, shellExecTool, gitCommitTool, gitBranchTool];
     for (const tool of confirmTools) {
       expect(tool.permission).toBe('confirm');

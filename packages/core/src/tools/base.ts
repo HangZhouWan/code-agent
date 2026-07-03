@@ -43,7 +43,7 @@ export interface ToolContext {
  * @example
  * ```ts
  * const myTool: ToolDefinition = {
- *   name: 'file.read',
+ *   name: 'file_read',
  *   description: '读取文件内容',
  *   schema: z.object({ path: z.string() }),
  *   permission: 'safe',
@@ -54,7 +54,7 @@ export interface ToolContext {
  * ```
  */
 export interface ToolDefinition<T extends z.ZodObject<any> = any> {
-  /** 工具唯一名称，使用 "领域.动作" 命名规范，如 "file.read"、"git.status" */
+  /** 工具唯一名称，使用 "领域_动作" 命名规范，如 "file_read"、"git_status" */
   name: string;
   /** 给 LLM 看的工具功能描述，LLM 据此决定是否调用此工具 */
   description: string;

@@ -42,7 +42,7 @@ export interface AgentCapability {
  * registry.register(codeSearchTool);
  *
  * const tools = registry.getToolsForAgent(
- *   { tools: ['file.read', 'code_search'], paths: ['./workspace'] },
+ *   { tools: ['file_read', 'code_search'], paths: ['./workspace'] },
  *   { workspacePath: './workspace', sessionId: 'test' },
  * );
  * ```
@@ -65,7 +65,7 @@ export class ToolRegistry {
   /**
    * 按名称获取工具定义
    *
-   * @param name - 工具名称，如 "file.read"
+   * @param name - 工具名称，如 "file_read"
    * @returns 工具定义，未注册时返回 undefined
    */
   get(name: string): ToolDefinition | undefined {

@@ -7,7 +7,7 @@
  * 校验链（按优先级）：
  * 1. Agent capability 检查 → 工具是否在 Agent 声明的 tools[] 中
  * 2. 权限注册表查询     → 工具是否已注册
- * 3. Shell 高危模式检测 → 正则匹配 DENY_PATTERNS（仅 shell.exec）
+ * 3. Shell 高危模式检测 → 正则匹配 DENY_PATTERNS（仅 shell_exec）
  * 4. 路径约束           → 参数中的 path 是否在 Agent 的 paths[] 前缀内
  * 5. 自定义参数校验     → ToolPermission.validateArgs()
  * 6. 返回 PermissionResult
@@ -133,8 +133,8 @@ export class SandboxGuard extends BaseCallbackHandler {
       };
     }
 
-    // 3. Shell 高危模式检测（仅针对 shell.exec）
-    if (toolName === 'shell.exec') {
+    // 3. Shell 高危模式检测（仅针对 shell_exec）
+    if (toolName === 'shell_exec') {
       const command = String(args.command ?? '');
       for (const pattern of DENY_PATTERNS) {
         if (pattern.test(command)) {
