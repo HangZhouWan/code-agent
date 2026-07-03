@@ -17,10 +17,17 @@ export * from './llm/retry.js';
 // 工具层
 export * from './tools/index.js';
 
-// Agent Runtime（后续步骤实现）
-// export * from './harness/sandbox/types.js';
-// export * from './harness/hooks/types.js';
-// export * from './harness/context/types.js';
+// Agent Runtime
+export * from './harness/sandbox/types.js';
+export { PermissionRegistry } from './harness/sandbox/registry.js';
+export { SandboxGuard } from './harness/sandbox/guard.js';
+export type { HookEvent, HookContext, HookResult, HookHandler } from './harness/hooks/types.js';
+export { HooksEngine } from './harness/hooks/engine.js';
+export { createLoggerHook } from './harness/hooks/builtins/logger.js';
+export { createSecretFilterHook } from './harness/hooks/builtins/secret-filter.js';
+export type { ContextWindow, AgentContext } from './harness/context/types.js';
+export { ContextManager } from './harness/context/manager.js';
+export { compressMessages } from './harness/context/compressor.js';
 
 // 子 Agent（后续步骤实现）
 // export * from './agent/types.js';
