@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // 输出目录
+    "outDir": "./dist",
+    // 源码根目录
+    "rootDir": "./src"
+  },
+  // 仅编译 src 目录下的文件
+  "include": ["src"]
+}

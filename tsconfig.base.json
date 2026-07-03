@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    // 编译目标：ES2022，Node.js 22 原生支持
+    "target": "ES2022",
+    // 模块系统：NodeNext，与 ESM 原生兼容
+    "module": "NodeNext",
+    // 模块解析策略：NodeNext
+    "moduleResolution": "NodeNext",
+    // 启用所有严格类型检查选项
+    "strict": true,
+    // 生成 .d.ts 类型声明文件
+    "declaration": true,
+    // 生成声明文件的 source map，方便 IDE 跳转到源码
+    "declarationMap": true,
+    // 生成 source map，方便调试
+    "sourceMap": true,
+    // 跳过 node_modules 的类型检查，加快编译速度
+    "skipLibCheck": true,
+    // 强制使用一致的 casing
+    "forceConsistentCasingInFileNames": true,
+    // 解析 JSON 模块
+    "resolveJsonModule": true,
+    // 允许未明确标注为 export 的默认导入 (CommonJS → ESM 兼容)
+    "esModuleInterop": true,
+    // 允许导入 .json 扩展名
+    "allowSyntheticDefaultImports": true
+  },
+  // 排除 node_modules 和 dist 目录
+  "exclude": ["node_modules", "dist"]
+}
