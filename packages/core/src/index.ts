@@ -29,8 +29,9 @@ export type { ContextWindow, AgentContext } from './harness/context/types.js';
 export { ContextManager } from './harness/context/manager.js';
 export { compressMessages } from './harness/context/compressor.js';
 
-// 子 Agent（后续步骤实现）
-// export * from './agent/types.js';
+// 子 Agent 编排
+export type { WorkerInput, WorkerOutput, WorkerStatus } from './agent/types.js';
+export { WorkerAgent } from './agent/worker.js';
 
 // 核心版本标识
 export const CORE_VERSION = '0.1.0';

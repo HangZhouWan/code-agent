@@ -11,10 +11,15 @@
 // 服务端版本标识
 export const SERVER_VERSION = '0.1.0';
 
+// Orchestrator（Agent 编排层）
+export { createOrchestratorGraph } from './orchestrator/graph.js';
+export { OrchestratorState } from './orchestrator/state.js';
+export type { SubTask, NextAction, TaskResult } from './orchestrator/types.js';
+
 // 后续步骤将在此处启动 Fastify 实例
 // import { buildServer } from './gateway/server.js';
 // import { loadConfig } from './config.js';
-
+//
 // const config = loadConfig();
 // const server = buildServer(config);
 // await server.listen({ port: config.port, host: config.host });
