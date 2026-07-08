@@ -5,8 +5,8 @@
  * - Enter 发送（无 Shift）
  * - Shift+Enter 换行
  * - 发送后自动清空并聚焦
- * - 内容为空或 disabled 时禁用发送按钮
- * - WebSocket 断开时 disabled
+ * - 内容为空、WebSocket 断开或 Agent 思考中时禁用发送按钮
+ * - Agent 思考中时显示不同提示文案
  */
 
 import { useState, useRef, useCallback, type KeyboardEvent } from "react";
@@ -18,8 +18,10 @@ import { useState, useRef, useCallback, type KeyboardEvent } from "react";
 export interface InputBarProps {
   /** 发送消息回调 */
   onSend: (content: string) => void;
-  /** 是否禁用（WebSocket 未连接时应禁用） */
+  /** 是否禁用（WebSocket 未连接或 Agent 正在响应时应禁用） */
   disabled?: boolean;
+  /** Agent 是否正在思考/响应中（用于显示不同提示文案） */
+  isStreaming?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -34,10 +36,10 @@ export interface InputBarProps {
  *
  * @example
  * ```tsx
- * <InputBar onSend={handleSend} disabled={status !== "connected"} />
+ * <InputBar onSend={handleSend} disabled={status !== "connected"} isStreaming={isStreaming} />
  * ```
  */
-export function InputBar({ onSend, disabled }: InputBarProps) {
+export function InputBar({ onSend, disabled, isStreaming }: InputBarProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -64,6 +66,11 @@ export function InputBar({ onSend, disabled }: InputBarProps) {
     [handleSend],
   );
 
+  // ── 占位文案 ──
+  const placeholder = disabled
+    ? "Agent is thinking..."
+    : "Type a message... (Enter to send, Shift+Enter for new line)";
+
   return (
     <div className="border-t border-gray-700 bg-gray-900 px-4 py-3">
       <div className="flex items-end gap-2 max-w-4xl mx-auto">
@@ -75,9 +82,7 @@ export function InputBar({ onSend, disabled }: InputBarProps) {
           onKeyDown={handleKeyDown}
           disabled={disabled}
           rows={2}
-          placeholder={
-            disabled ? "Connecting..." : "Type a message... (Enter to send, Shift+Enter for new line)"
-          }
+          placeholder={placeholder}
           className="flex-1 resize-none rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
         />
 

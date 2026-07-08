@@ -160,6 +160,13 @@ export function ChatArea({ sessionId }: ChatAreaProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [state.messages]);
 
+  // ── 判断 Agent 是否正在思考/响应 ──
+  const isStreaming = useMemo(() => {
+    if (state.messages.length === 0) return false;
+    const last = state.messages[state.messages.length - 1];
+    return last.role === "assistant" && last.isStreaming;
+  }, [state.messages]);
+
   // ── 无活跃会话时的引导页 ──
   if (!sessionId) {
     return (
@@ -188,7 +195,8 @@ export function ChatArea({ sessionId }: ChatAreaProps) {
       {/* ── 输入栏 ── */}
       <InputBar
         onSend={handleSend}
-        disabled={status !== "connected"}
+        disabled={status !== "connected" || isStreaming}
+        isStreaming={isStreaming}
       />
     </div>
   );
