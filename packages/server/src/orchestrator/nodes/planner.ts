@@ -47,7 +47,7 @@ ${toolList}
   {
     "id": "unique-task-id",
     "description": "Clear description of what to do",
-    "tools": ["tool.name", "another.tool"],
+    "tools": ["tool_name", "another_tool"],
     "dependsOn": []  // or ["other-task-id"] if this task depends on another
   }
 ]
