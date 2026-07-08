@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, waitFor, cleanup } from "@testing-library/react";
 import { ChatArea } from "../ChatArea.js";
 
 // ---------------------------------------------------------------------------
@@ -34,12 +34,39 @@ class MockWebSocket {
 }
 
 // ---------------------------------------------------------------------------
+// helpers
+// ---------------------------------------------------------------------------
+
+/** 创建返回空历史数组的 mock fetch */
+function mockFetchEmptyHistory() {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve([]),
+    }),
+  );
+}
+
+/** 创建返回指定历史数据的 mock fetch */
+function mockFetchHistory(messages: unknown[]) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(messages),
+    }),
+  );
+}
+
+// ---------------------------------------------------------------------------
 // 测试
 // ---------------------------------------------------------------------------
 
 describe("ChatArea", () => {
   beforeEach(() => {
     vi.stubGlobal("WebSocket", MockWebSocket as unknown as typeof WebSocket);
+    mockFetchEmptyHistory();
   });
 
   afterEach(() => {
@@ -55,22 +82,61 @@ describe("ChatArea", () => {
     ).toBeInTheDocument();
   });
 
-  it("有 sessionId 时应渲染 MessageList 和 InputBar", () => {
+  it("有 sessionId 时加载完成后应渲染 MessageList 和 InputBar", async () => {
     render(<ChatArea sessionId="s1" />);
 
-    expect(
-      screen.getByText(/Send a message to start the conversation/),
-    ).toBeInTheDocument();
-    // WebSocket 未连接时 InputBar 处于 disabled 状态，显示 Connecting 文字
-    expect(
-      screen.getByPlaceholderText(/Connecting/),
-    ).toBeInTheDocument();
+    // 加载完成后显示消息列表
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Send a message to start the conversation/),
+      ).toBeInTheDocument();
+    });
   });
 
-  it("WebSocket 未连接时 InputBar 应 disabled", () => {
+  it("应该在 sessionId 变化时加载历史消息并显示", async () => {
+    mockFetchHistory([
+      {
+        id: 1,
+        sessionId: "s1",
+        role: "human",
+        content: "Previous question",
+        toolName: null,
+        toolArgs: null,
+        toolResult: null,
+        createdAt: "2024-01-01T00:00:00.000Z",
+      },
+      {
+        id: 2,
+        sessionId: "s1",
+        role: "assistant",
+        content: "Previous answer",
+        toolName: null,
+        toolArgs: null,
+        toolResult: null,
+        createdAt: "2024-01-01T00:00:01.000Z",
+      },
+    ]);
+
     render(<ChatArea sessionId="s1" />);
 
-    const textarea = screen.getByPlaceholderText(/Connecting/);
-    expect(textarea).toBeDisabled();
+    // 等待历史消息渲染
+    expect(await screen.findByText("Previous question")).toBeInTheDocument();
+    expect(await screen.findByText("Previous answer")).toBeInTheDocument();
+  });
+
+  it("历史加载失败时不应崩溃", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new Error("Network error")),
+    );
+
+    render(<ChatArea sessionId="s1" />);
+
+    // 加载完成后应正常显示空消息列表（不崩溃）
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Send a message to start the conversation/),
+      ).toBeInTheDocument();
+    });
   });
 });

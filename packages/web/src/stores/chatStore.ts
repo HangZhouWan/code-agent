@@ -53,6 +53,47 @@ export interface ChatState {
 }
 
 // ---------------------------------------------------------------------------
+// DB 消息类型 & 转换
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /api/sessions/:id/history 返回的原始消息行
+ *
+ * 对应后端 Drizzle schema: packages/server/src/db/schema.ts
+ */
+export interface DBMessageRow {
+  id: number;
+  sessionId: string;
+  role: "human" | "assistant" | "system" | "tool";
+  content: string;
+  toolName: string | null;
+  toolArgs: string | null;
+  toolResult: string | null;
+  createdAt: string;
+}
+
+/**
+ * 将原始 DB 消息行转换为前端 Message 对象
+ *
+ * 转换规则：
+ * - human → user
+ * - assistant → assistant（保持）
+ * - system / tool → 过滤（前端暂不展示）
+ * - 所有历史消息 isStreaming = false, toolCalls = []
+ */
+export function dbMessagesToMessages(rows: DBMessageRow[]): Message[] {
+  return rows
+    .filter((row) => row.role === "human" || row.role === "assistant")
+    .map((row) => ({
+      id: String(row.id),
+      role: (row.role === "human" ? "user" : "assistant") as "user" | "assistant",
+      content: row.content,
+      isStreaming: false,
+      toolCalls: [],
+    }));
+}
+
+// ---------------------------------------------------------------------------
 // Action 类型
 // ---------------------------------------------------------------------------
 
@@ -64,7 +105,8 @@ export type ChatAction =
   | { type: "TOOL_END"; tool: string; result: string }
   | { type: "CONFIRM_REQUIRED"; callId: string; tool: string; args: Record<string, unknown> }
   | { type: "DONE"; finalResponse: string }
-  | { type: "ERROR"; message: string };
+  | { type: "ERROR"; message: string }
+  | { type: "LOAD_MESSAGES"; messages: Message[] };
 
 // ---------------------------------------------------------------------------
 // 辅助函数
@@ -211,6 +253,11 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         return m;
       });
       return { ...state, messages: [...msgs, errMsg] };
+    }
+
+    // ── 批量加载历史消息（替换整个 messages 数组） ──
+    case "LOAD_MESSAGES": {
+      return { ...state, messages: action.messages };
     }
 
     default:

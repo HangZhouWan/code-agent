@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { chatReducer, type ChatState, type Message } from "../chatStore.js";
+import { chatReducer, dbMessagesToMessages, type ChatState, type Message, type DBMessageRow } from "../chatStore.js";
 
 // ---------------------------------------------------------------------------
 // 辅助
@@ -285,6 +285,89 @@ describe("ERROR", () => {
     });
     expect(state.messages).toHaveLength(1);
     expect(state.messages[0].content).toContain("Oops");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LOAD_MESSAGES
+// ---------------------------------------------------------------------------
+
+describe("LOAD_MESSAGES", () => {
+  it("应该替换整个 messages 数组", () => {
+    const initial: ChatState = {
+      messages: [userMsg("u1", "old message")],
+    };
+    const loaded = [
+      userMsg("u2", "loaded message 1"),
+      assistantMsg("a1", "loaded message 2"),
+    ];
+    const state = chatReducer(initial, {
+      type: "LOAD_MESSAGES",
+      messages: loaded,
+    });
+    expect(state.messages).toHaveLength(2);
+    expect(state.messages[0].content).toBe("loaded message 1");
+  });
+
+  it("空数组应清空所有消息", () => {
+    const initial: ChatState = {
+      messages: [userMsg("u1", "some message")],
+    };
+    const state = chatReducer(initial, {
+      type: "LOAD_MESSAGES",
+      messages: [],
+    });
+    expect(state.messages).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dbMessagesToMessages
+// ---------------------------------------------------------------------------
+
+describe("dbMessagesToMessages", () => {
+  it("应该将 human → user 并设置 isStreaming: false", () => {
+    const rows = [
+      { id: 1, sessionId: "s1", role: "human", content: "Hello", toolName: null, toolArgs: null, toolResult: null, createdAt: "2024-01-01" },
+    ];
+    const result = dbMessagesToMessages(rows);
+    expect(result).toHaveLength(1);
+    expect(result[0].role).toBe("user");
+    expect(result[0].content).toBe("Hello");
+    expect(result[0].isStreaming).toBe(false);
+    expect(result[0].toolCalls).toEqual([]);
+  });
+
+  it("应该保持 assistant 不变", () => {
+    const rows = [
+      { id: 2, sessionId: "s1", role: "assistant", content: "Hi!", toolName: null, toolArgs: null, toolResult: null, createdAt: "2024-01-01" },
+    ];
+    const result = dbMessagesToMessages(rows);
+    expect(result).toHaveLength(1);
+    expect(result[0].role).toBe("assistant");
+  });
+
+  it("应该过滤 system 和 tool 角色", () => {
+    const rows = [
+      { id: 1, sessionId: "s1", role: "system", content: "sys", toolName: null, toolArgs: null, toolResult: null, createdAt: "2024-01-01" },
+      { id: 2, sessionId: "s1", role: "human", content: "Hello", toolName: null, toolArgs: null, toolResult: null, createdAt: "2024-01-02" },
+      { id: 3, sessionId: "s1", role: "tool", content: "", toolName: "grep", toolArgs: "{}", toolResult: "found", createdAt: "2024-01-03" },
+    ];
+    const result = dbMessagesToMessages(rows);
+    expect(result).toHaveLength(1);
+    expect(result[0].role).toBe("user");
+  });
+
+  it("空数组应返回空数组", () => {
+    expect(dbMessagesToMessages([])).toEqual([]);
+  });
+
+  it("id 应为字符串", () => {
+    const rows = [
+      { id: 42, sessionId: "s1", role: "human", content: "x", toolName: null, toolArgs: null, toolResult: null, createdAt: "2024-01-01" },
+    ];
+    const result = dbMessagesToMessages(rows);
+    expect(result[0].id).toBe("42");
   });
 });
 

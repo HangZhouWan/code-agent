@@ -22,8 +22,8 @@
  * ```
  */
 
-import { useRef, useEffect, useCallback, useMemo } from "react";
-import { useChatStore } from "../stores/chatStore.js";
+import { useRef, useEffect, useCallback, useMemo, useState } from "react";
+import { useChatStore, dbMessagesToMessages, type DBMessageRow } from "../stores/chatStore.js";
 import { useWebSocket } from "../hooks/useWebSocket.js";
 import type { WSMessage } from "../hooks/useWebSocket.js";
 import { MessageList } from "./MessageList.js";
@@ -167,6 +167,64 @@ export function ChatArea({ sessionId }: ChatAreaProps) {
     return last.role === "assistant" && last.isStreaming;
   }, [state.messages]);
 
+  // ── 历史消息加载状态 ──
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  // ── sessionId 变化时加载历史消息 ──
+  useEffect(() => {
+    if (!sessionId) {
+      // 无会话时清空消息
+      dispatch({ type: "LOAD_MESSAGES", messages: [] });
+      setHistoryLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadHistory = async () => {
+      // 立即清空旧消息，避免短暂显示上一会话内容
+      dispatch({ type: "LOAD_MESSAGES", messages: [] });
+      setHistoryLoading(true);
+
+      try {
+        const res = await fetch(`/api/sessions/${sessionId}/history`);
+
+        if (!res.ok) {
+          // 404 = 会话不存在；其他错误记录日志
+          if (res.status !== 404) {
+            console.error(
+              `[ChatArea] Failed to load history for ${sessionId}: HTTP ${res.status}`,
+            );
+          }
+          return;
+        }
+
+        const rows: DBMessageRow[] = await res.json();
+
+        if (cancelled) return;
+
+        const messages = dbMessagesToMessages(rows);
+        dispatch({ type: "LOAD_MESSAGES", messages });
+      } catch (err) {
+        if (cancelled) return;
+        console.error(
+          `[ChatArea] Error loading history for ${sessionId}:`,
+          err,
+        );
+      } finally {
+        if (!cancelled) {
+          setHistoryLoading(false);
+        }
+      }
+    };
+
+    loadHistory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, dispatch]);
+
   // ── 无活跃会话时的引导页 ──
   if (!sessionId) {
     return (
@@ -180,6 +238,24 @@ export function ChatArea({ sessionId }: ChatAreaProps) {
             started.
           </p>
         </div>
+      </div>
+    );
+  }
+
+  // ── 历史消息加载中 ──
+  if (historyLoading) {
+    return (
+      <div className="flex-1 flex flex-col bg-gray-950 h-full">
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-sm text-gray-500 animate-pulse">
+            Loading messages...
+          </p>
+        </div>
+        <InputBar
+          onSend={handleSend}
+          disabled={true}
+          isStreaming={false}
+        />
       </div>
     );
   }

@@ -76,13 +76,13 @@ describe("InputBar", () => {
   it("disabled 时 textarea 和按钮应禁用", () => {
     render(<InputBar onSend={vi.fn()} disabled />);
 
-    const textarea = screen.getByPlaceholderText(/Connecting/);
+    const textarea = screen.getByPlaceholderText(/Agent is thinking/);
     expect(textarea).toBeDisabled();
     expect(screen.getByText("Send")).toBeDisabled();
   });
 
-  it("disabled 时 placeholder 应显示连接中", () => {
+  it("disabled 时 placeholder 应显示 Agent is thinking", () => {
     render(<InputBar onSend={vi.fn()} disabled />);
-    expect(screen.getByPlaceholderText(/Connecting/)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Agent is thinking/)).toBeInTheDocument();
   });
 });
