@@ -136,6 +136,7 @@ async function main(): Promise<void> {
     model,
     toolRegistry,
     workspacePath: cfg.WORKSPACE_PATH,
+    permissionRegistry: permRegistry,
   });
 
   // 6. 挂载共享实例到 Fastify

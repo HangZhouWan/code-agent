@@ -198,6 +198,39 @@ describe('SandboxGuard', () => {
       expect(result.allowed).toBe(true);
     });
 
+    it('应对简短相对路径放行（如 "test.txt"）', () => {
+      // 修复：不包含 workspace 前缀的简短相对路径应先解析再检查
+      const result = guard.check('file_write', { path: 'test.txt', content: 'hello' });
+      expect(result.allowed).toBe(true);
+      expect(result.level).toBe('confirm');
+    });
+
+    it('应对子目录相对路径放行（如 "subdir/test.txt"）', () => {
+      const result = guard.check('file_write', { path: 'subdir/test.txt', content: 'hello' });
+      expect(result.allowed).toBe(true);
+      expect(result.level).toBe('confirm');
+    });
+
+    it('应对纯文件名路径放行（如 "output.json"）', () => {
+      const result = guard.check('file_write', { path: 'output.json', content: '{}' });
+      expect(result.allowed).toBe(true);
+      expect(result.level).toBe('confirm');
+    });
+
+    it('应拒绝解析后逃逸的路径（如 "../outside/file.txt"）', () => {
+      const result = guard.check('file_read', { path: '../outside/file.txt' });
+      expect(result.allowed).toBe(false);
+      expect(result.level).toBe('deny');
+      expect(result.reason).toContain('traversal');
+    });
+
+    it('应拒绝解析到工作区外的绝对路径', () => {
+      const result = guard.check('file_read', { path: '/etc/passwd' });
+      expect(result.allowed).toBe(false);
+      expect(result.level).toBe('deny');
+      expect(result.reason).toContain('not within');
+    });
+
     it('应支持自定义参数校验 (validateArgs)', () => {
       registry.register({
         toolName: 'file_write',

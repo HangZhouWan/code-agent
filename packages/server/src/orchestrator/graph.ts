@@ -23,7 +23,7 @@
 
 import { StateGraph, START, END } from '@langchain/langgraph';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import { ToolRegistry } from '@my-agent/core';
+import { ToolRegistry, type PermissionRegistry } from '@my-agent/core';
 import { OrchestratorState } from './state.js';
 import { createPlannerNode } from './nodes/planner.js';
 import { createDispatcherNode } from './nodes/dispatcher.js';
@@ -64,9 +64,14 @@ export function createOrchestratorGraph(
   model: BaseChatModel,
   toolRegistry: ToolRegistry,
   workspacePath: string,
+  permissionRegistry?: PermissionRegistry,
+  onConfirmRequired?: (
+    toolName: string,
+    args: Record<string, unknown>,
+  ) => Promise<boolean>,
 ) {
   const plannerNode = createPlannerNode(model, toolRegistry);
-  const dispatcherNode = createDispatcherNode(model, toolRegistry, workspacePath);
+  const dispatcherNode = createDispatcherNode(model, toolRegistry, workspacePath, permissionRegistry, onConfirmRequired);
   const summarizerNode = createSummarizerNode(model);
 
   const graph = new StateGraph(OrchestratorState)

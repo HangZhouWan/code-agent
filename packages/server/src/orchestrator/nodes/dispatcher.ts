@@ -11,7 +11,7 @@
  */
 
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import { ToolRegistry, WorkerAgent, type WorkerOutput } from '@my-agent/core';
+import { ToolRegistry, WorkerAgent, type WorkerOutput, type PermissionRegistry } from '@my-agent/core';
 import type { SubTask, NextAction } from '../types.js';
 
 // ---------------------------------------------------------------------------
@@ -42,12 +42,18 @@ export interface DispatcherOutput {
  * @param model - LLM 实例（传递给每个 WorkerAgent）
  * @param toolRegistry - 工具注册表（传递给每个 WorkerAgent）
  * @param workspacePath - 工作区路径（传递给每个 WorkerAgent）
+ * @param permissionRegistry - 权限注册表（传递给每个 WorkerAgent，启用 SandboxGuard）
  * @returns LangGraph 节点函数
  */
 export function createDispatcherNode(
   model: BaseChatModel,
   toolRegistry: ToolRegistry,
   workspacePath: string,
+  permissionRegistry?: PermissionRegistry,
+  onConfirmRequired?: (
+    toolName: string,
+    args: Record<string, unknown>,
+  ) => Promise<boolean>,
 ) {
   return async function dispatcherNode(
     state: DispatcherInput,
@@ -100,7 +106,7 @@ export function createDispatcherNode(
     }
 
     // 4. 并行派发所有就绪任务
-    const worker = new WorkerAgent(model, toolRegistry);
+    const worker = new WorkerAgent(model, toolRegistry, undefined, permissionRegistry);
 
     const results = await Promise.all(
       ready.map(async (task): Promise<WorkerOutput> => {
@@ -123,6 +129,7 @@ export function createDispatcherNode(
           tools: task.tools,
           context: contextParts.join('\n\n'),
           workspacePath,
+          onConfirmRequired,
         });
       }),
     );

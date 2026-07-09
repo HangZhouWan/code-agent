@@ -17,6 +17,7 @@ import { createAgent } from 'langchain';
 import type { StructuredTool } from '@langchain/core/tools';
 import { ToolRegistry } from '../tools/registry.js';
 import { HooksEngine } from '../harness/hooks/engine.js';
+import type { PermissionRegistry } from '../harness/sandbox/registry.js';
 import type { WorkerInput, WorkerOutput } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -75,13 +76,16 @@ ${toolDescriptions}
  */
 export class WorkerAgent {
   private hooks: HooksEngine;
+  private permissionRegistry: PermissionRegistry | undefined;
 
   constructor(
     private model: BaseChatModel,
     private toolRegistry: ToolRegistry,
     hooks?: HooksEngine,
+    permissionRegistry?: PermissionRegistry,
   ) {
     this.hooks = hooks ?? new HooksEngine();
+    this.permissionRegistry = permissionRegistry;
   }
 
   /**
@@ -115,7 +119,9 @@ export class WorkerAgent {
       {
         workspacePath: input.workspacePath,
         sessionId: agentId,
+        onConfirmRequired: input.onConfirmRequired,
       },
+      this.permissionRegistry,
     );
 
     if (langchainTools.length === 0) {

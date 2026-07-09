@@ -9,9 +9,13 @@
  * - 支持按名称查询单个工具定义
  */
 
+import { DynamicStructuredTool } from '@langchain/core/tools';
 import type { StructuredTool } from '@langchain/core/tools';
 import type { ToolDefinition, ToolContext } from './base.js';
 import { createLangChainTool } from './base.js';
+import { SandboxGuard } from '../harness/sandbox/guard.js';
+import { ConfirmRequiredError } from '../harness/sandbox/types.js';
+import type { PermissionRegistry } from '../harness/sandbox/registry.js';
 
 /**
  * Agent 能力声明 —— 定义 Agent 可以使用的工具集和访问范围
@@ -81,14 +85,62 @@ export class ToolRegistry {
    * @param ctx - 工具执行上下文
    * @returns LangChain StructuredTool 数组，可直接传入 AgentExecutor
    */
-  getToolsForAgent(capability: AgentCapability, ctx: ToolContext): StructuredTool[] {
+  getToolsForAgent(
+    capability: AgentCapability,
+    ctx: ToolContext,
+    permissionRegistry?: PermissionRegistry,
+  ): StructuredTool[] {
+    const guard = permissionRegistry
+      ? new SandboxGuard(permissionRegistry, capability)
+      : null;
     const tools: StructuredTool[] = [];
+
     for (const toolName of capability.tools) {
       const def = this.definitions.get(toolName);
-      if (def) {
+      if (!def) continue;
+
+      if (guard) {
+        // 包裹权限校验：执行前调用 SandboxGuard.check()
+        tools.push(
+          new DynamicStructuredTool({
+            name: def.name,
+            description: def.description,
+            schema: def.schema,
+            func: async (args: any) => {
+              const result = guard.check(def.name, args as Record<string, unknown>);
+              if (result.level === 'deny') {
+                throw new Error(
+                  `Tool "${def.name}" is denied: ${result.reason ?? 'no reason provided'}`,
+                );
+              }
+              if (result.level === 'confirm') {
+                if (ctx.onConfirmRequired) {
+                  const approved = await ctx.onConfirmRequired(
+                    def.name,
+                    args as Record<string, unknown>,
+                  );
+                  if (!approved) {
+                    return `❌ Tool "${def.name}" was denied by user.`;
+                  }
+                  // 用户批准，继续执行工具
+                  return def.execute(args, ctx);
+                }
+                // 无确认回调时，回退到抛出异常（CLI / 测试场景）
+                throw new ConfirmRequiredError(
+                  def.name,
+                  args as Record<string, unknown>,
+                  result.reason,
+                );
+              }
+              return def.execute(args, ctx);
+            },
+          }),
+        );
+      } else {
         tools.push(createLangChainTool(def, ctx));
       }
     }
+
     return tools;
   }
 

@@ -33,6 +33,18 @@ export interface ToolContext {
   workspacePath: string;
   /** 当前会话 ID，用于日志追踪和上下文关联 */
   sessionId: string;
+  /**
+   * 确认回调（可选）
+   *
+   * 当工具需要用户确认时（permission = 'confirm'），SandboxGuard 会调用此回调
+   * 向用户推送确认请求。回调返回 true 表示批准，false 表示拒绝。
+   *
+   * 如果未提供此回调，confirm 级别的工具将抛出 ConfirmRequiredError。
+   */
+  onConfirmRequired?: (
+    toolName: string,
+    args: Record<string, unknown>,
+  ) => Promise<boolean>;
 }
 
 /**

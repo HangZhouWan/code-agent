@@ -15,7 +15,7 @@ import Fastify from "fastify";
 import fastifyCors from "@fastify/cors";
 import fastifyWebsocket from "@fastify/websocket";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import type { ToolRegistry } from "@my-agent/core";
+import type { ToolRegistry, PermissionRegistry } from "@my-agent/core";
 
 import { errorHandler } from "./middleware/error.js";
 import sessionRoutes from "./routes/sessions.js";
@@ -39,6 +39,8 @@ export interface AppOptions {
   toolRegistry: ToolRegistry;
   /** 工作区根路径 */
   workspacePath: string;
+  /** 权限注册表（可选，传入后启用 SandboxGuard 工具级拦截） */
+  permissionRegistry?: PermissionRegistry;
 }
 
 // ---------------------------------------------------------------------------
@@ -104,7 +106,7 @@ function createApprovalStore(
  * ```
  */
 export async function createServer(options: AppOptions) {
-  const { model, toolRegistry, workspacePath } = options;
+  const { model, toolRegistry, workspacePath, permissionRegistry } = options;
 
   // ── 创建 Fastify 实例 ──
   const app = Fastify({ logger: true });
@@ -141,6 +143,7 @@ export async function createServer(options: AppOptions) {
         toolRegistry,
         workspacePath,
         pendingApprovals,
+        permissionRegistry,
       }),
     );
   });

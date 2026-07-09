@@ -26,6 +26,17 @@ export interface WorkerInput {
   maxIterations?: number;
   /** 执行超时时间（毫秒），默认 60000 */
   timeoutMs?: number;
+  /**
+   * 确认回调（可选）
+   *
+   * 当 Worker 使用的工具需要用户确认时（如 file_write），调用此回调。
+   * 回调返回 Promise<boolean>：true = 批准，false = 拒绝。
+   * 如不提供，confirm 级别的工具将抛出 ConfirmRequiredError。
+   */
+  onConfirmRequired?: (
+    toolName: string,
+    args: Record<string, unknown>,
+  ) => Promise<boolean>;
 }
 
 /**

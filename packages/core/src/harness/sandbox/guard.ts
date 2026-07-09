@@ -13,6 +13,7 @@
  * 6. 返回 PermissionResult
  */
 
+import * as path from 'node:path';
 import { BaseCallbackHandler } from '@langchain/core/callbacks/base';
 import type { AgentAction } from '@langchain/core/agents';
 import type { PermissionRegistry } from './registry.js';
@@ -23,7 +24,7 @@ import { ConfirmRequiredError } from './types.js';
  * Shell 高危命令黑名单
  *
  * 匹配以下任一模式时，无论权限级别如何，都将直接 deny：
- * - rm -rf /...       删除根目录
+ * - rm ...             任何删除操作（作为第二道防线，rm 不在 ALLOWED_COMMANDS 中）
  * - sudo               提权操作
  * - chmod 777          过于宽松的权限设置
  * - chown              变更文件所有者
@@ -31,9 +32,10 @@ import { ConfirmRequiredError } from './types.js';
  * - mkfs.              创建文件系统（格式化）
  * - > /dev/...         重定向到设备文件
  * - curl ... | sh/bash 远程脚本直接执行
+ * - wget ... | sh/bash 远程脚本直接执行
  */
 const DENY_PATTERNS: RegExp[] = [
-  /\brm\s+-rf\s+\//i,
+  /\brm\b/i,
   /\bsudo\b/i,
   /\bchmod\s+777\b/i,
   /\bchown\b/i,
@@ -41,6 +43,7 @@ const DENY_PATTERNS: RegExp[] = [
   /\bmkfs\./i,
   />\s*\/dev\//i,
   /\bcurl\b.*\|\s*(?:sh|bash)\b/i,
+  /\bwget\b.*\|\s*(?:sh|bash)\b/i,
 ];
 
 /**
@@ -160,9 +163,16 @@ export class SandboxGuard extends BaseCallbackHandler {
       }
 
       // 检查路径是否在允许范围内
-      const allowed = this.capability.paths.some(
-        (allowedPath) => paramPath.startsWith(allowedPath),
-      );
+      // 使用 path.resolve() 解析相对路径后再检查前缀，确保 "test.txt" 这样的
+      // 相对路径能正确匹配到 workspace 路径，同时仍然阻止路径穿越攻击。
+      const allowed = this.capability.paths.some((allowedPath) => {
+        const resolved = path.resolve(allowedPath, paramPath);
+        const normalizedAllowed = path.resolve(allowedPath);
+        return (
+          resolved.startsWith(normalizedAllowed + path.sep) ||
+          resolved === normalizedAllowed
+        );
+      });
       if (!allowed) {
         return {
           allowed: false,

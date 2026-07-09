@@ -35,7 +35,7 @@ import type { FastifyRequest } from "fastify";
 import type { WebSocket } from "ws";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { HumanMessage, AIMessageChunk } from "@langchain/core/messages";
-import type { ToolRegistry } from "@my-agent/core";
+import type { ToolRegistry, PermissionRegistry } from "@my-agent/core";
 import { SessionRepository } from "../../db/repositories/sessions.js";
 
 // ---------------------------------------------------------------------------
@@ -118,6 +118,8 @@ export interface ChatWebSocketOptions {
   workspacePath: string;
   /** 共享的待审批 Map（注入后可供 HTTP 路由查询） */
   pendingApprovals: Map<string, PendingApprovalItem>;
+  /** 权限注册表（可选，传入后启用 SandboxGuard 工具级拦截） */
+  permissionRegistry?: PermissionRegistry;
 }
 
 /**
@@ -129,7 +131,7 @@ export interface ChatWebSocketOptions {
  * @returns Fastify WebSocket handler 函数
  */
 export function createChatWebSocket(options: ChatWebSocketOptions) {
-  const { model, toolRegistry, workspacePath, pendingApprovals } = options;
+  const { model, toolRegistry, workspacePath, pendingApprovals, permissionRegistry } = options;
 
   return async function chatHandler(socket: WebSocket, request: FastifyRequest) {
     // 从 URL 路径参数中提取 sessionId
@@ -181,6 +183,7 @@ export function createChatWebSocket(options: ChatWebSocketOptions) {
             sessionId,
             repo,
             pendingApprovals,
+            permissionRegistry,
           });
           break;
         }
@@ -246,6 +249,7 @@ interface StreamContext {
   sessionId: string;
   repo: SessionRepository | null;
   pendingApprovals: Map<string, PendingApprovalItem>;
+  permissionRegistry?: PermissionRegistry;
 }
 
 /**
@@ -270,6 +274,26 @@ async function streamOrchestrator(
     ctx.model,
     ctx.toolRegistry,
     ctx.workspacePath,
+    ctx.permissionRegistry,
+    // 确认回调：暂停 Agent 执行，推送 confirm_required 到前端，等待用户决定
+    (toolName: string, args: Record<string, unknown>): Promise<boolean> => {
+      const callId = crypto.randomUUID();
+      send(socket, { type: "confirm_required", callId, tool: toolName, args });
+      return new Promise((resolve) => {
+        // 2 分钟超时后自动拒绝，避免 Agent 永久挂起
+        const timeout = setTimeout(() => {
+          ctx.pendingApprovals.delete(callId);
+          resolve(false);
+        }, 120_000);
+        ctx.pendingApprovals.set(callId, {
+          resolve: (approved: boolean) => {
+            clearTimeout(timeout);
+            resolve(approved);
+          },
+          ws: socket,
+        });
+      });
+    },
   );
 
   try {
