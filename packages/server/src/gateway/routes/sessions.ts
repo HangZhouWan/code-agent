@@ -33,6 +33,11 @@ const sessionIdParams = z.object({
   id: z.string(),
 });
 
+/** 更新会话标题请求体 */
+const updateTitleSchema = z.object({
+  title: z.string().min(1).max(200),
+});
+
 // ---------------------------------------------------------------------------
 // 辅助函数
 // ---------------------------------------------------------------------------
@@ -130,6 +135,34 @@ const sessionRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
 
     repo.delete(id);
     reply.status(204).send();
+  });
+
+  /**
+   * PATCH /api/sessions/:id —— 更新会话标题
+   *
+   * Path Params: id (会话 UUID)
+   * Request Body: { title: string }
+   * Response 200: 更新后的会话对象
+   * Response 404: 会话不存在
+   */
+  app.patch("/sessions/:id", async (request, reply) => {
+    const { id } = sessionIdParams.parse(request.params);
+    const body = updateTitleSchema.parse(request.body);
+    const db = getDb(app);
+    const repo = new SessionRepository(db);
+
+    const session = repo.getById(id);
+    if (!session) {
+      reply.status(404).send({
+        error: "NotFound",
+        message: `Session "${id}" not found`,
+      });
+      return;
+    }
+
+    repo.updateTitle(id, body.title);
+    const updated = repo.getById(id);
+    reply.status(200).send(updated);
   });
 };
 
