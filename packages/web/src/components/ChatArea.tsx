@@ -127,7 +127,7 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
           break;
       }
     },
-    [dispatch],
+    [dispatch, onTitleUpdated],
   );
 
   // ── WebSocket 连接 ──
