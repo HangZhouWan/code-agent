@@ -36,6 +36,9 @@ import { InputBar } from "./InputBar.js";
 export interface ChatAreaProps {
   /** 当前活跃的会话 ID（null 时显示引导页） */
   sessionId: string | null;
+
+  /** WebSocket 推送标题更新时的回调 */
+  onTitleUpdated?: (title: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -56,7 +59,7 @@ export interface ChatAreaProps {
  * <ChatArea sessionId={activeSessionId} />
  * ```
  */
-export function ChatArea({ sessionId }: ChatAreaProps) {
+export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
   const { state, dispatch } = useChatStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -111,6 +114,12 @@ export function ChatArea({ sessionId }: ChatAreaProps) {
             type: "ERROR",
             message: msg.message ?? "Unknown error",
           });
+          break;
+
+        case "title_updated":
+          if (msg.title) {
+            onTitleUpdated?.(msg.title);
+          }
           break;
 
         default:
