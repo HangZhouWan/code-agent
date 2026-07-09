@@ -28,6 +28,7 @@ export interface WSMessage {
   finalResponse?: string;
   message?: string;
   callId?: string;
+  title?: string;
 }
 
 /** useWebSocket 配置 */

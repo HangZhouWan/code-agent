@@ -31,6 +31,8 @@ export interface UseSessionsReturn {
   deleteSession: (id: string) => Promise<boolean>;
   /** 重新加载会话列表 */
   refresh: () => Promise<void>;
+  /** 更新会话标题 */
+  updateTitle: (id: string, title: string) => Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------
@@ -125,5 +127,34 @@ export function useSessions(): UseSessionsReturn {
     [],
   );
 
-  return { sessions, loading, createSession, deleteSession, refresh };
+  // ── 更新会话标题 ──
+  const updateTitle = useCallback(
+    async (id: string, title: string): Promise<boolean> => {
+      const trimmed = title.trim();
+      if (!trimmed || trimmed.length > 200) return false;
+      try {
+        const res = await fetch(`/api/sessions/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: trimmed }),
+        });
+        if (!res.ok) {
+          console.error("[useSessions] Failed to update title:", res.status);
+          return false;
+        }
+        const updated: SessionSummary = await res.json();
+        // 乐观更新：替换列表中对应会话的标题
+        setSessions((prev) =>
+          prev.map((s) => (s.id === id ? { ...s, title: updated.title } : s)),
+        );
+        return true;
+      } catch (err) {
+        console.error("[useSessions] Error updating title:", err);
+        return false;
+      }
+    },
+    [],
+  );
+
+  return { sessions, loading, createSession, deleteSession, updateTitle, refresh };
 }
