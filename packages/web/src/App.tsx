@@ -10,13 +10,14 @@
  * │  border-r        │                    │
  * └──────────────────────────────────────┘
  *
- * 状态：
+ * 状态管理：
  * - activeSessionId：当前选中的会话
- * - 无活跃会话时 ChatArea 显示引导文字
- * - 选择/创建会话时切换 ChatArea
+ * - useSessions 提升到 App 层，统一管理会话数据和标题更新
+ * - WebSocket 推送标题 → updateTitle → Sidebar 自动刷新
  */
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
+import { useSessions } from "./hooks/useSessions.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { ChatArea } from "./components/ChatArea.js";
 
@@ -26,6 +27,18 @@ import { ChatArea } from "./components/ChatArea.js";
 
 export function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const { sessions, loading, createSession, deleteSession, updateTitle } =
+    useSessions();
+
+  // ── WebSocket 推送标题时更新侧边栏 ──
+  const handleTitleUpdated = useCallback(
+    (title: string) => {
+      if (activeSessionId) {
+        updateTitle(activeSessionId, title);
+      }
+    },
+    [activeSessionId, updateTitle],
+  );
 
   return (
     <div className="flex h-screen bg-gray-950 text-gray-100">
@@ -33,10 +46,18 @@ export function App() {
       <Sidebar
         activeSessionId={activeSessionId}
         onSelectSession={setActiveSessionId}
+        sessions={sessions}
+        loading={loading}
+        onCreateSession={createSession}
+        onDeleteSession={deleteSession}
+        onUpdateTitle={updateTitle}
       />
 
       {/* ── 聊天区域 ── */}
-      <ChatArea sessionId={activeSessionId} />
+      <ChatArea
+        sessionId={activeSessionId}
+        onTitleUpdated={handleTitleUpdated}
+      />
     </div>
   );
 }
