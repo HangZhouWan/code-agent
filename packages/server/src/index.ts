@@ -11,7 +11,13 @@
  * 启动命令：pnpm --filter @my-agent/server dev
  */
 
-import "dotenv/config";
+import dotenv from "dotenv";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// .env 位于 monorepo 根目录，而非 packages/server
+const __dirname = dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: resolve(__dirname, "../../../.env") });
 import { loadConfig } from "./config.js";
 import { createServer } from "./gateway/server.js";
 import { createDb } from "./db/index.js";
