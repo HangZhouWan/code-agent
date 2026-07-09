@@ -8,7 +8,8 @@
  * - 右键删除：长按/右键 → 删除会话
  */
 
-import { useSessions } from "../hooks/useSessions.js";
+import { useState } from "react";
+import type { SessionSummary } from "../hooks/useSessions.js";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -19,6 +20,16 @@ export interface SidebarProps {
   activeSessionId: string | null;
   /** 选中会话回调 */
   onSelectSession: (id: string) => void;
+  /** 会话列表 */
+  sessions: SessionSummary[];
+  /** 是否正在加载 */
+  loading: boolean;
+  /** 创建新会话 */
+  onCreateSession: (title?: string) => Promise<SessionSummary | null>;
+  /** 删除会话 */
+  onDeleteSession: (id: string) => Promise<boolean>;
+  /** 更新会话标题 */
+  onUpdateTitle: (id: string, title: string) => Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------
@@ -58,12 +69,21 @@ function formatTime(iso: string): string {
  * <Sidebar activeSessionId={activeId} onSelectSession={setActiveId} />
  * ```
  */
-export function Sidebar({ activeSessionId, onSelectSession }: SidebarProps) {
-  const { sessions, loading, createSession, deleteSession } = useSessions();
+export function Sidebar({
+  activeSessionId,
+  onSelectSession,
+  sessions,
+  loading,
+  onCreateSession,
+  onDeleteSession,
+  onUpdateTitle,
+}: SidebarProps) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
 
   // ── 新建会话 ──
   const handleNewSession = async () => {
-    const session = await createSession();
+    const session = await onCreateSession();
     if (session) {
       onSelectSession(session.id);
     }
@@ -73,11 +93,41 @@ export function Sidebar({ activeSessionId, onSelectSession }: SidebarProps) {
   const handleContextMenu = (e: React.MouseEvent, id: string) => {
     e.preventDefault();
     if (window.confirm("Delete this conversation?")) {
-      deleteSession(id);
-      // 如果删除的是当前活跃会话，清空选中
+      onDeleteSession(id);
       if (activeSessionId === id) {
         onSelectSession("");
       }
+    }
+  };
+
+  // ── 开始编辑标题 ──
+  const handleStartEdit = (e: React.MouseEvent, id: string, title: string) => {
+    e.stopPropagation(); // 不触发选中会话
+    setEditingId(id);
+    setEditValue(title);
+  };
+
+  // ── 保存编辑 ──
+  const handleSaveEdit = () => {
+    if (editingId && editValue.trim()) {
+      onUpdateTitle(editingId, editValue.trim());
+    }
+    setEditingId(null);
+    setEditValue("");
+  };
+
+  // ── 取消编辑 ──
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setEditValue("");
+  };
+
+  // ── 编辑中按 Enter 保存，Escape 取消 ──
+  const handleEditKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      handleSaveEdit();
+    } else if (e.key === "Escape") {
+      handleCancelEdit();
     }
   };
 
@@ -122,7 +172,27 @@ export function Sidebar({ activeSessionId, onSelectSession }: SidebarProps) {
                       : "text-gray-400 hover:bg-gray-800 hover:text-gray-200"
                   }`}
                 >
-                  <p className="truncate font-medium">{s.title}</p>
+                  {editingId === s.id ? (
+                    <input
+                      type="text"
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onBlur={handleSaveEdit}
+                      onKeyDown={handleEditKeyDown}
+                      className="w-full bg-gray-800 text-gray-100 text-sm px-2 py-1 rounded border border-gray-600 focus:outline-none focus:border-gray-500"
+                      autoFocus
+                      onClick={(e) => e.stopPropagation()}
+                      maxLength={200}
+                    />
+                  ) : (
+                    <p
+                      className="truncate font-medium cursor-pointer hover:underline"
+                      onClick={(e) => handleStartEdit(e, s.id, s.title)}
+                      title="Click to edit title"
+                    >
+                      {s.title}
+                    </p>
+                  )}
                   <p className="text-xs text-gray-500 mt-0.5">
                     {formatTime(s.updatedAt)}
                   </p>
