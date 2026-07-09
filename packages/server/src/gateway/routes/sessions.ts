@@ -35,7 +35,7 @@ const sessionIdParams = z.object({
 
 /** 更新会话标题请求体 */
 const updateTitleSchema = z.object({
-  title: z.string().min(1).max(200),
+  title: z.string().trim().min(1).max(200),
 });
 
 // ---------------------------------------------------------------------------
