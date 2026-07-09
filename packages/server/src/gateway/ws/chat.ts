@@ -49,7 +49,8 @@ type ServerMessage =
   | { type: "tool_start"; tool: string; args: Record<string, unknown> }
   | { type: "tool_end"; tool: string; result: string }
   | { type: "done"; finalResponse: string }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  | { type: "title_updated"; title: string };
 
 /** 客户端 → 服务端消息联合类型 */
 interface ClientMessage {
@@ -104,6 +105,35 @@ function safeJsonStringify(value: unknown): string {
     return JSON.stringify(value);
   } catch {
     return String(value);
+  }
+}
+
+/**
+ * 根据第一条用户消息生成中文标题（5-15 字）
+ *
+ * @param model - LLM 实例
+ * @param firstHumanMessage - 第一条用户消息内容
+ * @returns 生成的中文标题，失败时返回 null
+ */
+async function generateTitle(
+  model: BaseChatModel,
+  firstHumanMessage: string,
+): Promise<string | null> {
+  try {
+    const response = await model.invoke([
+      new HumanMessage(
+        `根据用户的第一条消息，用 5-15 个中文字生成一个简洁的对话标题。只输出标题本身，不要加引号或额外说明。\n\n用户消息：${firstHumanMessage}`,
+      ),
+    ]);
+    const title = typeof response.content === "string"
+      ? response.content.trim()
+      : String(response.content ?? "").trim();
+    // 确保标题在合理范围内
+    if (!title || title.length > 50) return null;
+    return title;
+  } catch (err) {
+    console.error("[WS] Title generation failed:", err);
+    return null;
   }
 }
 
@@ -353,6 +383,37 @@ async function streamOrchestrator(
             }
 
             send(socket, { type: "done", finalResponse });
+
+            // ── 自动生成标题（首条消息完成后） ──
+            if (ctx.repo && ctx.sessionId) {
+              try {
+                const session = ctx.repo.getById(ctx.sessionId);
+                if (session && session.title === "New Chat") {
+                  const allMessages = ctx.repo.getMessages(ctx.sessionId);
+                  // 仅首轮对话（≤2 条消息）时生成标题
+                  if (allMessages.length <= 2) {
+                    const firstHuman = allMessages.find(
+                      (m) => m.role === "human",
+                    );
+                    if (firstHuman) {
+                      const title = await generateTitle(
+                        ctx.model,
+                        firstHuman.content,
+                      );
+                      if (title) {
+                        ctx.repo.updateTitle(ctx.sessionId, title);
+                        send(socket, {
+                          type: "title_updated",
+                          title,
+                        });
+                      }
+                    }
+                  }
+                }
+              } catch {
+                // 标题生成失败不阻断主流程
+              }
+            }
           }
           break;
         }
