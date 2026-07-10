@@ -32,8 +32,8 @@ export function App() {
 
   // ── WebSocket 推送标题时更新侧边栏 ──
   const handleTitleUpdated = useCallback(
-    (title: string) => {
-      if (activeSessionId) {
+    (sessionId: string, title: string) => {
+      if (activeSessionId && activeSessionId === sessionId) {
         updateTitle(activeSessionId, title);
       }
     },

@@ -20,6 +20,7 @@
  * | 工具开始   | `{ type: "tool_start", tool: string, args: object }` | 工具调用开始   |
  * | 工具结束   | `{ type: "tool_end", tool: string, result: string }` | 工具调用结果   |
  * | 完成       | `{ type: "done", finalResponse: string }` | 汇总完成       |
+ * | 标题更新   | `{ type: "title_updated", title: string, sessionId: string }` | AI 自动生成标题 |
  * | 错误       | `{ type: "error", message: string }`     | 错误通知       |
  *
  * ## 审批机制
@@ -50,7 +51,7 @@ type ServerMessage =
   | { type: "tool_end"; tool: string; result: string }
   | { type: "done"; finalResponse: string }
   | { type: "error"; message: string }
-  | { type: "title_updated"; title: string };
+  | { type: "title_updated"; title: string; sessionId: string };
 
 /** 客户端 → 服务端消息联合类型 */
 interface ClientMessage {
@@ -129,7 +130,7 @@ async function generateTitle(
       ? response.content.trim()
       : String(response.content ?? "").trim();
     // 确保标题在合理范围内
-    if (!title || title.length > 50) return null;
+    if (!title || title.length < 3 || title.length > 50) return null;
     return title;
   } catch (err) {
     console.error("[WS] Title generation failed:", err);
@@ -405,6 +406,7 @@ async function streamOrchestrator(
                         send(socket, {
                           type: "title_updated",
                           title,
+                          sessionId: ctx.sessionId,
                         });
                       }
                     }

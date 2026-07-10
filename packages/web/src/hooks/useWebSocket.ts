@@ -29,6 +29,7 @@ export interface WSMessage {
   message?: string;
   callId?: string;
   title?: string;
+  sessionId?: string;
 }
 
 /** useWebSocket 配置 */

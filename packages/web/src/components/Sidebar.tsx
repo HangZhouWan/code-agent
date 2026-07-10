@@ -108,9 +108,14 @@ export function Sidebar({
   };
 
   // ── 保存编辑 ──
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (editingId && editValue.trim()) {
-      onUpdateTitle(editingId, editValue.trim());
+      try {
+        const ok = await onUpdateTitle(editingId, editValue.trim());
+        if (!ok) return; // 失败时保持输入打开
+      } catch {
+        return; // 失败时保持输入打开，让用户重试
+      }
     }
     setEditingId(null);
     setEditValue("");

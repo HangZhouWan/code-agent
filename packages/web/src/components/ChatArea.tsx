@@ -38,7 +38,7 @@ export interface ChatAreaProps {
   sessionId: string | null;
 
   /** WebSocket 推送标题更新时的回调 */
-  onTitleUpdated?: (title: string) => void;
+  onTitleUpdated?: (sessionId: string, title: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,7 +118,7 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
 
         case "title_updated":
           if (msg.title) {
-            onTitleUpdated?.(msg.title);
+            onTitleUpdated?.(msg.sessionId ?? "", msg.title);
           }
           break;
 
