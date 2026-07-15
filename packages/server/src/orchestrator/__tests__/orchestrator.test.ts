@@ -2,9 +2,9 @@
  * Orchestrator 测试
  *
  * 覆盖：
- * - 类型验证（SubTask, NextAction, TaskResult）
- * - Planner 工具函数（extractJsonArray, validateSubTask）
- * - OrchestratorState 结构验证
+ * - 类型验证（SubTask, Plan, NextAction, TaskResult）
+ * - Planner 工具函数（extractJsonArray, extractJsonObject, validateSubTask）
+ * - OrchestratorState 结构验证（含 replanSignal, artifacts）
  * - createOrchestratorGraph 构造验证
  */
 
@@ -15,9 +15,9 @@ import type { BaseMessage } from '@langchain/core/messages';
 import { ToolRegistry } from '@my-agent/core';
 
 // Orchestrator 模块
-import type { SubTask, NextAction, TaskResult } from '../types.js';
+import type { SubTask, Plan, NextAction, TaskResult } from '../types.js';
 import { OrchestratorState } from '../state.js';
-import { extractJsonArray, validateSubTask } from '../nodes/planner.js';
+import { extractJsonArray, extractJsonObject, validateSubTask } from '../nodes/planner.js';
 import { createOrchestratorGraph } from '../graph.js';
 
 // ---------------------------------------------------------------------------
@@ -47,31 +47,61 @@ class MockChatModel extends SimpleChatModel {
 // ---------------------------------------------------------------------------
 
 describe('Orchestrator Types', () => {
-  it('SubTask should accept valid structure with dependsOn', () => {
+  it('SubTask should accept valid structure with routing and role', () => {
     const task: SubTask = {
       id: 'task-1',
       description: 'Read config file',
       tools: ['file_read'],
       dependsOn: [],
+      routing: 'direct',
+      role: 'code',
     };
     expect(task.id).toBe('task-1');
     expect(task.tools).toEqual(['file_read']);
+    expect(task.routing).toBe('direct');
+    expect(task.role).toBe('code');
   });
 
-  it('SubTask should accept structure without dependsOn', () => {
+  it('SubTask should accept bus routing', () => {
     const task: SubTask = {
       id: 'task-2',
-      description: 'Check git status',
-      tools: ['git_status'],
+      description: 'Collaborative code review',
+      tools: ['code_search'],
+      routing: 'bus',
+      role: 'code',
     };
-    expect(task.dependsOn).toBeUndefined();
+    expect(task.routing).toBe('bus');
   });
 
-  it('NextAction should only accept "continue" or "summarize"', () => {
+  it('Plan should have complexity, tasks, and suggestedAgents', () => {
+    const plan: Plan = {
+      complexity: 'simple',
+      tasks: [
+        { id: 't1', description: 'Read file', tools: ['file_read'], routing: 'direct', role: 'code' },
+      ],
+      suggestedAgents: { t1: 'code' },
+    };
+    expect(plan.complexity).toBe('simple');
+    expect(plan.tasks).toHaveLength(1);
+    expect(plan.suggestedAgents).toEqual({ t1: 'code' });
+  });
+
+  it('Plan complexity can be complex', () => {
+    const plan: Plan = {
+      complexity: 'complex',
+      tasks: [],
+      suggestedAgents: {},
+    };
+    expect(plan.complexity).toBe('complex');
+  });
+
+  it('NextAction should only accept "continue", "replan", or "finalize"', () => {
     const continueAction: NextAction = 'continue';
-    const summarizeAction: NextAction = 'summarize';
+    const replanAction: NextAction = 'replan';
+    const finalizeAction: NextAction = 'finalize';
     expect(continueAction).toBe('continue');
-    expect(summarizeAction).toBe('summarize');
+    expect(replanAction).toBe('replan');
+    expect(finalizeAction).toBe('finalize');
   });
 
   it('TaskResult should wrap SubTask with WorkerOutput', () => {
@@ -80,6 +110,8 @@ describe('Orchestrator Types', () => {
         id: 'task-1',
         description: 'Read file',
         tools: ['file_read'],
+        routing: 'direct',
+        role: 'code',
       },
       output: {
         taskId: 'task-1',
@@ -95,6 +127,26 @@ describe('Orchestrator Types', () => {
 // ---------------------------------------------------------------------------
 // Planner 工具函数测试
 // ---------------------------------------------------------------------------
+
+describe('extractJsonObject', () => {
+  it('should extract JSON object from markdown code block', () => {
+    const input = '```json\n{"complexity": "simple", "tasks": [], "suggestedAgents": {}}\n```';
+    const result = extractJsonObject(input);
+    expect(result).toBe('{"complexity": "simple", "tasks": [], "suggestedAgents": {}}');
+  });
+
+  it('should extract JSON object without code block', () => {
+    const input = 'Here is the plan:\n{"complexity": "simple", "tasks": [{"id": "t1"}]}';
+    const result = extractJsonObject(input);
+    expect(result).toBe('{"complexity": "simple", "tasks": [{"id": "t1"}]}');
+  });
+
+  it('should handle pure JSON object', () => {
+    const input = '{"complexity": "complex", "tasks": []}';
+    const result = extractJsonObject(input);
+    expect(result).toBe('{"complexity": "complex", "tasks": []}');
+  });
+});
 
 describe('extractJsonArray', () => {
   it('should extract JSON from markdown code block', () => {
@@ -135,40 +187,56 @@ describe('extractJsonArray', () => {
 });
 
 describe('validateSubTask', () => {
-  it('should validate a complete subtask', () => {
+  it('should validate a complete subtask with routing and role', () => {
     const item = {
       id: 'task-1',
       description: 'Read package.json',
       tools: ['file_read'],
       dependsOn: ['task-0'],
+      routing: 'direct',
+      role: 'code',
     };
     const result = validateSubTask(item, 0);
     expect(result.id).toBe('task-1');
     expect(result.description).toBe('Read package.json');
     expect(result.tools).toEqual(['file_read']);
     expect(result.dependsOn).toEqual(['task-0']);
+    expect(result.routing).toBe('direct');
+    expect(result.role).toBe('code');
+  });
+
+  it('should default routing to bus when missing', () => {
+    const item = { id: 'task-2', description: 'Do something' };
+    const result = validateSubTask(item, 0);
+    expect(result.routing).toBe('bus');
+  });
+
+  it('should default role to code when missing', () => {
+    const item = { id: 'task-3', description: 'Do something' };
+    const result = validateSubTask(item, 0);
+    expect(result.role).toBe('code');
   });
 
   it('should default tools to empty array when missing', () => {
-    const item = { id: 'task-2', description: 'Do something' };
+    const item = { id: 'task-4', description: 'Do something' };
     const result = validateSubTask(item, 0);
     expect(result.tools).toEqual([]);
   });
 
   it('should default tools to empty array when not an array', () => {
-    const item = { id: 'task-3', description: 'Do something', tools: 'not-an-array' };
+    const item = { id: 'task-5', description: 'Do something', tools: 'not-an-array' };
     const result = validateSubTask(item, 0);
     expect(result.tools).toEqual([]);
   });
 
   it('should default dependsOn to undefined when missing', () => {
-    const item = { id: 'task-4', description: 'Do something' };
+    const item = { id: 'task-6', description: 'Do something' };
     const result = validateSubTask(item, 0);
     expect(result.dependsOn).toBeUndefined();
   });
 
   it('should convert non-string tool names to strings', () => {
-    const item = { id: 'task-5', description: 'Test', tools: [123, true] };
+    const item = { id: 'task-7', description: 'Test', tools: [123, true] };
     const result = validateSubTask(item, 0);
     expect(result.tools).toEqual(['123', 'true']);
   });
@@ -178,11 +246,17 @@ describe('validateSubTask', () => {
   });
 
   it('should throw when description is missing', () => {
-    expect(() => validateSubTask({ id: 'task-6' }, 0)).toThrow('missing required "description"');
+    expect(() => validateSubTask({ id: 'task-8' }, 0)).toThrow('missing required "description"');
   });
 
   it('should throw when id is not a string', () => {
     expect(() => validateSubTask({ id: 123, description: 'test' }, 0)).toThrow('missing required "id"');
+  });
+
+  it('should reject invalid routing values by defaulting to bus', () => {
+    const item = { id: 'task-9', description: 'Test', routing: 'invalid' };
+    const result = validateSubTask(item, 0);
+    expect(result.routing).toBe('bus');
   });
 });
 
@@ -199,27 +273,32 @@ describe('OrchestratorState', () => {
     expect(fields).toContain('pendingTasks');
     expect(fields).toContain('finalResponse');
     expect(fields).toContain('nextAction');
+    // Step 4 新增字段
+    expect(fields).toContain('replanSignal');
+    expect(fields).toContain('artifacts');
   });
 
   it('should have State type derived from annotation', () => {
-    // OrchestratorState.State 是 TypeScript 类型（编译时），运行时 spec 字段包含 channel 定义
     expect(OrchestratorState.spec).toBeDefined();
     expect(typeof OrchestratorState.spec).toBe('object');
   });
 
   it('messages should have append reducer (not LastValue)', () => {
-    // 验证 messages channel 存在（非 LastValue 即使用了 reducer）
     const messagesChannel = OrchestratorState.spec.messages;
     expect(messagesChannel).toBeDefined();
-    // 有 reducer 的 channel 不是 LastValue 实例
     expect(messagesChannel.constructor.name).not.toBe('LastValue');
+  });
+
+  it('artifacts should have merge reducer', () => {
+    const artifactsChannel = OrchestratorState.spec.artifacts;
+    expect(artifactsChannel).toBeDefined();
+    // artifacts uses custom reducer, not LastValue
+    expect(artifactsChannel.constructor.name).not.toBe('LastValue');
   });
 
   it('plan should use default LastValue (replace) channel', () => {
     const planChannel = OrchestratorState.spec.plan;
     expect(planChannel).toBeDefined();
-    // spec 中的 channel 可以是 LastValue 实例或工厂函数（lazy init）
-    // 无论是哪种形式，都应存在
     const isFunction = typeof planChannel === 'function';
     const isObject = typeof planChannel === 'object' && planChannel !== null;
     expect(isFunction || isObject).toBe(true);
@@ -232,19 +311,27 @@ describe('OrchestratorState', () => {
 
 describe('createOrchestratorGraph', () => {
   it('should create a compiled graph with valid inputs', () => {
-    const model = new MockChatModel('[]');
+    const model = new MockChatModel('{"complexity":"simple","tasks":[],"suggestedAgents":{}}');
     const registry = ToolRegistry.createDefault();
-    const graph = createOrchestratorGraph(model, registry, './workspace');
+    const graph = createOrchestratorGraph({
+      model,
+      toolRegistry: registry,
+      workspacePath: './workspace',
+    });
 
     expect(graph).toBeDefined();
     expect(typeof graph.invoke).toBe('function');
     expect(typeof graph.stream).toBe('function');
   });
 
-  it('should accept invoke with messages', async () => {
-    const model = new MockChatModel('[]');
+  it('should accept invoke with messages and produce finalResponse', async () => {
+    const model = new MockChatModel('{"complexity":"simple","tasks":[],"suggestedAgents":{}}');
     const registry = ToolRegistry.createDefault();
-    const graph = createOrchestratorGraph(model, registry, './workspace');
+    const graph = createOrchestratorGraph({
+      model,
+      toolRegistry: registry,
+      workspacePath: './workspace',
+    });
 
     const result = await graph.invoke({
       messages: [new HumanMessage('List files in the current directory')],
@@ -252,55 +339,100 @@ describe('createOrchestratorGraph', () => {
 
     expect(result).toBeDefined();
     expect(result.messages).toBeDefined();
-    // 即使 plan 为空（Mock LLM 返回 []），也要有 finalResponse
     expect(typeof result.finalResponse).toBe('string');
   });
 
-  it('should produce plan when LLM returns valid subtasks', async () => {
-    const planJson = JSON.stringify([
-      { id: 'task-1', description: 'Read package.json', tools: ['file_read'] },
-      { id: 'task-2', description: 'Check git status', tools: ['git_status'] },
-    ]);
+  it('should produce Plan when LLM returns valid plan', async () => {
+    const planJson = JSON.stringify({
+      complexity: 'simple',
+      tasks: [
+        { id: 'task-1', description: 'Read package.json', tools: ['file_read'], routing: 'direct', role: 'code' },
+        { id: 'task-2', description: 'Check git status', tools: ['git_status'], routing: 'direct', role: 'code' },
+      ],
+      suggestedAgents: { 'task-1': 'code', 'task-2': 'code' },
+    });
     const model = new MockChatModel(planJson);
     const registry = ToolRegistry.createDefault();
-    const graph = createOrchestratorGraph(model, registry, './workspace');
+    const graph = createOrchestratorGraph({
+      model,
+      toolRegistry: registry,
+      workspacePath: './workspace',
+    });
 
     const result = await graph.invoke({
       messages: [new HumanMessage('Read package.json and check git status')],
     });
 
     expect(result.plan).toBeDefined();
-    expect(result.plan.length).toBe(2);
-    expect(result.plan[0].id).toBe('task-1');
-    expect(result.plan[1].id).toBe('task-2');
+    expect(result.plan.complexity).toBe('simple');
+    expect(result.plan.tasks.length).toBe(2);
+    expect(result.plan.tasks[0].id).toBe('task-1');
+    expect(result.plan.tasks[0].routing).toBe('direct');
+    expect(result.plan.tasks[0].role).toBe('code');
+    expect(result.plan.tasks[1].id).toBe('task-2');
+  });
+
+  it('should handle complex plan with bus routing', async () => {
+    const planJson = JSON.stringify({
+      complexity: 'complex',
+      tasks: [
+        { id: 'task-1', description: 'Write code', tools: ['file_write'], routing: 'direct', role: 'code' },
+        { id: 'task-2', description: 'Run tests', tools: ['shell'], dependsOn: ['task-1'], routing: 'bus', role: 'test' },
+      ],
+      suggestedAgents: { 'task-1': 'code', 'task-2': 'test' },
+    });
+    const model = new MockChatModel(planJson);
+    const registry = ToolRegistry.createDefault();
+    const graph = createOrchestratorGraph({
+      model,
+      toolRegistry: registry,
+      workspacePath: './workspace',
+    });
+
+    const result = await graph.invoke({
+      messages: [new HumanMessage('Write code and run tests')],
+    });
+
+    expect(result.plan.complexity).toBe('complex');
+    expect(result.plan.tasks).toHaveLength(2);
+    expect(result.plan.tasks[1].dependsOn).toEqual(['task-1']);
+    expect(result.plan.tasks[1].routing).toBe('bus');
+    expect(result.plan.tasks[1].role).toBe('test');
   });
 
   it('should handle subtasks with dependencies', async () => {
-    const planJson = JSON.stringify([
-      { id: 'task-1', description: 'Read config', tools: ['file_read'] },
-      {
-        id: 'task-2',
-        description: 'Process config',
-        tools: ['file_write'],
-        dependsOn: ['task-1'],
-      },
-    ]);
+    const planJson = JSON.stringify({
+      complexity: 'simple',
+      tasks: [
+        { id: 'task-1', description: 'Read config', tools: ['file_read'], routing: 'direct', role: 'code' },
+        { id: 'task-2', description: 'Process config', tools: ['file_write'], dependsOn: ['task-1'], routing: 'direct', role: 'code' },
+      ],
+      suggestedAgents: { 'task-1': 'code', 'task-2': 'code' },
+    });
     const model = new MockChatModel(planJson);
     const registry = ToolRegistry.createDefault();
-    const graph = createOrchestratorGraph(model, registry, './workspace');
+    const graph = createOrchestratorGraph({
+      model,
+      toolRegistry: registry,
+      workspacePath: './workspace',
+    });
 
     const result = await graph.invoke({
       messages: [new HumanMessage('Read and process config')],
     });
 
-    expect(result.plan).toHaveLength(2);
-    expect(result.plan[1].dependsOn).toEqual(['task-1']);
+    expect(result.plan.tasks).toHaveLength(2);
+    expect(result.plan.tasks[1].dependsOn).toEqual(['task-1']);
   });
 
   it('should throw when planner receives empty messages', async () => {
     const model = new MockChatModel('[]');
     const registry = ToolRegistry.createDefault();
-    const graph = createOrchestratorGraph(model, registry, './workspace');
+    const graph = createOrchestratorGraph({
+      model,
+      toolRegistry: registry,
+      workspacePath: './workspace',
+    });
 
     await expect(
       graph.invoke({ messages: [] }),
@@ -308,16 +440,43 @@ describe('createOrchestratorGraph', () => {
   });
 
   it('should handle code-fenced JSON in planner response', async () => {
-    const planJson = '```json\n[{"id": "t1", "description": "Test", "tools": ["file_read"]}]\n```';
+    const planJson = '```json\n{"complexity":"simple","tasks":[{"id":"t1","description":"Test","tools":["file_read"],"routing":"direct","role":"code"}],"suggestedAgents":{"t1":"code"}}\n```';
     const model = new MockChatModel(planJson);
     const registry = ToolRegistry.createDefault();
-    const graph = createOrchestratorGraph(model, registry, './workspace');
+    const graph = createOrchestratorGraph({
+      model,
+      toolRegistry: registry,
+      workspacePath: './workspace',
+    });
 
     const result = await graph.invoke({
       messages: [new HumanMessage('Test')],
     });
 
-    expect(result.plan).toHaveLength(1);
-    expect(result.plan[0].id).toBe('t1');
+    expect(result.plan.tasks).toHaveLength(1);
+    expect(result.plan.tasks[0].id).toBe('t1');
+  });
+
+  it('should handle legacy array format from LLM', async () => {
+    // 兼容旧格式：LLM 返回数组而非 Plan 对象
+    const planJson = JSON.stringify([
+      { id: 'task-1', description: 'Read file', tools: ['file_read'], routing: 'direct', role: 'code' },
+    ]);
+    const model = new MockChatModel(planJson);
+    const registry = ToolRegistry.createDefault();
+    const graph = createOrchestratorGraph({
+      model,
+      toolRegistry: registry,
+      workspacePath: './workspace',
+    });
+
+    const result = await graph.invoke({
+      messages: [new HumanMessage('Read a file')],
+    });
+
+    expect(result.plan.tasks).toHaveLength(1);
+    // 旧格式自动推断 complexity
+    expect(result.plan.complexity).toBe('simple');
+    expect(result.plan.suggestedAgents).toBeDefined();
   });
 });

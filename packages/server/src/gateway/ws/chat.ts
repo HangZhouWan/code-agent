@@ -37,6 +37,12 @@ import type { WebSocket } from "ws";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { HumanMessage, AIMessageChunk } from "@langchain/core/messages";
 import type { ToolRegistry, PermissionRegistry } from "@my-agent/core";
+import {
+  InMemoryEventBus,
+  InMemoryStateManager,
+  AgentRegistry,
+} from "@my-agent/core";
+import type { IEventBus, AgentRegistry as AgentRegistryType } from "@my-agent/core";
 import { SessionRepository } from "../../db/repositories/sessions.js";
 
 // ---------------------------------------------------------------------------
@@ -151,6 +157,10 @@ export interface ChatWebSocketOptions {
   pendingApprovals: Map<string, PendingApprovalItem>;
   /** 权限注册表（可选，传入后启用 SandboxGuard 工具级拦截） */
   permissionRegistry?: PermissionRegistry;
+  /** EventBus 实例（可选，不提供则自动创建） */
+  eventBus?: IEventBus;
+  /** Agent 注册表（可选，不提供则自动创建） */
+  agentRegistry?: AgentRegistryType;
 }
 
 /**
@@ -162,7 +172,44 @@ export interface ChatWebSocketOptions {
  * @returns Fastify WebSocket handler 函数
  */
 export function createChatWebSocket(options: ChatWebSocketOptions) {
-  const { model, toolRegistry, workspacePath, pendingApprovals, permissionRegistry } = options;
+  const {
+    model,
+    toolRegistry,
+    workspacePath,
+    pendingApprovals,
+    permissionRegistry,
+    eventBus: externalEventBus,
+    agentRegistry: externalAgentRegistry,
+  } = options;
+
+  // 创建或使用外部提供的共享实例
+  const eventBus = externalEventBus ?? new InMemoryEventBus();
+  const stateManager = new InMemoryStateManager(eventBus);
+  const agentRegistry =
+    externalAgentRegistry ?? new AgentRegistry(eventBus, stateManager);
+
+  // 初始化 Agent 创建 Promise（后台完成，不阻塞 handler 返回）
+  let agentsReady: Promise<void> | undefined;
+  if (!externalAgentRegistry) {
+    agentsReady = (async () => {
+      try {
+        await agentRegistry.createAgent('code', model, toolRegistry, {
+          workspacePath,
+          permissionRegistry,
+        });
+        await agentRegistry.createAgent('test', model, toolRegistry, {
+          workspacePath,
+          permissionRegistry,
+        });
+        await agentRegistry.createAgent('doc', model, toolRegistry, {
+          workspacePath,
+          permissionRegistry,
+        });
+      } catch (err) {
+        console.error('[WS] Failed to create agents:', err);
+      }
+    })();
+  }
 
   return async function chatHandler(socket: WebSocket, request: FastifyRequest) {
     // 从 URL 路径参数中提取 sessionId
@@ -205,6 +252,11 @@ export function createChatWebSocket(options: ChatWebSocketOptions) {
             }
           }
 
+          // 等待 Agent 初始化完成
+          if (agentsReady) {
+            await agentsReady;
+          }
+
           // 运行 Orchestrator Graph 并流式推送
           await streamOrchestrator(socket, {
             model,
@@ -215,6 +267,8 @@ export function createChatWebSocket(options: ChatWebSocketOptions) {
             repo,
             pendingApprovals,
             permissionRegistry,
+            eventBus,
+            agentRegistry,
           });
           break;
         }
@@ -281,6 +335,8 @@ interface StreamContext {
   repo: SessionRepository | null;
   pendingApprovals: Map<string, PendingApprovalItem>;
   permissionRegistry?: PermissionRegistry;
+  eventBus: IEventBus;
+  agentRegistry: AgentRegistryType;
 }
 
 /**
@@ -290,7 +346,7 @@ interface StreamContext {
  * - on_chat_model_stream → type: "text"（所有 LLM 流式输出）
  * - on_tool_start       → type: "tool_start"（工具调用开始）
  * - on_tool_end         → type: "tool_end"（工具调用结果）
- * - on_chain_end        → type: "done"（仅 summarizer 节点）
+ * - on_chain_end        → type: "done"（仅 finalizer 节点）
  */
 async function streamOrchestrator(
   socket: WebSocket,
@@ -301,13 +357,14 @@ async function streamOrchestrator(
     "../../orchestrator/graph.js"
   );
 
-  const graph = createOrchestratorGraph(
-    ctx.model,
-    ctx.toolRegistry,
-    ctx.workspacePath,
-    ctx.permissionRegistry,
-    // 确认回调：暂停 Agent 执行，推送 confirm_required 到前端，等待用户决定
-    (toolName: string, args: Record<string, unknown>): Promise<boolean> => {
+  const graph = createOrchestratorGraph({
+    model: ctx.model,
+    toolRegistry: ctx.toolRegistry,
+    workspacePath: ctx.workspacePath,
+    permissionRegistry: ctx.permissionRegistry,
+    eventBus: ctx.eventBus,
+    agentRegistry: ctx.agentRegistry,
+    onConfirmRequired: (toolName: string, args: Record<string, unknown>): Promise<boolean> => {
       const callId = crypto.randomUUID();
       send(socket, { type: "confirm_required", callId, tool: toolName, args });
       return new Promise((resolve) => {
@@ -325,7 +382,7 @@ async function streamOrchestrator(
         });
       });
     },
-  );
+  });
 
   try {
     const stream = graph.streamEvents(
@@ -365,8 +422,8 @@ async function streamOrchestrator(
 
         // ── 节点完成 ──
         case "on_chain_end": {
-          // 仅 summarizer 节点完成时发送 done
-          if (event.name === "summarizer") {
+          // 仅 finalizer 节点完成时发送 done
+          if (event.name === "finalizer") {
             const output = event.data?.output as Record<string, unknown> | undefined;
             const finalResponse =
               (output?.finalResponse as string) ?? "No response generated.";
