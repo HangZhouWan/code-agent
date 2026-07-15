@@ -15,11 +15,18 @@ import Fastify from "fastify";
 import fastifyCors from "@fastify/cors";
 import fastifyWebsocket from "@fastify/websocket";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import type { ToolRegistry, PermissionRegistry } from "@my-agent/core";
+import type {
+  ToolRegistry,
+  PermissionRegistry,
+  IEventBus,
+  AgentRegistry,
+  InMemoryStateManager,
+} from "@my-agent/core";
 
 import { errorHandler } from "./middleware/error.js";
 import sessionRoutes from "./routes/sessions.js";
 import toolRoutes from "./routes/tools.js";
+import agentRoutes from "./routes/agents.js";
 import { createChatWebSocket } from "./ws/chat.js";
 import type { PendingApprovalItem, ApprovalStore } from "./ws/chat.js";
 
@@ -41,6 +48,12 @@ export interface AppOptions {
   workspacePath: string;
   /** 权限注册表（可选，传入后启用 SandboxGuard 工具级拦截） */
   permissionRegistry?: PermissionRegistry;
+  /** EventBus 实例（可选，不提供则自动创建） */
+  eventBus?: IEventBus;
+  /** StateManager 实例（可选，不提供则自动创建） */
+  stateManager?: InMemoryStateManager;
+  /** Agent 注册表（可选，不提供则自动创建） */
+  agentRegistry?: AgentRegistry;
 }
 
 // ---------------------------------------------------------------------------
@@ -106,7 +119,15 @@ function createApprovalStore(
  * ```
  */
 export async function createServer(options: AppOptions) {
-  const { model, toolRegistry, workspacePath, permissionRegistry } = options;
+  const {
+    model,
+    toolRegistry,
+    workspacePath,
+    permissionRegistry,
+    eventBus,
+    stateManager,
+    agentRegistry,
+  } = options;
 
   // ── 创建 Fastify 实例 ──
   const app = Fastify({ logger: true });
@@ -118,6 +139,17 @@ export async function createServer(options: AppOptions) {
   // ── 装饰共享实例 ──
   // db 实例由 index.ts 在 createServer 后通过 app.decorate("db", db) 挂载
   app.decorate("approvalStore", approvalStore);
+
+  // 挂载 Agent 基础设施（若由外部注入）
+  if (eventBus) {
+    app.decorate("eventBus", eventBus);
+  }
+  if (stateManager) {
+    app.decorate("stateManager", stateManager);
+  }
+  if (agentRegistry) {
+    app.decorate("agentRegistry", agentRegistry);
+  }
 
   // ── 注册插件 ──
   // CORS 全开（开发阶段），生产需锁定 origin
@@ -132,6 +164,10 @@ export async function createServer(options: AppOptions) {
   // ── RESTful 路由 ──
   await app.register(sessionRoutes, { prefix: "/api" });
   await app.register(toolRoutes, { prefix: "/api" });
+  // Agent 状态查询 API（仅在有 AgentRegistry 时注册）
+  if (agentRegistry) {
+    await app.register(agentRoutes, { prefix: "/api" });
+  }
 
   // ── WebSocket 聊天通道 ──
   await app.register(async (scope) => {
@@ -144,6 +180,8 @@ export async function createServer(options: AppOptions) {
         workspacePath,
         pendingApprovals,
         permissionRegistry,
+        eventBus,
+        agentRegistry,
       }),
     );
   });

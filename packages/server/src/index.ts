@@ -38,6 +38,12 @@ import {
   webFetchTool,
   // 沙箱
   PermissionRegistry,
+  // Agent 基础设施
+  InMemoryEventBus,
+  InMemoryStateManager,
+  AgentRegistry,
+  FileCheckpointManager,
+  ExecutionEngine,
 } from "@my-agent/core";
 
 // ---------------------------------------------------------------------------
@@ -78,10 +84,12 @@ export type { AppOptions } from "./gateway/server.js";
  * 1. 加载并校验环境变量
  * 2. 创建 LLM 模型实例
  * 3. 注册所有内置工具（11 个）
- * 4. 初始化数据库连接（SQLite + Drizzle ORM）
- * 5. 构建 Fastify 服务实例
- * 6. 挂载数据库实例到 Fastify
- * 7. 监听 HOST:PORT 启动服务
+ * 4. 初始化 Agent 基础设施（EventBus、StateManager、CheckpointManager、ExecutionEngine）
+ * 5. 创建 AgentRegistry 并注册三个内置角色 Agent（Code、Test、Doc）
+ * 6. 初始化数据库连接（SQLite + Drizzle ORM）
+ * 7. 构建 Fastify 服务实例（注入所有依赖）
+ * 8. 挂载数据库和 Agent 基础设施到 Fastify
+ * 9. 监听 HOST:PORT 启动服务
  */
 async function main(): Promise<void> {
   console.log("=".repeat(50));
@@ -127,30 +135,68 @@ async function main(): Promise<void> {
     `[sandbox] Registered ${permRegistry.listAll().length} tool permissions`,
   );
 
-  // 4. 初始化数据库
+  // 4. 初始化 Agent 基础设施
+  const eventBus = new InMemoryEventBus();
+  const stateManager = new InMemoryStateManager(eventBus);
+  const checkpointManager = new FileCheckpointManager("./data/checkpoints");
+  const executionEngine = new ExecutionEngine();
+  console.log("[agent] Infrastructure initialized (EventBus + StateManager + CheckpointManager)");
+
+  // 5. 注册角色 Agent
+  const agentRegistry = new AgentRegistry(eventBus, stateManager);
+  await agentRegistry.createAgent("code", model, toolRegistry, {
+    workspacePath: cfg.WORKSPACE_PATH,
+    permissionRegistry: permRegistry,
+  });
+  await agentRegistry.createAgent("test", model, toolRegistry, {
+    workspacePath: cfg.WORKSPACE_PATH,
+    permissionRegistry: permRegistry,
+  });
+  await agentRegistry.createAgent("doc", model, toolRegistry, {
+    workspacePath: cfg.WORKSPACE_PATH,
+    permissionRegistry: permRegistry,
+  });
+  console.log("[AgentRegistry] Agents started:");
+  for (const agent of agentRegistry.getAllAgents()) {
+    console.log(`  - ${agent.role.name} (${agent.id})`);
+  }
+
+  // 6. 初始化数据库
   const db = createDb(cfg.DB_PATH);
   console.log(`[db] SQLite database initialized at ${cfg.DB_PATH}`);
 
-  // 5. 创建 Fastify 服务
+  // 7. 创建 Fastify 服务（注入 Agent 基础设施）
   const app = await createServer({
     model,
     toolRegistry,
     workspacePath: cfg.WORKSPACE_PATH,
     permissionRegistry: permRegistry,
+    eventBus,
+    stateManager,
+    agentRegistry,
   });
 
-  // 6. 挂载共享实例到 Fastify
+  // 8. 挂载共享实例到 Fastify
   app.decorate("db", db);
   app.decorate("permissionRegistry", permRegistry);
+  app.decorate("eventBus", eventBus);
+  app.decorate("stateManager", stateManager);
+  app.decorate("agentRegistry", agentRegistry);
+  app.decorate("checkpointManager", checkpointManager);
+  app.decorate("executionEngine", executionEngine);
 
-  // 7. 启动服务
+  // 9. 启动服务
   await app.listen({ host: cfg.HOST, port: cfg.PORT });
   console.log(`[server] Running at http://${cfg.HOST}:${cfg.PORT}`);
 
   // 优雅关闭
   const shutdown = async () => {
     console.log("\n[server] Shutting down gracefully...");
+    console.log("[agent] Stopping all agents...");
+    await agentRegistry.shutdown();
+    console.log("[db] Closing database...");
     await app.close();
+    console.log("[server] Goodbye!");
     process.exit(0);
   };
 

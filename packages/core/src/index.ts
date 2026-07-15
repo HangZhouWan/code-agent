@@ -42,6 +42,9 @@ export type {
 } from './agent/types.js';
 export type { AgentRole } from './agent/role.js';
 export { BUILTIN_ROLES } from './agent/role.js';
+export { CODE_AGENT_ROLE } from './agent/roles/code.js';
+export { TEST_AGENT_ROLE } from './agent/roles/test.js';
+export { DOC_AGENT_ROLE } from './agent/roles/doc.js';
 export type { IReasoningLoop } from './agent/reasoning.js';
 export { DefaultReasoningLoop } from './agent/reasoning.js';
 export { Agent } from './agent/agent.js';

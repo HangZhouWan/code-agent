@@ -2,7 +2,7 @@
  * WebSocket 聊天处理
  *
  * 这是整个 Gateway 的核心：通过 WebSocket 实现实时聊天，
- * 支持 LLM 流式输出推送和工具审批交互。
+ * 支持 LLM 流式输出推送、工具审批交互和多 Agent 状态推送。
  *
  * ## 消息协议
  *
@@ -19,6 +19,7 @@
  * | 请求确认   | `{ type: "confirm_required", callId, tool, args }` | 需要用户确认   |
  * | 工具开始   | `{ type: "tool_start", tool: string, args: object }` | 工具调用开始   |
  * | 工具结束   | `{ type: "tool_end", tool: string, result: string }` | 工具调用结果   |
+ * | Agent 状态 | `{ type: "agent_status", agents: [...] }` | 多 Agent 状态  |
  * | 完成       | `{ type: "done", finalResponse: string }` | 汇总完成       |
  * | 标题更新   | `{ type: "title_updated", title: string, sessionId: string }` | AI 自动生成标题 |
  * | 错误       | `{ type: "error", message: string }`     | 错误通知       |
@@ -42,7 +43,11 @@ import {
   InMemoryStateManager,
   AgentRegistry,
 } from "@my-agent/core";
-import type { IEventBus, AgentRegistry as AgentRegistryType } from "@my-agent/core";
+import type {
+  IEventBus,
+  AgentRegistry as AgentRegistryType,
+  InMemoryStateManager as InMemoryStateManagerType,
+} from "@my-agent/core";
 import { SessionRepository } from "../../db/repositories/sessions.js";
 
 // ---------------------------------------------------------------------------
@@ -57,7 +62,8 @@ type ServerMessage =
   | { type: "tool_end"; tool: string; result: string }
   | { type: "done"; finalResponse: string }
   | { type: "error"; message: string }
-  | { type: "title_updated"; title: string; sessionId: string };
+  | { type: "title_updated"; title: string; sessionId: string }
+  | { type: "agent_status"; agents: Array<{ role: string; id: string; name: string; status: string; currentTask?: string }> };
 
 /** 客户端 → 服务端消息联合类型 */
 interface ClientMessage {
@@ -159,6 +165,8 @@ export interface ChatWebSocketOptions {
   permissionRegistry?: PermissionRegistry;
   /** EventBus 实例（可选，不提供则自动创建） */
   eventBus?: IEventBus;
+  /** StateManager 实例（可选，不提供则自动创建） */
+  stateManager?: InMemoryStateManagerType;
   /** Agent 注册表（可选，不提供则自动创建） */
   agentRegistry?: AgentRegistryType;
 }
@@ -167,6 +175,12 @@ export interface ChatWebSocketOptions {
  * 创建 WebSocket 聊天处理器
  *
  * 返回的函数符合 Fastify WebSocket handler 签名：`(socket, request) => void`。
+ *
+ * 支持多 Agent 协作：
+ * - 自动创建或使用外部注入的 EventBus、StateManager、AgentRegistry
+ * - 初始化三个内置角色 Agent（code、test、doc）
+ * - 广播 agent_status 到所有连接的客户端
+ * - 监听 Agent 状态变更并自动推送
  *
  * @param options - 包含 LLM 模型、工具注册表、工作区路径和审批 Map
  * @returns Fastify WebSocket handler 函数
@@ -179,41 +193,92 @@ export function createChatWebSocket(options: ChatWebSocketOptions) {
     pendingApprovals,
     permissionRegistry,
     eventBus: externalEventBus,
+    stateManager: externalStateManager,
     agentRegistry: externalAgentRegistry,
   } = options;
 
   // 创建或使用外部提供的共享实例
   const eventBus = externalEventBus ?? new InMemoryEventBus();
-  const stateManager = new InMemoryStateManager(eventBus);
+  const stateManager =
+    externalStateManager ?? new InMemoryStateManager(eventBus);
   const agentRegistry =
     externalAgentRegistry ?? new AgentRegistry(eventBus, stateManager);
+
+  // 跟踪所有活跃的 WebSocket 连接，用于广播 agent_status
+  const activeSockets = new Set<WebSocket>();
+
+  /**
+   * 构建当前 Agent 状态快照并广播给所有连接的客户端
+   */
+  function broadcastAgentStatus(): void {
+    const agents = agentRegistry.getAllAgents().map((agent) => {
+      const state = stateManager.agents.get(agent.id);
+      return {
+        id: agent.id,
+        role: agent.role.id,
+        name: agent.role.name,
+        status: state?.status ?? "offline",
+        currentTask: state?.currentTask,
+      };
+    });
+
+    const msg: ServerMessage = { type: "agent_status", agents };
+    for (const ws of activeSockets) {
+      send(ws, msg);
+    }
+  }
 
   // 初始化 Agent 创建 Promise（后台完成，不阻塞 handler 返回）
   let agentsReady: Promise<void> | undefined;
   if (!externalAgentRegistry) {
     agentsReady = (async () => {
       try {
-        await agentRegistry.createAgent('code', model, toolRegistry, {
+        await agentRegistry.createAgent("code", model, toolRegistry, {
           workspacePath,
           permissionRegistry,
         });
-        await agentRegistry.createAgent('test', model, toolRegistry, {
+        await agentRegistry.createAgent("test", model, toolRegistry, {
           workspacePath,
           permissionRegistry,
         });
-        await agentRegistry.createAgent('doc', model, toolRegistry, {
+        await agentRegistry.createAgent("doc", model, toolRegistry, {
           workspacePath,
           permissionRegistry,
         });
+        // 初始化完成后广播状态
+        broadcastAgentStatus();
       } catch (err) {
-        console.error('[WS] Failed to create agents:', err);
+        console.error("[WS] Failed to create agents:", err);
       }
     })();
+  } else {
+    // 外部注入时立即广播初始状态
+    broadcastAgentStatus();
   }
 
+  // 监听 Agent 状态变更，自动广播给前端
+  // StateManager 的 task.onChange 在状态流转时触发
+  // 我们同时也监听 EventBus 上的 Agent 状态变更事件
+  eventBus.subscribe("agent.event.task_started" as any, async () => {
+    broadcastAgentStatus();
+  });
+  eventBus.subscribe("agent.event.task_completed" as any, async () => {
+    broadcastAgentStatus();
+  });
+  eventBus.subscribe("agent.event.task_failed" as any, async () => {
+    broadcastAgentStatus();
+  });
+
   return async function chatHandler(socket: WebSocket, request: FastifyRequest) {
+    // 注册到活跃连接集合
+    activeSockets.add(socket);
+
+    // 发送当前 Agent 状态（如果已有 Agent 初始化完成）
+    if (!agentsReady || externalAgentRegistry) {
+      broadcastAgentStatus();
+    }
+
     // 从 URL 路径参数中提取 sessionId
-    // Fastify WebSocket: request.params 在 handler 中可用
     const params = request.params as Record<string, string>;
     const sessionId = params.id;
 
@@ -270,6 +335,9 @@ export function createChatWebSocket(options: ChatWebSocketOptions) {
             eventBus,
             agentRegistry,
           });
+
+          // 任务完成后广播最新 Agent 状态
+          broadcastAgentStatus();
           break;
         }
 
@@ -306,6 +374,9 @@ export function createChatWebSocket(options: ChatWebSocketOptions) {
 
     // ── 断线清理 ──
     socket.on("close", () => {
+      // 从活跃连接集合中移除
+      activeSockets.delete(socket);
+
       // 移除该 socket 的所有待审批项
       for (const [callId, item] of pendingApprovals) {
         if (item.ws === socket) {

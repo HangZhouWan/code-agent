@@ -19,6 +19,11 @@ export type {
 export type { AgentRole } from './role.js';
 export { BUILTIN_ROLES } from './role.js';
 
+// 内置角色定义（独立文件导出，方便按需引用）
+export { CODE_AGENT_ROLE } from './roles/code.js';
+export { TEST_AGENT_ROLE } from './roles/test.js';
+export { DOC_AGENT_ROLE } from './roles/doc.js';
+
 // 推理循环
 export type { IReasoningLoop } from './reasoning.js';
 export { DefaultReasoningLoop } from './reasoning.js';
