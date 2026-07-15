@@ -29,9 +29,23 @@ export type { ContextWindow, AgentContext, RuntimeContext } from './harness/cont
 export { ContextManager } from './harness/context/manager.js';
 export { compressMessages } from './harness/context/compressor.js';
 
-// 子 Agent 编排
+// 子 Agent 编排（兼容层）
 export type { WorkerInput, WorkerOutput, WorkerStatus } from './agent/types.js';
 export { WorkerAgent } from './agent/worker.js';
+
+// Agent 基类 + 角色 + 注册中心（Step 3）
+export type {
+  AgentConfig,
+  AgentInput,
+  AgentOutput,
+  AgentStatus as AgentRuntimeStatus,
+} from './agent/types.js';
+export type { AgentRole } from './agent/role.js';
+export { BUILTIN_ROLES } from './agent/role.js';
+export type { IReasoningLoop } from './agent/reasoning.js';
+export { DefaultReasoningLoop } from './agent/reasoning.js';
+export { Agent } from './agent/agent.js';
+export { AgentRegistry } from './agent/registry.js';
 
 // EventBus —— 多 Agent 通信基础设施
 export type {
