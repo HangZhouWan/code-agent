@@ -25,13 +25,77 @@ export type { HookEvent, HookContext, HookResult, HookHandler } from './harness/
 export { HooksEngine } from './harness/hooks/engine.js';
 export { createLoggerHook } from './harness/hooks/builtins/logger.js';
 export { createSecretFilterHook } from './harness/hooks/builtins/secret-filter.js';
-export type { ContextWindow, AgentContext } from './harness/context/types.js';
+export type { ContextWindow, AgentContext, RuntimeContext } from './harness/context/types.js';
 export { ContextManager } from './harness/context/manager.js';
 export { compressMessages } from './harness/context/compressor.js';
 
 // 子 Agent 编排
 export type { WorkerInput, WorkerOutput, WorkerStatus } from './agent/types.js';
 export { WorkerAgent } from './agent/worker.js';
+
+// EventBus —— 多 Agent 通信基础设施
+export type {
+  BusMessage,
+  BusMessageMetadata,
+  MessageId,
+  CommandTopic,
+  EventTopic,
+  IEventBus,
+  MessageHandler,
+  Unsubscribe as EventBusUnsubscribe,
+} from './event-bus/types.js';
+export { BusTimeoutError } from './event-bus/types.js';
+export { InMemoryEventBus } from './event-bus/bus.js';
+
+// State Manager —— 多 Agent 状态管理基础设施
+export type {
+  TaskStatus,
+  Task,
+  TaskState,
+  AgentStatus,
+  AgentState,
+  FileChange,
+  CommitRecord,
+  TestResult,
+  ArtifactList,
+  ArtifactState,
+  Plan,
+  SubTask,
+  WorkflowState,
+  IStateManager,
+} from './state/types.js';
+export { InvalidTransitionError } from './state/types.js';
+export { InMemoryStateManager } from './state/manager.js';
+
+// ExecutionEngine —— Agent 执行引擎（Step 2）
+export type {
+  ExecutionContext,
+  ExecutionResult,
+  AgentLike,
+} from './harness/execution/engine.js';
+export { ExecutionEngine } from './harness/execution/engine.js';
+
+// CheckpointManager —— 执行快照持久化（Step 2）
+export type {
+  ICheckpointManager,
+  CheckpointSnapshot,
+  Thought,
+  ToolCallRecord,
+  RuntimeContext as CheckpointRuntimeContext,
+} from './harness/execution/checkpoint.js';
+export { FileCheckpointManager } from './harness/execution/checkpoint.js';
+
+// Memory —— 三层记忆体系（Step 2）
+export type {
+  ShortTermMemory,
+  LongTermMemory,
+  LongTermEntry,
+  WorkingMemory,
+  IMemoryManager,
+} from './harness/memory/types.js';
+export { InMemoryShortTermMemory } from './harness/memory/short-term.js';
+export { InMemoryWorkingMemory } from './harness/memory/working.js';
+export { FileLongTermMemory } from './harness/memory/long-term.js';
 
 // 核心版本标识
 export const CORE_VERSION = '0.1.0';

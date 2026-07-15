@@ -4,6 +4,7 @@
  * 定义 Agent 会话上下文相关的核心类型：
  * - ContextWindow：token 预算和压缩阈值
  * - AgentContext：完整的 Agent 会话上下文
+ * - RuntimeContext：ExecutionEngine 用于维持 Agent 状态的运行时上下文
  */
 
 import type { BaseMessage } from '@langchain/core/messages';
@@ -51,5 +52,21 @@ export interface AgentContext {
    * 当消息历史超阈值触发压缩后填充此字段，
    * 后续新建消息时可以将其作为 system message 注入。
    */
+  summary?: string;
+}
+
+/**
+ * 运行时上下文
+ *
+ * ExecutionEngine 用于维持 Agent 当前状态的核心数据结构。
+ * 相比 AgentContext 更轻量，直接包含消息列表和 token 计数。
+ * 用于在 ReAct 循环中跟踪和传递上下文状态。
+ */
+export interface RuntimeContext {
+  /** 消息历史 */
+  messages: BaseMessage[];
+  /** 当前 token 使用量（估算值） */
+  tokenCount: number;
+  /** 压缩后生成的摘要（可选） */
   summary?: string;
 }

@@ -9,6 +9,9 @@
  *
  * 基于 LangChain createAgent() (ReactAgent) 实现，
  * 利用其内置的 ReAct 循环、工具调用、和流式处理能力。
+ *
+ * 兼容模式：可选委托给 ExecutionEngine（Step 2 升级），
+ * 公开 API 不变，外部调用者（Dispatcher）无需改动。
  */
 
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
@@ -18,6 +21,11 @@ import type { StructuredTool } from '@langchain/core/tools';
 import { ToolRegistry } from '../tools/registry.js';
 import { HooksEngine } from '../harness/hooks/engine.js';
 import type { PermissionRegistry } from '../harness/sandbox/registry.js';
+import type { IEventBus } from '../event-bus/types.js';
+import type { IStateManager } from '../state/types.js';
+import { ExecutionEngine } from '../harness/execution/engine.js';
+import type { ICheckpointManager } from '../harness/execution/checkpoint.js';
+import type { IMemoryManager } from '../harness/memory/types.js';
 import type { WorkerInput, WorkerOutput } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -77,15 +85,26 @@ ${toolDescriptions}
 export class WorkerAgent {
   private hooks: HooksEngine;
   private permissionRegistry: PermissionRegistry | undefined;
+  private engine: ExecutionEngine | null = null;
 
   constructor(
     private model: BaseChatModel,
     private toolRegistry: ToolRegistry,
     hooks?: HooksEngine,
     permissionRegistry?: PermissionRegistry,
+    eventBus?: IEventBus,
+    stateManager?: IStateManager,
+    checkpoint?: ICheckpointManager,
+    memory?: IMemoryManager,
   ) {
     this.hooks = hooks ?? new HooksEngine();
     this.permissionRegistry = permissionRegistry;
+
+    // 可选：启用 ExecutionEngine（Step 2 升级）
+    // 当传入 checkpoint 或 memory 时，启用新的执行引擎
+    if (checkpoint || memory || eventBus) {
+      this.engine = new ExecutionEngine(checkpoint, memory, eventBus ?? null);
+    }
   }
 
   /**
@@ -104,6 +123,12 @@ export class WorkerAgent {
    * @returns Worker 输出的结构化结果
    */
   async run(input: WorkerInput): Promise<WorkerOutput> {
+    // 如果启用了 ExecutionEngine，委托给它
+    if (this.engine) {
+      return this.runWithEngine(input);
+    }
+
+    // 原有 LangChain createAgent 路径（兼容模式）
     const agentId = `worker-${input.taskId}`;
     const timeoutMs = input.timeoutMs ?? 60000;
     const maxIterations = input.maxIterations ?? 15;
@@ -296,5 +321,118 @@ export class WorkerAgent {
       }
     }
     return 'No output produced.';
+  }
+
+  /**
+   * 委托给 ExecutionEngine 的执行路径
+   *
+   * 构建 ExecutionContext 并调用 engine.run()。
+   * 公开 API（WorkerInput → WorkerOutput）不变，内部使用新引擎。
+   */
+  private async runWithEngine(input: WorkerInput): Promise<WorkerOutput> {
+    if (!this.engine) {
+      throw new Error('ExecutionEngine not initialized');
+    }
+
+    const agentId = `worker-${input.taskId}`;
+    const maxIterations = input.maxIterations ?? 15;
+    const timeoutMs = input.timeoutMs ?? 60000;
+
+    // 1. 获取受限工具集
+    const langchainTools: StructuredTool[] = this.toolRegistry.getToolsForAgent(
+      {
+        tools: input.tools,
+        paths: [input.workspacePath],
+        timeoutMs,
+        maxTokens: maxIterations,
+      },
+      {
+        workspacePath: input.workspacePath,
+        sessionId: agentId,
+        onConfirmRequired: input.onConfirmRequired,
+      },
+      this.permissionRegistry,
+    );
+
+    if (langchainTools.length === 0) {
+      return {
+        taskId: input.taskId,
+        status: 'failed',
+        error: `No tools available for this agent. Requested: [${input.tools.join(', ')}]`,
+      };
+    }
+
+    // 2. 构建工具描述（注入 System Prompt）
+    const toolDescriptions = langchainTools
+      .map((t) => `- **${t.name}**: ${t.description}`)
+      .join('\n');
+    const systemPrompt = buildSystemPrompt(input, toolDescriptions);
+
+    // 3. 构建初始 RuntimeContext
+    const initialMessages: Array<HumanMessage | AIMessage | ToolMessage> = [
+      new HumanMessage(input.description),
+    ];
+
+    // 估算初始 token
+    let initialTokens = 0;
+    for (const msg of initialMessages) {
+      const content = msg.content;
+      if (typeof content === 'string') {
+        initialTokens += Math.ceil(content.length / 4);
+      }
+    }
+
+    // 4. 触发 agent:start hook
+    await this.hooks.trigger('agent:start', {
+      agentId,
+      data: { taskId: input.taskId, description: input.description },
+    });
+
+    // 5. 委托给 ExecutionEngine
+    const result = await this.engine!.run({
+      agentId,
+      taskId: input.taskId,
+      agent: this,
+      model: this.model,
+      tools: langchainTools,
+      systemPrompt,
+      context: {
+        messages: initialMessages,
+        tokenCount: initialTokens,
+      },
+      capability: {
+        maxIterations,
+        timeoutMs,
+      },
+    });
+
+    // 6. 映射 ExecutionResult → WorkerOutput
+    const status =
+      result.status === 'replan_needed' ? 'failed' : result.status;
+
+    if (status === 'success') {
+      await this.hooks.trigger('agent:end', {
+        agentId,
+        data: { taskId: input.taskId, result: result.result },
+      });
+    } else {
+      await this.hooks.trigger('agent:error', {
+        agentId,
+        data: {
+          taskId: input.taskId,
+          error: result.error ?? `Task ended with status: ${result.status}`,
+        },
+      });
+    }
+
+    return {
+      taskId: result.taskId,
+      status: status as WorkerOutput['status'],
+      result: result.result,
+      error: result.error,
+      toolCalls: result.toolCalls?.length
+        ? result.toolCalls
+        : undefined,
+    };
   }
 }

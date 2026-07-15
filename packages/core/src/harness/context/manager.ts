@@ -23,7 +23,7 @@ import {
   ToolMessage,
   type BaseMessage,
 } from '@langchain/core/messages';
-import type { AgentContext, ContextWindow } from './types.js';
+import type { AgentContext, ContextWindow, RuntimeContext } from './types.js';
 import { compressMessages } from './compressor.js';
 
 /**
@@ -228,6 +228,116 @@ export class ContextManager {
    */
   delete(agentId: string): boolean {
     return this.contexts.delete(agentId);
+  }
+
+  // ─── ExecutionEngine 辅助方法 ─────────────
+
+  /**
+   * 从消息列表构建 RuntimeContext
+   *
+   * 构建轻量级的运行时上下文，用于 ExecutionEngine。
+   * 不与内部 contexts Map 关联。
+   *
+   * @param messages - 初始消息列表
+   * @param window - Token 窗口配置（可选）
+   * @returns 运行时上下文
+   */
+  build(
+    messages: BaseMessage[],
+    window?: Partial<ContextWindow>,
+  ): RuntimeContext {
+    const tokenCount = this.estimateTokens(messages);
+    return {
+      messages: [...messages],
+      tokenCount,
+      summary: undefined,
+    };
+  }
+
+  /**
+   * 追加内容到 RuntimeContext
+   *
+   * 向消息列表追加一条 HumanMessage，重新计算 token 估算。
+   * 如果 token 使用超过 maxTokens * threshold，自动触发压缩。
+   *
+   * @param ctx - 当前运行时上下文
+   * @param content - 要追加的文本内容
+   * @param maxTokens - Token 上限（用于压缩检查）
+   * @param threshold - 压缩阈值（0-1），默认 0.8
+   * @returns 更新后的运行时上下文
+   */
+  async append(
+    ctx: RuntimeContext,
+    content: string,
+    maxTokens?: number,
+    threshold?: number,
+  ): Promise<RuntimeContext> {
+    const newMessage = new HumanMessage(content);
+    const messages = [...ctx.messages, newMessage];
+    const tokenCount = this.estimateTokens(messages);
+
+    const result: RuntimeContext = {
+      messages,
+      tokenCount,
+      summary: ctx.summary,
+    };
+
+    // 超阈值时触发压缩
+    const limit = maxTokens ?? DEFAULT_MAX_TOKENS;
+    const thresh = threshold ?? DEFAULT_THRESHOLD;
+    if (tokenCount > limit * thresh) {
+      return this.compress(result, limit);
+    }
+
+    return result;
+  }
+
+  /**
+   * 压缩 RuntimeContext
+   *
+   * 保留最近 20 条消息，对更早的消息生成摘要。
+   * 摘要合并到 summary 字段中，后续构建 prompt 时注入。
+   *
+   * @param ctx - 当前运行时上下文
+   * @param maxTokens - Token 上限（当前预留，未使用）
+   * @returns 压缩后的运行时上下文
+   */
+  async compress(
+    ctx: RuntimeContext,
+    _maxTokens?: number,
+  ): Promise<RuntimeContext> {
+    const keepRecent = DEFAULT_KEEP_RECENT;
+
+    if (ctx.messages.length <= keepRecent) {
+      return ctx;
+    }
+
+    // 对更早的消息生成摘要
+    const toCompress = ctx.messages.slice(
+      0,
+      ctx.messages.length - keepRecent,
+    );
+    const toKeep = ctx.messages.slice(-keepRecent);
+
+    const excerpts = toCompress.slice(0, 5).map((msg, i) => {
+      const content =
+        typeof msg.content === 'string'
+          ? msg.content.slice(0, 200)
+          : JSON.stringify(msg.content).slice(0, 200);
+      return `[${i + 1}] ${content}`;
+    });
+
+    const newSummary = ctx.summary
+      ? `${ctx.summary}\n[Additional context: ${toCompress.length} earlier messages]\n${excerpts.join('\n')}`
+      : `[Summary of ${toCompress.length} earlier messages]\n${excerpts.join('\n')}`;
+
+    const tokenCount = this.estimateTokens(toKeep);
+
+    return {
+      messages: toKeep,
+      tokenCount,
+      summary: newSummary,
+    };
   }
 
   /**
