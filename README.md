@@ -1,51 +1,74 @@
 # Code Agent
 
-通用 code Agent 平台 —— 用户以自然语言下达指令，Agent 自主完成「理解意图 → 规划 → 调用工具执行 → 反馈结果」的闭环。
+角色分工型多 Agent 协作平台 —— 用户以自然语言下达指令，Orchestrator 自动规划并派发任务给各角色 Agent（Code / Test / Doc），Agent 之间通过 Event Bus 互相发现、通信、协作，支持动态任务分配和中途恢复。
 
-项目以学习为核心目的，重点关注 **运行时基础设施（Harness Engineering）**：权限沙箱、Hooks 机制、上下文管理。
+项目以学习为核心目的，重点关注 **运行时基础设施（Harness Engineering）**：权限沙箱、Hooks 机制、上下文管理、Event Bus 通信、Checkpoint 恢复。
 
 ---
 
 ## 架构概览
 
 ```
-┌─────────────────────────────────────────┐
-│            Web Chat UI (前端)             │
-├─────────────────────────────────────────┤
-│            API Gateway (ws/http)         │
-├─────────────────────────────────────────┤
-│  ┌─────────────────────────────────┐    │
-│  │       主 Agent (Orchestrator)    │    │
-│  │  - 理解用户意图                   │    │
-│  │  - 拆解任务                      │    │
-│  │  - 派发子 Agent                  │    │
-│  │  - 汇总结果                      │    │
-│  └──────────┬──────────────────────┘    │
-│             │ dispatch                   │
-│  ┌──────────▼──────────────────────┐    │
-│  │       子 Agent (Worker)          │    │
-│  │  - 独立上下文                    │    │
-│  │  - 独立工具权限                  │    │
-│  │  - 执行后归还结果                │    │
-│  └─────────────────────────────────┘    │
-├─────────────────────────────────────────┤
-│          Agent Runtime (Harness)         │
-│  ┌──────────┐ ┌────────┐ ┌───────────┐  │
-│  │ 权限沙箱  │ │ Hooks  │ │ 上下文管理 │  │
-│  └──────────┘ └────────┘ └───────────┘  │
-├─────────────────────────────────────────┤
-│              工具层 (Tools)              │
-│  File │ Shell │ Code Search │ Git │ Web │
-├─────────────────────────────────────────┤
-│          LLM 抽象层 (Model Adapter)       │
-│    OpenAI  │  Anthropic  │  Others...    │
-└─────────────────────────────────────────┘
+                       User
+                        │
+                   Web Chat UI
+                        │
+                  API Gateway
+                        │
+┌────────────────────────▼──────────────────────────┐
+│                   Orchestrator                      │
+│                                                     │
+│  Planner ──→ Dispatcher ──→ Replanner              │
+│                                                     │
+│                   Finalizer                         │
+└────────────────────────┬──────────────────────────┘
+                         │
+┌────────────────────────▼──────────────────────────┐
+│                   State Manager                     │
+│  Task State │ Workflow State │ Agent State │ Artifact│
+└────────────────────────┬──────────────────────────┘
+                         │
+┌────────────────────────▼──────────────────────────┐
+│                    Event Bus                        │
+│  Command Topics: agent.command.*                    │
+│  Event Topics:  agent.event.*                       │
+└──────┬────────────────┬──────────────────┬──────────┘
+       │                │                  │
+┌──────▼──────┐  ┌──────▼──────┐  ┌───────▼──────┐
+│  Code Agent │  │ Test Agent  │  │  Doc Agent   │ ...
+│             │  │             │  │              │
+│ Role        │  │ Role        │  │ Role         │
+│ Reasoning   │  │ Reasoning   │  │ Reasoning    │
+│ Runtime     │  │ Runtime     │  │ Runtime      │
+│ Capability  │  │ Capability  │  │ Capability   │
+└─────────────┘  └─────────────┘  └──────────────┘
+
+┌────────────────────────────────────────────────────┐
+│                 Agent Runtime (横向)                 │
+│                                                     │
+│  Execution Engine ──→ Checkpoint Manager            │
+│         │                                           │
+│    Context Mgr ──→ Memory (short/long/working)      │
+│         │                                           │
+│    Tool Runtime ──→ Permission ──→ Hooks            │
+└────────────────────────────────────────────────────┘
 ```
+
+### 五层架构
+
+| 层级 | 组件 | 职责 |
+|------|------|------|
+| **第一层** | Orchestrator | Planner 规划 → Dispatcher 双通道派发 → Replanner 修正 → Finalizer 报告 |
+| **第二层** | State Manager | 全局状态：Task / Workflow / Agent / Artifact 的状态流转 |
+| **第三层** | Event Bus | Agent 间通信：Command（指令）+ Event（通知）双通道 |
+| **第四层** | Agent | 分角色 Agent（Code / Test / Doc），Role → Reasoning → Runtime → Capability |
+| **第五层** | Agent Runtime | Execution Engine + Checkpoint + Context + Memory（三层记忆） |
 
 ### 核心设计约束
 
 - **Harness 是唯一执行通道**：Agent 不能绕过 Runtime 直接调用工具或 LLM
-- **主 Agent 和子 Agent 共享同一套 Runtime**，但拥有独立的上下文和受限的工具权限
+- **Event Bus 是唯一通信通道**：Agent 之间不直接调用，通过 Command/Event 通信
+- **State Manager 是所有状态的唯一真相源**：Orchestrator 和 Agent 都通过它读写状态
 - **LLM 抽象层**向上层屏蔽不同模型 API 的差异
 
 ---
@@ -70,53 +93,95 @@
 
 ```
 my-agent/
-├── pnpm-workspace.yaml              # monorepo 工作空间配置
-├── package.json                     # 根 workspace 脚本
-├── tsconfig.base.json               # 共享 TypeScript 配置
-├── .env.example                     # 环境变量模板
-├── docs/                            # 需求文档 & 技术文档
+├── pnpm-workspace.yaml
+├── package.json
+├── tsconfig.base.json
+├── .env.example
+├── docs/
 │   ├── 2026-07-02-general-agent-design.md
 │   ├── 2026-07-02-technical-implementation.md
-│   └── implementation-plan-*.md     # 各模块实现计划
+│   ├── implementation-plan-*.md
+│   └── superpowers/specs/
+│       ├── 2026-07-15-multi-agent-architecture-design.md   # 多 Agent 架构设计
+│       ├── 2026-07-15-step1-event-bus-state-manager.md     # Step 1 详细计划
+│       ├── 2026-07-15-step2-runtime-upgrade.md             # Step 2 详细计划
+│       ├── 2026-07-15-step3-agent-base-class.md            # Step 3 详细计划
+│       ├── 2026-07-15-step4-orchestrator-refactor.md       # Step 4 详细计划
+│       └── 2026-07-15-step5-role-agents-integration.md     # Step 5 详细计划
 ├── packages/
 │   ├── core/                        # @my-agent/core — 核心引擎
 │   │   └── src/
 │   │       ├── llm/                 # LLM 抽象层（工厂、协议检测、重试）
 │   │       ├── tools/               # 工具层（File、Shell、Search、Git、Web）
+│   │       ├── event-bus/           # Event Bus（Command + Event 双通道）
+│   │       │   ├── bus.ts           #   InMemoryEventBus 实现
+│   │       │   └── types.ts         #   消息类型定义
+│   │       ├── state/               # State Manager（全局状态管理）
+│   │       │   ├── manager.ts       #   InMemoryStateManager 实现
+│   │       │   └── types.ts         #   Task/Workflow/Agent/Artifact 状态
 │   │       ├── harness/             # Agent Runtime
 │   │       │   ├── sandbox/         #   权限沙箱（注册表 + 守卫）
 │   │       │   ├── hooks/           #   Hooks 引擎 + 内置 Hooks
-│   │       │   └── context/         #   上下文管理 + 压缩
-│   │       └── agent/               # 子 Agent (Worker)
+│   │       │   ├── context/         #   上下文管理 + 压缩
+│   │       │   ├── execution/       #   Execution Engine + Checkpoint Manager
+│   │       │   │   ├── engine.ts    #     ReAct 循环驱动
+│   │       │   │   └── checkpoint.ts #   执行快照持久化
+│   │       │   └── memory/          #   三层记忆（short/long/working）
+│   │       │       ├── short-term.ts
+│   │       │       ├── long-term.ts
+│   │       │       └── working.ts
+│   │       └── agent/               # Agent 层
+│   │           ├── agent.ts         #   Agent 基类
+│   │           ├── worker.ts        #   WorkerAgent（兼容层）
+│   │           ├── registry.ts      #   AgentRegistry 注册中心
+│   │           ├── role.ts          #   角色定义 + system prompt
+│   │           ├── reasoning.ts     #   ReAct 推理循环
+│   │           ├── types.ts         #   Agent 类型定义
+│   │           └── roles/           #   内置角色
+│   │               ├── code.ts      #     Code Agent
+│   │               ├── test.ts      #     Test Agent
+│   │               └── doc.ts       #     Doc Agent
 │   │
 │   ├── server/                      # @my-agent/server — 后端服务
 │   │   └── src/
 │   │       ├── gateway/             # Fastify HTTP + WebSocket 网关
-│   │       │   ├── routes/          #   RESTful 路由（会话、工具审批）
+│   │       │   ├── routes/          #   RESTful 路由（会话、工具审批、Agent 列表）
 │   │       │   ├── ws/              #   WebSocket 聊天端点
 │   │       │   └── middleware/      #   全局错误处理
 │   │       ├── orchestrator/        # LangGraph 编排器
-│   │       │   └── nodes/           #   planner / dispatcher / summarizer
+│   │       │   ├── graph.ts         #   状态图定义
+│   │       │   ├── state.ts         #   注解状态
+│   │       │   ├── types.ts         #   类型定义
+│   │       │   └── nodes/           #   编排节点
+│   │       │       ├── planner.ts   #     规划节点
+│   │       │       ├── dispatcher.ts #    双通道派发节点
+│   │       │       ├── replanner.ts #     重规划节点
+│   │       │       └── finalizer.ts #     最终报告节点
 │   │       └── db/                  # SQLite 数据库
 │   │           ├── schema.ts        #   Drizzle schema
 │   │           ├── connection.ts    #   数据库连接
 │   │           └── repositories/    #   数据访问层
+│   │               ├── sessions.ts
+│   │               ├── messages.ts
+│   │               ├── tasks.ts
+│   │               ├── artifacts.ts
+│   │               └── events.ts
 │   │
 │   └── web/                         # @my-agent/web — React 前端
 │       └── src/
 │           ├── components/          # UI 组件
-│           │   ├── Sidebar.tsx      #   会话列表
-│           │   ├── ChatArea.tsx     #   聊天主区域
-│           │   ├── MessageList.tsx  #   消息列表
-│           │   ├── TextMessage.tsx  #   Markdown 消息渲染
-│           │   ├── ToolCallCard.tsx #   工具调用状态卡片
-│           │   ├── ConfirmCard.tsx  #   危险操作审批卡片
-│           │   └── InputBar.tsx     #   消息输入框
+│           │   ├── Sidebar.tsx
+│           │   ├── ChatArea.tsx
+│           │   ├── MessageList.tsx
+│           │   ├── TextMessage.tsx
+│           │   ├── ToolCallCard.tsx
+│           │   ├── ConfirmCard.tsx
+│           │   └── InputBar.tsx
 │           ├── hooks/               # 自定义 Hooks
-│           │   ├── useWebSocket.ts  #   WebSocket 连接管理
-│           │   └── useSessions.ts   #   会话状态管理
+│           │   ├── useWebSocket.ts
+│           │   └── useSessions.ts
 │           └── stores/              # 状态管理
-│               └── chatStore.ts     #   聊天消息状态
+│               └── chatStore.ts
 ```
 
 ---
@@ -194,11 +259,55 @@ pnpm -r test
 
 ### 🧠 智能任务编排
 
-用户输入自然语言指令后，**主 Agent（Orchestrator）** 自动：
-1. **分析意图**，生成结构化执行计划（子任务列表，含依赖关系）
-2. **并行派发**独立子任务给多个 Worker Agent
-3. **串行执行**有数据依赖的子任务
-4. **汇总结果**，生成最终回复
+用户输入自然语言指令后，**Orchestrator** 自动完成编排闭环：
+
+1. **Planner**：分析意图 + 可用 Agent 列表 → 生成结构化 Plan（含复杂度判定：simple/complex）
+2. **Dispatcher**：双通道派发 — **direct**（简单任务直接调用 Agent.run()）/ **bus**（复杂任务发布到 Event Bus，Agent 按角色订阅领取）
+3. **Replanner**：Agent 执行中发现计划需要调整时介入（失败处理、新发现的依赖、产出冲突）
+4. **Finalizer**：汇总所有产物（Artifact），生成最终用户报告
+
+### 🤝 角色分工型多 Agent 协作
+
+每个 Agent 按角色分工，通过 Event Bus 互相发现和协作：
+
+| 角色 | 职责 | 典型触发 |
+|------|------|---------|
+| **Code Agent** | 代码编写、重构、修复 | Planner 分配 / 订阅 `test_failed` 自动修复 |
+| **Test Agent** | 测试编写、执行、分析 | Planner 分配 / 订阅 `code_changed` 自动跑测试 |
+| **Doc Agent** | 文档生成、更新、翻译 | Planner 分配 / 订阅 `code_changed` 自动更新文档 |
+
+协作示例：
+```
+Code Agent 改完代码 → publish agent.event.code_changed
+Test Agent 订阅 code_changed → 自动跑测试
+测试失败 → publish agent.event.test_failed
+Code Agent 收到 → 自动修复
+```
+
+### 📡 Event Bus 通信
+
+Agent 之间通过 Event Bus 进行松耦合通信，支持两套 Topic：
+
+- **Command** (`agent.command.*`)：指令 = "请做某事"，期待响应（request/reply 模式）
+- **Event** (`agent.event.*`)：事实 = "某事已发生"，广播通知（pub/sub 模式）
+
+| 方法 | 说明 |
+|------|------|
+| `publish(topic, payload)` | 发布事件，fire-and-forget |
+| `request(topic, payload, timeout?)` | 发送指令，等待回复 |
+| `subscribe(topic, handler)` | 精确匹配订阅 |
+| `subscribePattern(pattern, handler)` | 通配匹配订阅 |
+
+### 📊 State Manager 全局状态
+
+所有状态集中管理，是 Orchestrator 和 Agent 之间的共享真相源：
+
+| 子状态 | 内容 |
+|--------|------|
+| **Task State** | 所有任务的完整生命周期：pending → assigned → running → completed/failed |
+| **Workflow State** | 当前 Plan、LangGraph 节点路由、决策历史 |
+| **Agent State** | 各 Agent 的 idle / busy / error 状态 |
+| **Artifact State** | 所有产物：文件变更、commit 记录、测试结果 |
 
 ### 🛡️ 三层权限沙箱
 
@@ -210,7 +319,7 @@ pnpm -r test
 | **需确认级** (confirm) | 弹出审批卡片，等待用户确认 | 写文件、执行 Shell、git commit |
 | **高危级** (deny) | 直接拒绝 | `rm -rf /`、`sudo`、`curl \| bash` |
 
-子 Agent 启动时声明能力范围（`tools` + `paths`），超出范围的调用会被自动拦截。
+Agent 启动时声明能力范围（`tools` + `paths`），超出范围的调用会被自动拦截。
 
 ### 🔧 内置工具集
 
@@ -233,12 +342,21 @@ pnpm -r test
 
 内置 Hooks：**调用日志**、**敏感信息过滤**（自动脱敏 API Key / Token / 私钥）。
 
-### 📝 上下文管理
+### 📝 上下文管理与记忆
 
 - 每个 Agent 维护独立的对话上下文
 - Token 用量追踪：超过阈值（80%）时自动触发压缩
 - 压缩策略：滑动窗口 + 滚动摘要，保留最近消息的完整内容
-- 子 Agent 从主 Agent 继承上下文摘要，不继承完整历史
+- **三层记忆体系**：
+  - **ShortTerm**：单 Agent 当前对话（内存）
+  - **LongTerm**：跨会话知识（SQLite + 可选 embedding）
+  - **Working**：当前 task 内所有 Agent 共享的"白板"
+
+### 💾 Checkpoint 恢复
+
+- 每个 Step 执行前自动保存（taskId + step 序号 + 完整 context + tool 历史）
+- 支持 `resume(taskId)` 恢复中断的执行
+- 持久化到文件系统（`~/.my-agent/checkpoints/`）
 
 ### 💬 实时聊天界面
 
@@ -260,6 +378,7 @@ pnpm -r test
 | `GET` | `/api/sessions/:id/history` | 获取历史消息 |
 | `DELETE` | `/api/sessions/:id` | 删除会话 |
 | `POST` | `/api/tools/:callId/approve` | 工具审批回调 |
+| `GET` | `/api/agents` | 获取可用 Agent 列表及状态 |
 
 ### WebSocket 消息协议
 
@@ -276,6 +395,8 @@ pnpm -r test
 { "type": "text", "delta": "好的，我来分析..." }
 { "type": "tool_start", "tool": "code_search", "args": { ... } }
 { "type": "tool_end", "tool": "code_search", "result": "..." }
+{ "type": "agent_start", "agent": "Code Agent", "task": "重构 auth 模块" }
+{ "type": "agent_end", "agent": "Code Agent", "result": "success" }
 { "type": "done", "finalResponse": "重构完成..." }
 { "type": "error", "message": "错误描述" }
 ```
@@ -302,14 +423,18 @@ pnpm -r test
 
 ## 开发路线
 
-| 阶段 | 内容 | 预计时间 |
-|------|------|----------|
-| Phase 1 | monorepo 搭建、LLM 抽象层、基础工具、单 Agent 对话循环 | 第 1 周 |
-| Phase 2 | Harness 核心：权限沙箱 + Hooks 引擎 + 上下文管理 | 第 2-3 周 |
-| Phase 3 | LangGraph Orchestrator + 子 Agent 派发 | 第 3-4 周 |
-| Phase 4 | API Gateway (Fastify + WebSocket) + 数据库 | 第 4-5 周 |
-| Phase 5 | React 聊天界面 + 流式显示 + 审批卡片 | 第 5-6 周 |
-| Phase 6 | 测试、调试、文档、边界情况处理 | 第 6-8 周 |
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| Phase 1 | monorepo 搭建、LLM 抽象层、基础工具、单 Agent 对话循环 | ✅ 完成 |
+| Phase 2 | Harness 核心：权限沙箱 + Hooks 引擎 + 上下文管理 | ✅ 完成 |
+| Phase 3 | LangGraph Orchestrator + WorkerAgent 派发 | ✅ 完成 |
+| Phase 4 | API Gateway (Fastify + WebSocket) + 数据库 | ✅ 完成 |
+| Phase 5 | React 聊天界面 + 流式显示 + 审批卡片 | ✅ 完成 |
+| Step 1 | EventBus + StateManager 基础设施 | ✅ 完成 |
+| Step 2 | ExecutionEngine + Checkpoint + Memory 三层记忆 | ✅ 完成 |
+| Step 3 | Agent 基类 + AgentRegistry + 角色定义 | ✅ 完成 |
+| Step 4 | Orchestrator 改造：双通道 Dispatcher + Replanner + Finalizer | ✅ 完成 |
+| Step 5 | 角色 Agent（Code/Test/Doc）+ Storage 扩展 + 端到端集成 | ✅ 完成 |
 
 ---
 
@@ -317,6 +442,12 @@ pnpm -r test
 
 - [需求设计文档](docs/2026-07-02-general-agent-design.md) — 产品需求与架构设计
 - [技术实现文档](docs/2026-07-02-technical-implementation.md) — 详细技术方案与代码示例
+- [多 Agent 架构改进设计](docs/superpowers/specs/2026-07-15-multi-agent-architecture-design.md) — 五层架构设计总览
+- [Step 1 — EventBus + StateManager](docs/superpowers/specs/2026-07-15-step1-event-bus-state-manager.md)
+- [Step 2 — ExecutionEngine + Checkpoint + Memory](docs/superpowers/specs/2026-07-15-step2-runtime-upgrade.md)
+- [Step 3 — Agent 基类 + AgentRegistry](docs/superpowers/specs/2026-07-15-step3-agent-base-class.md)
+- [Step 4 — Orchestrator 改造](docs/superpowers/specs/2026-07-15-step4-orchestrator-refactor.md)
+- [Step 5 — 角色 Agent + Storage + 集成](docs/superpowers/specs/2026-07-15-step5-role-agents-integration.md)
 - [实现计划 01 — Monorepo](docs/implementation-plan-01-monorepo.md)
 - [实现计划 02 — LLM 抽象层](docs/implementation-plan-02-llm-abstraction.md)
 - [实现计划 03 — 工具层](docs/implementation-plan-03-tools-layer.md)
