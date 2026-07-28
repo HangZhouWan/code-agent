@@ -177,11 +177,9 @@ async function main(): Promise<void> {
   });
 
   // 8. 挂载共享实例到 Fastify
+  // 注意：eventBus、stateManager、agentRegistry 已在 createServer() 中装饰
   app.decorate("db", db);
   app.decorate("permissionRegistry", permRegistry);
-  app.decorate("eventBus", eventBus);
-  app.decorate("stateManager", stateManager);
-  app.decorate("agentRegistry", agentRegistry);
   app.decorate("checkpointManager", checkpointManager);
   app.decorate("executionEngine", executionEngine);
 

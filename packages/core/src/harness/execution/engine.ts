@@ -293,7 +293,7 @@ export class ExecutionEngine {
 
     const startTime = Date.now();
     const maxIterations = ctx.capability.maxIterations ?? 15;
-    const timeoutMs = ctx.capability.timeoutMs ?? 60000;
+    const timeoutMs = ctx.capability.timeoutMs ?? 360000;
 
     while (step < maxIterations) {
       // ── 超时检查 ──

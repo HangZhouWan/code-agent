@@ -244,7 +244,7 @@ export class Agent {
         context,
         capability: {
           maxIterations: this.capability.maxTokens ?? 15,
-          timeoutMs: this.capability.timeoutMs ?? 60000,
+          timeoutMs: this.capability.timeoutMs ?? 360000,
         },
       });
 
@@ -312,7 +312,7 @@ export class Agent {
   async executeTask(input: AgentInput): Promise<AgentOutput> {
     const taskId = input.taskId;
     const maxIterations = input.maxIterations ?? this.capability.maxTokens ?? 15;
-    const timeoutMs = input.timeoutMs ?? this.capability.timeoutMs ?? 60000;
+    const timeoutMs = input.timeoutMs ?? this.capability.timeoutMs ?? 360000;
 
     this.status = 'busy';
     this.currentTaskId = taskId;
