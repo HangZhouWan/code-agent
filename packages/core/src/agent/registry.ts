@@ -14,6 +14,8 @@ import { ExecutionEngine } from '../harness/execution/engine.js';
 import { ContextManager } from '../harness/context/manager.js';
 import { HooksEngine } from '../harness/hooks/engine.js';
 import type { PermissionRegistry } from '../harness/sandbox/registry.js';
+import type { ICheckpointManager } from '../harness/execution/checkpoint.js';
+import type { IMemoryManager } from '../harness/memory/types.js';
 import type { IEventBus } from '../event-bus/types.js';
 import type { IStateManager } from '../state/types.js';
 import type { AgentRole } from './role.js';
@@ -51,14 +53,16 @@ export class AgentRegistry {
   constructor(
     private eventBus: IEventBus,
     private stateManager: IStateManager,
+    checkpoint?: ICheckpointManager,
+    memory?: IMemoryManager,
   ) {
     // 注册内置角色
     for (const role of BUILTIN_ROLES) {
       this.roles.set(role.id, role);
     }
 
-    // 共享组件
-    this.engine = new ExecutionEngine();
+    // 共享组件（注入 Checkpoint 和 Memory，不再使用 Noop 默认值）
+    this.engine = new ExecutionEngine(checkpoint, memory, this.eventBus);
     this.contextManager = new ContextManager();
   }
 

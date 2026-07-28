@@ -44,7 +44,12 @@ import {
   AgentRegistry,
   FileCheckpointManager,
   ExecutionEngine,
+  // Memory 三层记忆体系
+  InMemoryShortTermMemory,
+  InMemoryWorkingMemory,
+  FileLongTermMemory,
 } from "@my-agent/core";
+import type { IMemoryManager } from "@my-agent/core";
 
 // ---------------------------------------------------------------------------
 // 服务端版本标识
@@ -138,12 +143,22 @@ async function main(): Promise<void> {
   // 4. 初始化 Agent 基础设施
   const eventBus = new InMemoryEventBus();
   const stateManager = new InMemoryStateManager(eventBus);
-  const checkpointManager = new FileCheckpointManager("./data/checkpoints");
-  const executionEngine = new ExecutionEngine();
-  console.log("[agent] Infrastructure initialized (EventBus + StateManager + CheckpointManager)");
 
-  // 5. 注册角色 Agent
-  const agentRegistry = new AgentRegistry(eventBus, stateManager);
+  // 4a. 初始化三层记忆体系
+  const memoryManager: IMemoryManager = {
+    shortTerm: new InMemoryShortTermMemory(),
+    working: new InMemoryWorkingMemory(),
+    longTerm: new FileLongTermMemory("./data"),
+  };
+  console.log("[memory] Three-tier memory system initialized (ShortTerm + Working + LongTerm)");
+
+  // 4b. 初始化 Checkpoint + ExecutionEngine（注入 Memory）
+  const checkpointManager = new FileCheckpointManager("./data/checkpoints");
+  const executionEngine = new ExecutionEngine(checkpointManager, memoryManager, eventBus);
+  console.log("[agent] Infrastructure initialized (EventBus + StateManager + CheckpointManager + MemoryManager)");
+
+  // 5. 注册角色 Agent（注入 Checkpoint + Memory）
+  const agentRegistry = new AgentRegistry(eventBus, stateManager, checkpointManager, memoryManager);
   await agentRegistry.createAgent("code", model, toolRegistry, {
     workspacePath: cfg.WORKSPACE_PATH,
     permissionRegistry: permRegistry,
