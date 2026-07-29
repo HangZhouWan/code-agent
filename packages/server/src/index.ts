@@ -176,6 +176,45 @@ async function main(): Promise<void> {
     console.log(`  - ${agent.role.name} (${agent.id})`);
   }
 
+  // 5a. 扫描并恢复未完成的 checkpoint（服务重启后自动恢复中断的任务）
+  const pendingTaskIds = await checkpointManager.listTasks();
+  if (pendingTaskIds.length > 0) {
+    console.log(`[recovery] Found ${pendingTaskIds.length} pending checkpoint(s), resuming...`);
+    for (const taskId of pendingTaskIds) {
+      const snapshot = await checkpointManager.load(taskId);
+      if (!snapshot) continue;
+
+      // 查找原 agent（通过 agentId 匹配）
+      const agent = agentRegistry.getAgentById(snapshot.agentId);
+      if (!agent) {
+        console.log(`[recovery] Task ${taskId}: agent ${snapshot.agentId} not found, skipping`);
+        continue;
+      }
+
+      // 异步恢复（不阻塞服务启动）
+      executionEngine.resume(
+        taskId,
+        model,
+        toolRegistry.getToolsForAgent(
+          agent.capability,
+          { workspacePath: cfg.WORKSPACE_PATH, sessionId: `recovery-${taskId}` },
+          permRegistry,
+        ),
+        agent.role.systemPrompt,
+        { maxIterations: 15, timeoutMs: 360000 },
+      ).then((result) => {
+        console.log(`[recovery] Task ${taskId} resumed: status=${result.status}`);
+        if (result.status === 'success' || result.status === 'failed') {
+          checkpointManager.purge(taskId).catch(() => {});
+        }
+      }).catch((err) => {
+        console.error(`[recovery] Task ${taskId} resume failed:`, err);
+      });
+    }
+  } else {
+    console.log("[recovery] No pending checkpoints found");
+  }
+
   // 6. 初始化数据库
   const db = createDb(cfg.DB_PATH);
   console.log(`[db] SQLite database initialized at ${cfg.DB_PATH}`);

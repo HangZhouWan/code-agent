@@ -229,6 +229,7 @@ class NoopCheckpointManager implements ICheckpointManager {
   async list(): Promise<[]> { return []; }
   async purge(): Promise<void> {}
   async cleanup(): Promise<void> {}
+  async listTasks(): Promise<[]> { return []; }
 }
 
 class NoopMemoryManager implements IMemoryManager {
@@ -500,9 +501,32 @@ export class ExecutionEngine {
   }
 
   /**
+   * 删除指定任务的 checkpoint
+   *
+   * 任务成功完成或最终失败后调用，清理不再需要的 checkpoint 文件。
+   *
+   * @param taskId - 要清理 checkpoint 的任务 ID
+   */
+  async purgeCheckpoint(taskId: string): Promise<void> {
+    await this.checkpoint.purge(taskId);
+  }
+
+  /**
+   * 列出所有有 checkpoint 的任务 ID
+   *
+   * 用于服务启动时扫描待恢复的任务。
+   *
+   * @returns 任务 ID 数组
+   */
+  async listCheckpointTasks(): Promise<string[]> {
+    return this.checkpoint.listTasks();
+  }
+
+  /**
    * 从 snapshot 继续执行
    *
    * 内部方法，从指定的 step 和状态继续 ReAct 循环。
+   * 包含超时检查，防止恢复后的执行无限运行。
    */
   private async runFromSnapshot(
     ctx: ExecutionContext,
@@ -515,8 +539,29 @@ export class ExecutionEngine {
 
     const toolExec = new ToolExecutor(ctx.tools);
     const maxIterations = ctx.capability.maxIterations;
+    const startTime = Date.now();
+    const timeoutMs = ctx.capability.timeoutMs ?? 360000;
 
     while (step < maxIterations) {
+      // ── 超时检查（恢复执行也需要超时保护）──
+      if (Date.now() - startTime > timeoutMs) {
+        await this.checkpoint.save(ctx.taskId, {
+          taskId: ctx.taskId,
+          agentId: ctx.agentId,
+          step,
+          context,
+          toolHistory,
+          reasoningTrail,
+        });
+
+        return {
+          taskId: ctx.taskId,
+          status: 'timeout',
+          error: `Task timed out after ${timeoutMs}ms (resumed from step ${snapshot.step})`,
+          reasoningTrail,
+        };
+      }
+
       // ── Save checkpoint before each step ──
       await this.checkpoint.save(ctx.taskId, {
         taskId: ctx.taskId,

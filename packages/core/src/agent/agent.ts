@@ -233,8 +233,15 @@ export class Agent {
       // 获取工具
       const tools = this.getTools();
 
-      // 委托给 ExecutionEngine
-      const result = await this.engine.run({
+      // 恢复防护
+      const maxIterations = this.capability.maxTokens ?? 15;
+      const timeoutMs = this.capability.timeoutMs ?? 360000;
+      const MAX_RESUMES = 3;
+      const CUMULATIVE_TIMEOUT_MULTIPLIER = 2;
+
+      // ── 首次执行 ──
+      const overallStartTime = Date.now();
+      let result = await this.engine.run({
         agentId: this.id,
         taskId,
         agent: this,
@@ -242,11 +249,33 @@ export class Agent {
         tools,
         systemPrompt: this.role.systemPrompt,
         context,
-        capability: {
-          maxIterations: this.capability.maxTokens ?? 15,
-          timeoutMs: this.capability.timeoutMs ?? 360000,
-        },
+        capability: { maxIterations, timeoutMs },
       });
+
+      // ── 自动恢复循环 ──
+      let resumeCount = 0;
+      while (result.status === 'timeout' && resumeCount < MAX_RESUMES) {
+        const totalElapsed = Date.now() - overallStartTime;
+        if (totalElapsed >= timeoutMs * CUMULATIVE_TIMEOUT_MULTIPLIER) {
+          break;
+        }
+
+        resumeCount++;
+        result = await this.engine.resume(
+          taskId,
+          this.model,
+          tools,
+          this.role.systemPrompt,
+          { maxIterations, timeoutMs },
+        );
+      }
+
+      // 任务结束（成功或最终失败）后清理 checkpoint
+      if (result.status === 'success' || result.status === 'failed') {
+        await this.engine.purgeCheckpoint(taskId).catch(() => {
+          // 清理失败不影响结果返回
+        });
+      }
 
       // 发布结果事件
       await this.publishResult(taskId, result);
@@ -306,6 +335,11 @@ export class Agent {
    * 不走 EventBus，直接调用 ExecutionEngine。
    * 适用于简单任务或需要同步等待结果的场景。
    *
+   * 内置自动恢复机制：
+   * - 当 engine.run() 超时时，自动从 checkpoint 恢复执行
+   * - 最多恢复 3 次，累计时间不超过原始超时的 2 倍
+   * - 任务成功或最终失败后自动清理 checkpoint
+   *
    * @param input - 任务描述和参数
    * @returns 执行结果
    */
@@ -313,6 +347,10 @@ export class Agent {
     const taskId = input.taskId;
     const maxIterations = input.maxIterations ?? this.capability.maxTokens ?? 15;
     const timeoutMs = input.timeoutMs ?? this.capability.timeoutMs ?? 360000;
+
+    // 恢复防护：最多恢复 3 次，累计时间不超过 2 倍原始超时
+    const MAX_RESUMES = 3;
+    const CUMULATIVE_TIMEOUT_MULTIPLIER = 2;
 
     this.status = 'busy';
     this.currentTaskId = taskId;
@@ -334,8 +372,9 @@ export class Agent {
       // 获取工具
       const tools = this.getTools(input.onConfirmRequired);
 
-      // 委托给 ExecutionEngine
-      const result = await this.engine.run({
+      // ── 首次执行 ──
+      const overallStartTime = Date.now();
+      let result = await this.engine.run({
         agentId: this.id,
         taskId,
         agent: this,
@@ -345,6 +384,32 @@ export class Agent {
         context,
         capability: { maxIterations, timeoutMs },
       });
+
+      // ── 自动恢复循环 ──
+      // 当首次执行超时时，从 checkpoint 恢复继续执行
+      let resumeCount = 0;
+      while (result.status === 'timeout' && resumeCount < MAX_RESUMES) {
+        const totalElapsed = Date.now() - overallStartTime;
+        if (totalElapsed >= timeoutMs * CUMULATIVE_TIMEOUT_MULTIPLIER) {
+          break;
+        }
+
+        resumeCount++;
+        result = await this.engine.resume(
+          taskId,
+          this.model,
+          tools,
+          this.role.systemPrompt,
+          { maxIterations, timeoutMs },
+        );
+      }
+
+      // 任务结束（成功或最终失败）后清理 checkpoint
+      if (result.status === 'success' || result.status === 'failed') {
+        await this.engine.purgeCheckpoint(taskId).catch(() => {
+          // 清理失败不影响结果返回
+        });
+      }
 
       return this.mapResult(taskId, result);
     } catch (error) {

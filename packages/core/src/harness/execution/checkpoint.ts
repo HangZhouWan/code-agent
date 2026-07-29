@@ -126,6 +126,13 @@ export interface ICheckpointManager {
    * 删除创建时间早于 olderThan 的所有 checkpoint 文件。
    */
   cleanup(olderThan: Date): Promise<void>;
+
+  /**
+   * 列出所有有 checkpoint 的任务 ID
+   *
+   * 用于服务启动时扫描待恢复的任务。
+   */
+  listTasks(): Promise<string[]>;
 }
 
 // ─────────────────────────────────────────────
@@ -232,6 +239,29 @@ export class FileCheckpointManager implements ICheckpointManager {
         // 文件可能已被删除
       }
     }
+  }
+
+  /** 列出所有有 checkpoint 的任务 ID */
+  async listTasks(): Promise<string[]> {
+    if (!fs.existsSync(this.basePath)) return [];
+
+    const taskIds: string[] = [];
+    const files = fs.readdirSync(this.basePath);
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+
+      const fp = path.join(this.basePath, file);
+      try {
+        const raw = fs.readFileSync(fp, 'utf-8');
+        const data = JSON.parse(raw);
+        if (data.taskId && typeof data.taskId === 'string') {
+          taskIds.push(data.taskId);
+        }
+      } catch {
+        // 文件损坏，跳过
+      }
+    }
+    return taskIds;
   }
 
   // ─── 序列化/反序列化 ──────────────────────
