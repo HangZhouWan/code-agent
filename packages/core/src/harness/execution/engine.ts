@@ -19,7 +19,6 @@ import type { StructuredTool } from '@langchain/core/tools';
 import type { IEventBus } from '../../event-bus/types.js';
 import type {
   ICheckpointManager,
-  CheckpointSnapshot,
   Thought,
   ToolCallRecord,
   RuntimeContext,
@@ -264,42 +263,140 @@ class NoopMemoryManager implements IMemoryManager {
  * ```
  */
 export class ExecutionEngine {
-  private readonly toolExecutor: ToolExecutor;
 
   constructor(
     private checkpoint: ICheckpointManager = new NoopCheckpointManager(),
     private memory: IMemoryManager = new NoopMemoryManager(),
     private eventBus: IEventBus | null = null,
     private contextManager?: ContextManagerLike,
-  ) {
-    this.toolExecutor = new ToolExecutor([]);
-  }
+  ) {}
+
+  // ─── 默认值 ─────────────────────────────
+
+  /** 默认最大迭代次数 */
+  private static readonly DEFAULT_MAX_ITERATIONS = 15;
+  /** 默认超时时间（毫秒），6 分钟 */
+  private static readonly DEFAULT_TIMEOUT_MS = 360_000;
+  /** 上下文窗口大小（token 数），用于触发压缩 */
+  private static readonly CONTEXT_WINDOW_TOKENS = 128_000;
 
   // ─── 执行入口 ─────────────────────────────
 
   /**
    * 启动执行循环
    *
-   * 完整的 ReAct 循环：每轮 Observe → Think → Act → Reflect，
-   * 直到模型返回 done / replan 或达到 maxIterations 上限。
+   * 委托给 runLoop()，从头开始执行。
    */
   async run(ctx: ExecutionContext): Promise<ExecutionResult> {
-    let step = 0;
-    let context = ctx.context;
-    const toolHistory: ToolCallRecord[] = [];
-    const reasoningTrail: Thought[] = [];
+    return this.runLoop(
+      ctx,
+      {
+        step: 0,
+        context: ctx.context,
+        toolHistory: [],
+        reasoningTrail: [],
+      },
+      Date.now(),
+    );
+  }
 
-    // 重建工具执行器
+  // ─── 恢复执行 ─────────────────────────────
+
+  /**
+   * 从 checkpoint 恢复执行
+   *
+   * 加载之前的 checkpoint，从断点继续执行 ReAct 循环。
+   */
+  async resume(
+    taskId: string,
+    model: BaseChatModel,
+    tools: StructuredTool[],
+    systemPrompt: string,
+    capability?: { maxIterations?: number; timeoutMs?: number },
+  ): Promise<ExecutionResult> {
+    const snapshot = await this.checkpoint.load(taskId);
+    if (!snapshot) {
+      return {
+        taskId,
+        status: 'failed',
+        error: `No checkpoint found for task "${taskId}"`,
+        reasoningTrail: [],
+      };
+    }
+
+    // 从 snapshot 重建 ExecutionContext
+    const ctx: ExecutionContext = {
+      agentId: snapshot.agentId,
+      taskId: snapshot.taskId,
+      agent: {},
+      model,
+      tools,
+      systemPrompt,
+      context: snapshot.context,
+      capability: {
+        maxIterations: capability?.maxIterations ?? ExecutionEngine.DEFAULT_MAX_ITERATIONS,
+        timeoutMs: capability?.timeoutMs ?? ExecutionEngine.DEFAULT_TIMEOUT_MS,
+      },
+    };
+
+    return this.runLoop(
+      ctx,
+      {
+        step: snapshot.step,
+        context: snapshot.context,
+        toolHistory: [...snapshot.toolHistory],
+        reasoningTrail: [...snapshot.reasoningTrail],
+      },
+      Date.now(),
+    );
+  }
+
+  // ─── Checkpoint 管理 ───────────────────────
+
+  /**
+   * 删除指定任务的 checkpoint
+   */
+  async purgeCheckpoint(taskId: string): Promise<void> {
+    await this.checkpoint.purge(taskId);
+  }
+
+  /**
+   * 列出所有有 checkpoint 的任务 ID
+   */
+  async listCheckpointTasks(): Promise<string[]> {
+    return this.checkpoint.listTasks();
+  }
+
+  // ─── 核心循环 ─────────────────────────────
+
+  /**
+   * 驱动 ReAct 循环的核心方法
+   *
+   * run() 和 resume() 共享此方法。区别仅在于初始状态：
+   * - run()：step=0，空 toolHistory 和 reasoningTrail
+   * - resume()：从 CheckpointSnapshot 恢复的 step、toolHistory、reasoningTrail
+   *
+   * 每轮循环：Save Checkpoint → Observe → Think (LLM) → Act → Compress
+   */
+  private async runLoop(
+    ctx: ExecutionContext,
+    state: {
+      step: number;
+      context: RuntimeContext;
+      toolHistory: ToolCallRecord[];
+      reasoningTrail: Thought[];
+    },
+    startTime: number,
+  ): Promise<ExecutionResult> {
+    let { step, context, toolHistory, reasoningTrail } = state;
+
     const toolExec = new ToolExecutor(ctx.tools);
-
-    const startTime = Date.now();
-    const maxIterations = ctx.capability.maxIterations ?? 15;
-    const timeoutMs = ctx.capability.timeoutMs ?? 360000;
+    const maxIterations = ctx.capability.maxIterations ?? ExecutionEngine.DEFAULT_MAX_ITERATIONS;
+    const timeoutMs = ctx.capability.timeoutMs ?? ExecutionEngine.DEFAULT_TIMEOUT_MS;
 
     while (step < maxIterations) {
       // ── 超时检查 ──
       if (Date.now() - startTime > timeoutMs) {
-        // 超时前保存一次 checkpoint，方便 resume
         await this.checkpoint.save(ctx.taskId, {
           taskId: ctx.taskId,
           agentId: ctx.agentId,
@@ -359,13 +456,11 @@ export class ExecutionEngine {
             const result = await toolExec.execute(thought.toolCall);
             toolHistory.push({ call: thought.toolCall, result });
 
-            // 追加工具结果到上下文
             context = await this.appendToContext(context, {
               role: 'tool',
               content: `Tool: ${thought.toolCall.name}\nArgs: ${JSON.stringify(thought.toolCall.args)}\nResult: ${result}`,
             });
 
-            // 更新短期记忆
             this.memory.shortTerm.add({
               role: 'tool',
               content: `${thought.toolCall.name}: ${result.slice(0, 500)}`,
@@ -429,254 +524,11 @@ export class ExecutionEngine {
 
       // ── Context compress check ──
       if (context.tokenCount > 0) {
-        const maxTokens = 128000; // 默认值
         const currentTokens = estimateTokens(context.messages);
         context.tokenCount = currentTokens;
 
-        if (currentTokens > maxTokens * 0.8) {
-          context = await this.compressContext(context, maxTokens);
-        }
-      }
-
-      step++;
-    }
-
-    return {
-      taskId: ctx.taskId,
-      status: 'timeout',
-      error: `Max iterations (${maxIterations}) reached`,
-      reasoningTrail,
-    };
-  }
-
-  // ─── 恢复执行 ─────────────────────────────
-
-  /**
-   * 从 checkpoint 恢复执行
-   *
-   * 加载之前的 checkpoint，从断点继续执行 ReAct 循环。
-   *
-   * @param taskId - 要恢复的任务 ID
-   * @param model - LLM 模型
-   * @param tools - 工具列表
-   * @param systemPrompt - System Prompt
-   * @param capability - 执行能力（可选，默认值兜底）
-   * @returns 执行结果
-   */
-  async resume(
-    taskId: string,
-    model: BaseChatModel,
-    tools: StructuredTool[],
-    systemPrompt: string,
-    capability?: { maxIterations?: number; timeoutMs?: number },
-  ): Promise<ExecutionResult> {
-    const snapshot = await this.checkpoint.load(taskId);
-    if (!snapshot) {
-      return {
-        taskId,
-        status: 'failed',
-        error: `No checkpoint found for task "${taskId}"`,
-        reasoningTrail: [],
-      };
-    }
-
-    // 从 snapshot 重建 ExecutionContext
-    const ctx: ExecutionContext = {
-      agentId: snapshot.agentId,
-      taskId: snapshot.taskId,
-      agent: {},
-      model,
-      tools,
-      systemPrompt,
-      context: snapshot.context,
-      capability: {
-        maxIterations: capability?.maxIterations ?? 15,
-        timeoutMs: capability?.timeoutMs ?? 60000,
-      },
-    };
-
-    // 重用 run() 逻辑，但需要跳过已执行的步骤
-    // 通过包装 run() 的内部循环来从 snapshot.step 继续
-    return this.runFromSnapshot(ctx, snapshot);
-  }
-
-  /**
-   * 删除指定任务的 checkpoint
-   *
-   * 任务成功完成或最终失败后调用，清理不再需要的 checkpoint 文件。
-   *
-   * @param taskId - 要清理 checkpoint 的任务 ID
-   */
-  async purgeCheckpoint(taskId: string): Promise<void> {
-    await this.checkpoint.purge(taskId);
-  }
-
-  /**
-   * 列出所有有 checkpoint 的任务 ID
-   *
-   * 用于服务启动时扫描待恢复的任务。
-   *
-   * @returns 任务 ID 数组
-   */
-  async listCheckpointTasks(): Promise<string[]> {
-    return this.checkpoint.listTasks();
-  }
-
-  /**
-   * 从 snapshot 继续执行
-   *
-   * 内部方法，从指定的 step 和状态继续 ReAct 循环。
-   * 包含超时检查，防止恢复后的执行无限运行。
-   */
-  private async runFromSnapshot(
-    ctx: ExecutionContext,
-    snapshot: CheckpointSnapshot,
-  ): Promise<ExecutionResult> {
-    let step = snapshot.step;
-    let context = snapshot.context;
-    const toolHistory = [...snapshot.toolHistory];
-    const reasoningTrail = [...snapshot.reasoningTrail];
-
-    const toolExec = new ToolExecutor(ctx.tools);
-    const maxIterations = ctx.capability.maxIterations;
-    const startTime = Date.now();
-    const timeoutMs = ctx.capability.timeoutMs ?? 360000;
-
-    while (step < maxIterations) {
-      // ── 超时检查（恢复执行也需要超时保护）──
-      if (Date.now() - startTime > timeoutMs) {
-        await this.checkpoint.save(ctx.taskId, {
-          taskId: ctx.taskId,
-          agentId: ctx.agentId,
-          step,
-          context,
-          toolHistory,
-          reasoningTrail,
-        });
-
-        return {
-          taskId: ctx.taskId,
-          status: 'timeout',
-          error: `Task timed out after ${timeoutMs}ms (resumed from step ${snapshot.step})`,
-          reasoningTrail,
-        };
-      }
-
-      // ── Save checkpoint before each step ──
-      await this.checkpoint.save(ctx.taskId, {
-        taskId: ctx.taskId,
-        agentId: ctx.agentId,
-        step,
-        context,
-        toolHistory,
-        reasoningTrail,
-      });
-
-      // ── Observe ──
-      const events = this.collectEvents();
-      const observation: Observation = {
-        context,
-        events,
-        lastToolResult: toolHistory.at(-1)?.result,
-      };
-
-      // ── Think ──
-      let thought: Thought;
-      try {
-        thought = await this.think(ctx.model, ctx.systemPrompt, observation);
-      } catch (error) {
-        return {
-          taskId: ctx.taskId,
-          status: 'failed',
-          error: `LLM call failed: ${error instanceof Error ? error.message : String(error)}`,
-          reasoningTrail,
-        };
-      }
-      reasoningTrail.push(thought);
-
-      // ── Act ──
-      try {
-        switch (thought.decision) {
-          case 'use_tool': {
-            if (!thought.toolCall) {
-              throw new Error('use_tool decision missing toolCall');
-            }
-            const result = await toolExec.execute(thought.toolCall);
-            toolHistory.push({ call: thought.toolCall, result });
-
-            context = await this.appendToContext(context, {
-              role: 'tool',
-              content: `Tool: ${thought.toolCall.name}\nArgs: ${JSON.stringify(thought.toolCall.args)}\nResult: ${result}`,
-            });
-
-            this.memory.shortTerm.add({
-              role: 'tool',
-              content: `${thought.toolCall.name}: ${result.slice(0, 500)}`,
-            });
-            break;
-          }
-
-          case 'publish_event': {
-            if (thought.event && this.eventBus) {
-              await this.eventBus.publish(
-                thought.event.topic as any,
-                thought.event.payload,
-                { senderId: ctx.agentId, taskId: ctx.taskId },
-              );
-            }
-            break;
-          }
-
-          case 'request_agent': {
-            if (thought.targetAgent && this.eventBus) {
-              const reply = await this.eventBus.request(
-                `agent.command.${thought.targetAgent}` as any,
-                thought.payload ?? {},
-              );
-              context = await this.appendToContext(context, {
-                role: 'assistant',
-                content: `[Reply from ${thought.targetAgent}]: ${JSON.stringify(reply.payload)}`,
-              });
-            }
-            break;
-          }
-
-          case 'done':
-            return {
-              taskId: ctx.taskId,
-              status: 'success',
-              result: thought.summary,
-              toolCalls: toolHistory.map((tc) => ({
-                tool: tc.call.name,
-                args: tc.call.args,
-                result: tc.result,
-              })),
-              reasoningTrail,
-            };
-
-          case 'replan':
-            return {
-              taskId: ctx.taskId,
-              status: 'replan_needed',
-              result: thought.summary,
-              reasoningTrail,
-            };
-        }
-      } catch (error) {
-        context = await this.appendToContext(context, {
-          role: 'system',
-          content: `Error: ${error instanceof Error ? error.message : String(error)}`,
-        });
-      }
-
-      // ── Context compress check ──
-      if (context.tokenCount > 0) {
-        const maxTokens = 128000;
-        const currentTokens = estimateTokens(context.messages);
-        context.tokenCount = currentTokens;
-
-        if (currentTokens > maxTokens * 0.8) {
-          context = await this.compressContext(context, maxTokens);
+        if (currentTokens > ExecutionEngine.CONTEXT_WINDOW_TOKENS * 0.8) {
+          context = await this.compressContext(context, ExecutionEngine.CONTEXT_WINDOW_TOKENS);
         }
       }
 
