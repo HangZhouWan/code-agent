@@ -12,5 +12,7 @@
     "declarationMap": false
   },
   // 编译 src 和 vite 配置文件
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "vite.config.ts"],
+  // 排除测试文件（测试由 vitest 单独运行，无需 tsc 编译）
+  "exclude": ["node_modules", "dist", "src/**/__tests__", "src/**/*.test.*", "src/**/*.spec.*"]
 }
