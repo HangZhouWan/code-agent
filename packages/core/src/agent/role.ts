@@ -63,62 +63,19 @@ export interface AgentRole {
 // 内置角色
 // ─────────────────────────────────────────────
 
+import { CODE_AGENT_ROLE } from './roles/code.js';
+import { TEST_AGENT_ROLE } from './roles/test.js';
+import { DOC_AGENT_ROLE } from './roles/doc.js';
+
 /**
  * 内置角色定义
  *
  * 系统预置三个角色：Code Agent、Test Agent、Doc Agent。
+ * 具体定义见 packages/core/src/agent/roles/ 目录。
  * 可通过 AgentRegistry.registerRole() 注册自定义角色。
  */
 export const BUILTIN_ROLES: AgentRole[] = [
-  {
-    id: 'code',
-    name: 'Code Agent',
-    description:
-      'Responsible for reading, writing, and modifying code files. Handles code review tasks.',
-    systemPrompt: `You are a Software Engineer Agent. Your responsibilities:
-- Read and analyze source code
-- Write and modify code files
-- Run basic code quality checks
-- Report code changes clearly`,
-    commandSubscriptions: [
-      'agent.command.code_review',
-      'agent.command.code_modify',
-      'agent.command.code_generate',
-    ],
-    eventSubscriptions: ['agent.event.test_failed', 'agent.event.code_changed'],
-    defaultTools: ['file_read', 'file_write', 'code_search', 'shell', 'git'],
-    canDelegate: true,
-    delegatableRoles: ['test', 'doc'],
-  },
-  {
-    id: 'test',
-    name: 'Test Agent',
-    description:
-      'Responsible for running tests, analyzing failures, and suggesting fixes.',
-    systemPrompt: `You are a QA Engineer Agent. Your responsibilities:
-- Run test suites
-- Analyze test failures
-- Write missing test cases
-- Report test results clearly`,
-    commandSubscriptions: ['agent.command.test_run', 'agent.command.test_write'],
-    eventSubscriptions: ['agent.event.code_changed'],
-    defaultTools: ['shell', 'file_read', 'file_write', 'code_search'],
-    canDelegate: false,
-    delegatableRoles: [],
-  },
-  {
-    id: 'doc',
-    name: 'Doc Agent',
-    description:
-      'Responsible for generating documentation, README files, and API docs.',
-    systemPrompt: `You are a Technical Writer Agent. Your responsibilities:
-- Generate documentation from code
-- Write README and API documentation
-- Keep docs consistent with code changes`,
-    commandSubscriptions: ['agent.command.doc_generate', 'agent.command.doc_update'],
-    eventSubscriptions: ['agent.event.code_changed'],
-    defaultTools: ['file_read', 'file_write', 'code_search'],
-    canDelegate: false,
-    delegatableRoles: [],
-  },
+  CODE_AGENT_ROLE,
+  TEST_AGENT_ROLE,
+  DOC_AGENT_ROLE,
 ];

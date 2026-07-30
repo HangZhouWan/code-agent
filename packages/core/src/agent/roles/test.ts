@@ -20,7 +20,7 @@ export const TEST_AGENT_ROLE: AgentRole = {
 - Watch for code changes and automatically run relevant tests`,
   commandSubscriptions: ['agent.command.test_run', 'agent.command.test_write'],
   eventSubscriptions: ['agent.event.code_changed'],
-  defaultTools: ['shell', 'file_read', 'file_write', 'code_search'],
+  defaultTools: ['shell', 'file_read', 'file_write', 'code_search', 'web_fetch'],
   canDelegate: false,
   delegatableRoles: [],
 };

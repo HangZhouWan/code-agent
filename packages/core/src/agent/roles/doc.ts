@@ -20,7 +20,7 @@ export const DOC_AGENT_ROLE: AgentRole = {
 - Watch for code changes and flag outdated documentation`,
   commandSubscriptions: ['agent.command.doc_generate', 'agent.command.doc_update'],
   eventSubscriptions: ['agent.event.code_changed'],
-  defaultTools: ['file_read', 'file_write', 'code_search'],
+  defaultTools: ['file_read', 'file_write', 'code_search', 'web_fetch'],
   canDelegate: false,
   delegatableRoles: [],
 };
