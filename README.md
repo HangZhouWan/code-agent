@@ -11,10 +11,12 @@
 ```
                        User
                         │
-                   Web Chat UI
-                        │
-                  API Gateway
-                        │
+              ┌─────────┴─────────┐
+              │                   │
+         Web Chat UI         CLI REPL
+              │                   │
+         API Gateway              │
+              │                   │
 ┌────────────────────────▼──────────────────────────┐
 │                   Orchestrator                      │
 │                                                     │
@@ -182,6 +184,14 @@ my-agent/
 │           │   └── useSessions.ts
 │           └── stores/              # 状态管理
 │               └── chatStore.ts
+│
+│   └── cli/                          # @my-agent/cli — 命令行 REPL
+│       └── src/
+│           ├── index.ts             #   入口 — 装配所有依赖，启动 REPL
+│           ├── repl.ts              #   REPL 循环 — readline + 命令分发 + 流式输出
+│           ├── config.ts            #   环境变量配置加载
+│           ├── format.ts            #   ANSI 终端格式化
+│           └── approval.ts          #   stdin 交互式工具审批
 ```
 
 ---
@@ -240,9 +250,62 @@ pnpm dev
 
 > 前端开发时建议访问 Vite 地址 `http://localhost:5173`，Vite 会自动代理 API 请求到后端。
 
-### 4. 其他常用命令
+### 5. 启动 CLI REPL（可选）
 
 ```bash
+pnpm cli
+```
+
+启动交互式命令行对话界面，无需浏览器即可与 Agent 对话：
+
+```
+$ pnpm cli
+
+==================================================
+  my-agent cli v0.1.0
+==================================================
+[config] LLM: openai-compatible/deepseek-v4-pro
+[config] Workspace: ./workspace
+[tools] Registered 11 built-in tools
+[sandbox] Registered 11 tool permissions
+[memory] Three-tier memory system initialized
+[agent] Infrastructure initialized
+[AgentRegistry] Agents started:
+  - Code Agent (354df328-...)
+  - Test Agent (5dc02772-...)
+  - Doc Agent (16a7f65e-...)
+[cli] Starting REPL...
+
+  my-agent CLI REPL
+  Type /help for commands, or just start chatting.
+
+my-agent > 帮我检查 git 状态并生成一个 commit 信息
+```
+
+**REPL 命令：**
+
+| 命令 | 功能 |
+|------|------|
+| `/help` | 显示可用命令列表 |
+| `/clear` | 清空当前会话上下文 |
+| `/history` | 查看消息历史摘要 |
+| `/agents` | 显示 Agent 状态（角色、ID、状态） |
+| `/tools` | 列出所有已注册工具 |
+| `/exit` | 退出 REPL |
+
+**交互特性：**
+
+- **流式输出**：LLM 回复逐 token 实时显示
+- **工具调用可视化**：工具执行时显示 `🛠 tool_name(args)` 及结果
+- **审批提示**：危险操作在终端直接询问 `Approve? [y/N]`
+- **Ctrl+C**：运行中取消当前任务，空提示符时退出
+
+### 6. 其他常用命令
+
+```bash
+# 启动 CLI REPL
+pnpm cli
+
 # 类型检查
 pnpm typecheck
 
@@ -435,6 +498,7 @@ Agent 启动时声明能力范围（`tools` + `paths`），超出范围的调用
 | Step 3 | Agent 基类 + AgentRegistry + 角色定义 | ✅ 完成 |
 | Step 4 | Orchestrator 改造：双通道 Dispatcher + Replanner + Finalizer | ✅ 完成 |
 | Step 5 | 角色 Agent（Code/Test/Doc）+ Storage 扩展 + 端到端集成 | ✅ 完成 |
+| — | CLI REPL entry point | ✅ 完成 |
 
 ---
 
