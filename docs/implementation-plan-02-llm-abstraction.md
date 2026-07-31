@@ -126,7 +126,7 @@ export * from './llm/retry.js';
 
 ```typescript
 // 单元测试 / 手动验证脚本
-import { createChatModel } from '@my-agent/core';
+import { createChatModel } from '@code-agent/core';
 
 const model = createChatModel({
   provider: 'openai',
@@ -145,4 +145,4 @@ console.log(response.content);
 - [ ] `withRetry` 在 429/5xx 时正确重试，4xx 时立即失败
 - [ ] 错误情况下抛出有意义的异常信息
 - [ ] TypeScript 类型检查通过
-- [ ] 所有导出可由 `@my-agent/core` 包正确引入
+- [ ] 所有导出可由 `@code-agent/core` 包正确引入

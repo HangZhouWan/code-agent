@@ -16,7 +16,7 @@
 
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { SystemMessage, HumanMessage } from '@langchain/core/messages';
-import type { WorkerOutput } from '@my-agent/core';
+import type { WorkerOutput } from '@code-agent/core';
 import type { Artifacts } from '../types.js';
 
 // ---------------------------------------------------------------------------

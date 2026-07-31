@@ -353,7 +353,7 @@ const graph = createOrchestratorGraph({
 | `complexity: 'complex'` 场景 | bus 任务正确发布 + 等待 Agent 完成 |
 | Replanner 正确修正 plan | 失败任务 → replanSignal → 新 pendingTasks |
 | Finalizer 输出 Markdown | 含文件、commit、测试结果 |
-| `pnpm --filter @my-agent/server test` | Orchestrator 测试全过 |
+| `pnpm --filter @code-agent/server test` | Orchestrator 测试全过 |
 | 手动：简单任务端到端 | "读取 package.json" → 正常完成 |
 
 ---

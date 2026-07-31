@@ -1,5 +1,5 @@
 {
-  "name": "@my-agent/web",
+  "name": "@code-agent/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",

@@ -37,17 +37,17 @@ import type { FastifyRequest } from "fastify";
 import type { WebSocket } from "ws";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { HumanMessage, AIMessageChunk } from "@langchain/core/messages";
-import type { ToolRegistry, PermissionRegistry } from "@my-agent/core";
+import type { ToolRegistry, PermissionRegistry } from "@code-agent/core";
 import {
   InMemoryEventBus,
   InMemoryStateManager,
   AgentRegistry,
-} from "@my-agent/core";
+} from "@code-agent/core";
 import type {
   IEventBus,
   AgentRegistry as AgentRegistryType,
   InMemoryStateManager as InMemoryStateManagerType,
-} from "@my-agent/core";
+} from "@code-agent/core";
 import { SessionRepository } from "../../db/repositories/sessions.js";
 
 // ---------------------------------------------------------------------------

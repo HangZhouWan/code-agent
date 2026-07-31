@@ -12,7 +12,7 @@
  */
 
 import type { FastifyInstance, FastifyPluginAsync } from "fastify";
-import type { AgentRegistry, InMemoryStateManager } from "@my-agent/core";
+import type { AgentRegistry, InMemoryStateManager } from "@code-agent/core";
 
 // ---------------------------------------------------------------------------
 // 辅助函数

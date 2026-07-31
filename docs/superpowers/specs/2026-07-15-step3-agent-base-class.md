@@ -347,5 +347,5 @@ export class WorkerAgent {
 | `AgentRegistry.createAgent('code')` | 创建并启动一个 Code Agent |
 | `AgentRegistry.getAgent('code')` | 返回空闲 Code Agent（idle） |
 | `WorkerAgent.run()` | 与旧行为完全一致 |
-| `pnpm --filter @my-agent/core test` | Agent 模块单测全过 |
-| `pnpm --filter @my-agent/server test` | 现有测试不受影响 |
+| `pnpm --filter @code-agent/core test` | Agent 模块单测全过 |
+| `pnpm --filter @code-agent/server test` | 现有测试不受影响 |

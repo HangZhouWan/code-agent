@@ -1,5 +1,5 @@
 /**
- * @my-agent/cli —— CLI REPL 入口
+ * @code-agent/cli —— CLI REPL 入口
  *
  * 此模块负责：
  * - 加载环境变量配置
@@ -9,7 +9,7 @@
  * - 创建 AgentRegistry 并注册三个内置角色 Agent
  * - 启动交互式 REPL 会话
  *
- * 启动命令：pnpm --filter @my-agent/cli dev
+ * 启动命令：pnpm --filter @code-agent/cli dev
  */
 
 import dotenv from "dotenv";
@@ -48,8 +48,8 @@ import {
   InMemoryShortTermMemory,
   InMemoryWorkingMemory,
   FileLongTermMemory,
-} from "@my-agent/core";
-import type { IMemoryManager } from "@my-agent/core";
+} from "@code-agent/core";
+import type { IMemoryManager } from "@code-agent/core";
 import { startRepl } from "./repl.js";
 
 // ─── Version ───────────────────────────────────────
@@ -71,7 +71,7 @@ export const CLI_VERSION = "0.1.0";
  */
 async function main(): Promise<void> {
   console.log("=".repeat(50));
-  console.log("  my-agent cli v" + CLI_VERSION);
+  console.log("  code-agent cli v" + CLI_VERSION);
   console.log("=".repeat(50));
 
   // 1. 加载配置

@@ -12,7 +12,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createServer } from "../server.js";
-import type { ToolRegistry } from "@my-agent/core";
+import type { ToolRegistry } from "@code-agent/core";
 
 // ---------------------------------------------------------------------------
 // Mock dependencies

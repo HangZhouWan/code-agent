@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest';
 import { HumanMessage } from '@langchain/core/messages';
 import { SimpleChatModel } from '@langchain/core/language_models/chat_models';
 import type { BaseMessage } from '@langchain/core/messages';
-import { ToolRegistry } from '@my-agent/core';
+import { ToolRegistry } from '@code-agent/core';
 
 // Orchestrator 模块
 import type { SubTask, Plan, NextAction, TaskResult } from '../types.js';

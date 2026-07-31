@@ -231,8 +231,8 @@ describe('InMemoryWorkingMemory', () => {
   });
 
   it('write → read 往返', () => {
-    wm.write('projectName', 'my-agent');
-    expect(wm.read<string>('projectName')).toBe('my-agent');
+    wm.write('projectName', 'code-agent');
+    expect(wm.read<string>('projectName')).toBe('code-agent');
   });
 
   it('read 不存在 → 返回 null', () => {

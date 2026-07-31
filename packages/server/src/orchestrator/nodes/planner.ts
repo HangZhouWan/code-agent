@@ -13,8 +13,8 @@
 
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { SystemMessage, HumanMessage } from '@langchain/core/messages';
-import { ToolRegistry, type ToolDefinition } from '@my-agent/core';
-import type { AgentRegistry } from '@my-agent/core';
+import { ToolRegistry, type ToolDefinition } from '@code-agent/core';
+import type { AgentRegistry } from '@code-agent/core';
 import type { SubTask, Plan } from '../types.js';
 
 // ---------------------------------------------------------------------------

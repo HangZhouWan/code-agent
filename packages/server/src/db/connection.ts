@@ -12,10 +12,10 @@ import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
  * - 启用 WAL 模式（Write-Ahead Logging，支持并发读写，适合 WebSocket 场景）
  * - 启用外键约束（SQLite 默认关闭）
  *
- * @param path - 数据库文件路径，默认 "./data/my-agent.db"
+ * @param path - 数据库文件路径，默认 "./data/code-agent.db"
  * @returns Drizzle ORM 数据库实例
  */
-export function createDb(path: string = "./data/my-agent.db"): BetterSQLite3Database {
+export function createDb(path: string = "./data/code-agent.db"): BetterSQLite3Database {
   // 确保数据目录存在
   mkdirSync(dirname(path), { recursive: true });
 

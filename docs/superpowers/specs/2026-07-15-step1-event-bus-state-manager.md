@@ -259,6 +259,6 @@ pending ──→ assigned ──→ running ──→ completed
 
 | 检查项 | 预期结果 |
 |--------|---------|
-| `pnpm --filter @my-agent/core test` | 全部通过（EventBus + StateManager 单测） |
+| `pnpm --filter @code-agent/core test` | 全部通过（EventBus + StateManager 单测） |
 | `pnpm typecheck` | 无类型错误 |
 | 现有功能 | 完全不受影响（只新增导出，零修改现有逻辑） |

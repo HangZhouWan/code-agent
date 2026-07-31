@@ -313,7 +313,7 @@ export class WorkerAgent {
 
 | 检查项 | 预期结果 |
 |--------|---------|
-| `pnpm --filter @my-agent/core test` | ExecutionEngine + Checkpoint + Memory 单测全过 |
-| `pnpm --filter @my-agent/server test` | 现有 Orchestrator + Dispatcher 测试不变（WorkerAgent API 不变） |
+| `pnpm --filter @code-agent/core test` | ExecutionEngine + Checkpoint + Memory 单测全过 |
+| `pnpm --filter @code-agent/server test` | 现有 Orchestrator + Dispatcher 测试不变（WorkerAgent API 不变） |
 | 手动：checkpoint 恢复 | 模拟 WorkerExecute 中 kill 进程 → 新进程 resume → 从同一 step 继续 |
 | 手动：context 压缩 | 构造超长对话 → 触发 compress → token 降至阈值以下 |

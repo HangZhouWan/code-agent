@@ -4,7 +4,7 @@
  * 定义 Orchestrator 使用的子任务接口、Plan 结构和状态枚举。
  */
 
-import type { WorkerOutput } from '@my-agent/core';
+import type { WorkerOutput } from '@code-agent/core';
 
 /**
  * 子任务描述 —— Planner 节点生成的计划项

@@ -21,7 +21,7 @@ import type {
   IEventBus,
   AgentRegistry,
   InMemoryStateManager,
-} from "@my-agent/core";
+} from "@code-agent/core";
 
 import { errorHandler } from "./middleware/error.js";
 import sessionRoutes from "./routes/sessions.js";

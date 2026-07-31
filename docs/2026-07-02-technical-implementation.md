@@ -26,13 +26,13 @@
 ## 二、项目结构
 
 ```
-my-agent/
+code-agent/
 ├── pnpm-workspace.yaml
 ├── package.json                    # 根 workspace 脚本
 ├── tsconfig.base.json              # 共享 TS 配置
 ├── .env.example
 ├── packages/
-│   ├── core/                       # @my-agent/core
+│   ├── core/                       # @code-agent/core
 │   │   ├── package.json
 │   │   ├── tsconfig.json
 │   │   └── src/
@@ -70,7 +70,7 @@ my-agent/
 │   │           ├── worker.ts
 │   │           └── loop.ts
 │   │
-│   ├── server/                     # @my-agent/server
+│   ├── server/                     # @code-agent/server
 │   │   ├── package.json
 │   │   ├── tsconfig.json
 │   │   └── src/
@@ -100,7 +100,7 @@ my-agent/
 │   │               ├── sessions.ts
 │   │               └── messages.ts
 │   │
-│   └── web/                        # @my-agent/web
+│   └── web/                        # @code-agent/web
 │       ├── package.json
 │       ├── tsconfig.json
 │       ├── vite.config.ts
@@ -1316,7 +1316,7 @@ Rules:
 ```typescript
 import { Annotation } from "@langchain/langgraph";
 import type { BaseMessage } from "@langchain/core/messages";
-import type { WorkerOutput } from "@my-agent/core";
+import type { WorkerOutput } from "@code-agent/core";
 
 export interface SubTask {
   id: string;
@@ -1404,8 +1404,8 @@ export async function plannerNode(
 ```typescript
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { SubTask } from "../types.js";
-import type { WorkerOutput } from "@my-agent/core";
-import { WorkerAgent, ToolRegistry } from "@my-agent/core";
+import type { WorkerOutput } from "@code-agent/core";
+import { WorkerAgent, ToolRegistry } from "@code-agent/core";
 
 export async function dispatcherNode(
   state: {
@@ -1487,7 +1487,7 @@ export async function dispatcherNode(
 ```typescript
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import type { WorkerOutput } from "@my-agent/core";
+import type { WorkerOutput } from "@code-agent/core";
 
 const SUMMARIZER_SYSTEM_PROMPT = `You are an AI orchestrator. Synthesize the results from multiple worker agents into a coherent response for the user.
 
@@ -1534,7 +1534,7 @@ export async function summarizerNode(
 import { StateGraph, END } from "@langchain/langgraph";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { OrchestratorState } from "./state.js";
-import { ToolRegistry } from "@my-agent/core";
+import { ToolRegistry } from "@code-agent/core";
 import { plannerNode } from "./nodes/planner.js";
 import { dispatcherNode } from "./nodes/dispatcher.js";
 import { summarizerNode } from "./nodes/summarizer.js";
@@ -1616,7 +1616,7 @@ import { sessionRoutes } from "./routes/sessions.js";
 import { toolRoutes } from "./routes/tools.js";
 import { errorHandler } from "./middleware/error.js";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import type { ToolRegistry } from "@my-agent/core";
+import type { ToolRegistry } from "@code-agent/core";
 
 export interface AppOptions {
   model: BaseChatModel;
@@ -1910,7 +1910,7 @@ export const messages = sqliteTable("messages", {
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 
-export function createDb(path: string = "./data/my-agent.db") {
+export function createDb(path: string = "./data/code-agent.db") {
   // 确保 data 目录存在
   const dir = path.split("/").slice(0, -1).join("/");
   if (dir) {
@@ -2596,7 +2596,7 @@ PORT=3000
 WORKSPACE_PATH=./workspace       # Agent 工作目录
 
 # Database
-DB_PATH=./data/my-agent.db
+DB_PATH=./data/code-agent.db
 ```
 
 ### 配置加载 — `packages/server/src/config.ts`
@@ -2613,7 +2613,7 @@ const envSchema = z.object({
   HOST: z.string().default("0.0.0.0"),
   PORT: z.coerce.number().default(3000),
   WORKSPACE_PATH: z.string().default("./workspace"),
-  DB_PATH: z.string().default("./data/my-agent.db"),
+  DB_PATH: z.string().default("./data/code-agent.db"),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
@@ -2632,21 +2632,21 @@ import { config } from "dotenv";
 config();
 
 import { loadConfig } from "./config.js";
-import { createChatModel } from "@my-agent/core/llm/factory.js";
-import { ToolRegistry } from "@my-agent/core/tools/registry.js";
+import { createChatModel } from "@code-agent/core/llm/factory.js";
+import { ToolRegistry } from "@code-agent/core/tools/registry.js";
 import { createServer } from "./gateway/server.js";
 import { createDb } from "./db/connection.js";
 
 // 注册所有内置工具
 import {
   fileReadTool, fileWriteTool, fileListTool,
-} from "@my-agent/core/tools/file.js";
-import { shellExecTool } from "@my-agent/core/tools/shell.js";
-import { codeSearchTool } from "@my-agent/core/tools/search.js";
+} from "@code-agent/core/tools/file.js";
+import { shellExecTool } from "@code-agent/core/tools/shell.js";
+import { codeSearchTool } from "@code-agent/core/tools/search.js";
 import {
   gitStatusTool, gitDiffTool, gitLogTool, gitCommitTool, gitBranchTool,
-} from "@my-agent/core/tools/git.js";
-import { webFetchTool } from "@my-agent/core/tools/web.js";
+} from "@code-agent/core/tools/git.js";
+import { webFetchTool } from "@code-agent/core/tools/web.js";
 
 async function main() {
   const cfg = loadConfig();
@@ -2705,7 +2705,7 @@ main().catch((err) => {
 
 ```json
 {
-  "name": "@my-agent/core",
+  "name": "@code-agent/core",
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -2733,7 +2733,7 @@ main().catch((err) => {
 
 ```json
 {
-  "name": "@my-agent/server",
+  "name": "@code-agent/server",
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -2743,7 +2743,7 @@ main().catch((err) => {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@my-agent/core": "workspace:*",
+    "@code-agent/core": "workspace:*",
     "@langchain/core": "^0.3.0",
     "@langchain/langgraph": "^0.2.0",
     "langchain": "^0.3.0",
@@ -2768,7 +2768,7 @@ main().catch((err) => {
 
 ```json
 {
-  "name": "@my-agent/web",
+  "name": "@code-agent/web",
   "version": "0.1.0",
   "type": "module",
   "scripts": {

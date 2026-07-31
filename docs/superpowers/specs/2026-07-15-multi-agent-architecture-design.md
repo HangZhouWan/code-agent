@@ -230,7 +230,7 @@ Execution Engine ──→ Checkpoint Manager
 |------|------|------|
 | State DB | SQLite（扩表） | tasks、artifacts |
 | Memory DB | SQLite + 向量（可选） | long_term_entries |
-| Checkpoint Store | 文件系统（`~/.my-agent/checkpoints/`） | {taskId}.json |
+| Checkpoint Store | 文件系统（`~/.code-agent/checkpoints/`） | {taskId}.json |
 | Event Store | SQLite（可选） | 审计事件 |
 
 ---

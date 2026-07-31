@@ -9,11 +9,11 @@
 
 ## 方案
 
-新增 `packages/cli` 包，复用 `@my-agent/core` 和 `@my-agent/server` 的 Orchestrator Graph，以 `node:readline` 替代 WebSocket 作为 I/O 层，提供完整的交互式 REPL 体验。
+新增 `packages/cli` 包，复用 `@code-agent/core` 和 `@code-agent/server` 的 Orchestrator Graph，以 `node:readline` 替代 WebSocket 作为 I/O 层，提供完整的交互式 REPL 体验。
 
 ### CLI 交互模式
 
-- 运行 `my-agent` 启动交互式 REPL
+- 运行 `code-agent` 启动交互式 REPL
 - 多轮对话上下文在会话内累积（`messages[]` 数组）
 - 以 `/` 开头的输入作为 REPL 命令处理
 - Ctrl+C 在任务运行时取消任务，在空提示符时退出
@@ -22,7 +22,7 @@
 
 ```
 packages/cli/
-├── package.json          # bin: { "my-agent": "./dist/index.js" }
+├── package.json          # bin: { "code-agent": "./dist/index.js" }
 ├── tsconfig.json         # extends ../../tsconfig.base.json
 ├── src/
 │   ├── index.ts          # main() — 装配依赖，启动 REPL
@@ -38,8 +38,8 @@ packages/cli/
 
 | 包 | 用途 |
 |---|---|
-| `@my-agent/core` (workspace) | createChatModel, ToolRegistry, AgentRegistry, ExecutionEngine, EventBus, StateManager, Memory |
-| `@my-agent/server` (workspace) | createOrchestratorGraph, loadConfig |
+| `@code-agent/core` (workspace) | createChatModel, ToolRegistry, AgentRegistry, ExecutionEngine, EventBus, StateManager, Memory |
+| `@code-agent/server` (workspace) | createOrchestratorGraph, loadConfig |
 
 ## 架构
 
@@ -72,7 +72,7 @@ packages/cli/src/index.ts (main)
 ## REPL 循环
 
 ```
-1. 显示提示符  →  "my-agent > "
+1. 显示提示符  →  "code-agent > "
 
 2. 读取用户输入
    │
@@ -127,7 +127,7 @@ packages/cli/src/index.ts (main)
 - **工具调用结果**：暗色/灰色，缩进显示
 - **错误**：红色
 - **Agent 状态**：表格格式
-- **提示符**：加粗绿色 `my-agent >`
+- **提示符**：加粗绿色 `code-agent >`
 
 使用 ANSI escape codes，零外部依赖。
 
@@ -179,7 +179,7 @@ node:readline ──→ REPL loop
 
 | 文件 | 说明 |
 |---|---|
-| `package.json` | bin 入口 `my-agent`，依赖 core + server |
+| `package.json` | bin 入口 `code-agent`，依赖 core + server |
 | `tsconfig.json` | 继承基础 TS 配置 |
 | `src/index.ts` | main() — 装配所有依赖，启动 REPL |
 | `src/repl.ts` | REPL 循环核心 — readline、消息处理、streamOrchestrator 适配 |
@@ -190,10 +190,10 @@ node:readline ──→ REPL loop
 
 ### 修改（现有包）
 
-无需修改现有包。`@my-agent/core` 和 `@my-agent/server` 已通过 exports 暴露所需的所有 API。
+无需修改现有包。`@code-agent/core` 和 `@code-agent/server` 已通过 exports 暴露所需的所有 API。
 
 ### 根级配置
 
 | 文件 | 改动 |
 |---|---|
-| `package.json` | `scripts` 加 `"cli": "pnpm --filter @my-agent/cli dev"` |
+| `package.json` | `scripts` 加 `"cli": "pnpm --filter @code-agent/cli dev"` |

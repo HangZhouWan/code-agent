@@ -34,7 +34,7 @@ import {
   type PermissionRegistry,
   type IEventBus,
   type AgentRegistry,
-} from '@my-agent/core';
+} from '@code-agent/core';
 import { OrchestratorState } from './state.js';
 import { createPlannerNode } from './nodes/planner.js';
 import { createDispatcherNode } from './nodes/dispatcher.js';
@@ -81,7 +81,7 @@ export interface OrchestratorGraphOptions {
  *
  * @example
  * ```ts
- * import { createChatModel, InMemoryEventBus, InMemoryStateManager, AgentRegistry } from '@my-agent/core';
+ * import { createChatModel, InMemoryEventBus, InMemoryStateManager, AgentRegistry } from '@code-agent/core';
  *
  * const model = createChatModel({ provider: 'openai', model: 'gpt-4o', apiKey: '...' });
  * const registry = ToolRegistry.createDefault();

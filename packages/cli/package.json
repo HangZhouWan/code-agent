@@ -1,10 +1,10 @@
 {
-  "name": "@my-agent/cli",
+  "name": "@code-agent/cli",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "bin": {
-    "my-agent": "./dist/index.js"
+    "code-agent": "./dist/index.js"
   },
   "scripts": {
     "dev": "tsx src/index.ts",
@@ -14,8 +14,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@my-agent/core": "workspace:*",
-    "@my-agent/server": "workspace:*",
+    "@code-agent/core": "workspace:*",
+    "@code-agent/server": "workspace:*",
     "@langchain/core": "^1.0.0",
     "dotenv": "^16.4.0"
   },

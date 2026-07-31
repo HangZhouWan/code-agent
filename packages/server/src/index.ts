@@ -1,5 +1,5 @@
 /**
- * @my-agent/server —— Fastify API 服务端入口
+ * @code-agent/server —— Fastify API 服务端入口
  *
  * 此模块负责：
  * - 加载环境变量配置
@@ -8,7 +8,7 @@
  * - 初始化数据库连接
  * - 构建并启动 Fastify HTTP + WebSocket 服务
  *
- * 启动命令：pnpm --filter @my-agent/server dev
+ * 启动命令：pnpm --filter @code-agent/server dev
  */
 
 import dotenv from "dotenv";
@@ -48,8 +48,8 @@ import {
   InMemoryShortTermMemory,
   InMemoryWorkingMemory,
   FileLongTermMemory,
-} from "@my-agent/core";
-import type { IMemoryManager } from "@my-agent/core";
+} from "@code-agent/core";
+import type { IMemoryManager } from "@code-agent/core";
 
 // ---------------------------------------------------------------------------
 // 服务端版本标识
@@ -98,7 +98,7 @@ export type { AppOptions } from "./gateway/server.js";
  */
 async function main(): Promise<void> {
   console.log("=".repeat(50));
-  console.log("  my-agent server v" + SERVER_VERSION);
+  console.log("  code-agent server v" + SERVER_VERSION);
   console.log("=".repeat(50));
 
   // 1. 加载配置

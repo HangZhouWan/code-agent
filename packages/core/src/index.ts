@@ -1,5 +1,5 @@
 /**
- * @my-agent/core —— 核心库统一入口
+ * @code-agent/core —— 核心库统一入口
  *
  * 此模块提供：
  * - LLM 抽象层（多 Provider 支持、协议适配、重试机制）

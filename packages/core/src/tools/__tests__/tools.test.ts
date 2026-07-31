@@ -39,7 +39,7 @@ import { tmpdir } from 'node:os';
 
 /** 创建临时测试工作区 */
 async function createTempWorkspace(): Promise<string> {
-  const testDir = path.join(tmpdir(), `my-agent-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const testDir = path.join(tmpdir(), `code-agent-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   await fs.mkdir(testDir, { recursive: true });
   return testDir;
 }

@@ -24,7 +24,7 @@ const MINIMAL_ENV = {
   HOST: "0.0.0.0",
   PORT: "3000",
   WORKSPACE_PATH: "./workspace",
-  DB_PATH: "./data/my-agent.db",
+  DB_PATH: "./data/code-agent.db",
 };
 
 function setEnv(vars: Record<string, string | undefined>) {
@@ -63,7 +63,7 @@ describe("loadConfig", () => {
     expect(cfg.HOST).toBe("0.0.0.0");
     expect(cfg.PORT).toBe(3000);
     expect(cfg.WORKSPACE_PATH).toBe("./workspace");
-    expect(cfg.DB_PATH).toBe("./data/my-agent.db");
+    expect(cfg.DB_PATH).toBe("./data/code-agent.db");
   });
 
   // ── 默认值 ──
@@ -99,10 +99,10 @@ describe("loadConfig", () => {
     expect(cfg.WORKSPACE_PATH).toBe("./workspace");
   });
 
-  it("DB_PATH 默认应为 ./data/my-agent.db", () => {
+  it("DB_PATH 默认应为 ./data/code-agent.db", () => {
     setEnv({ LLM_API_KEY: "sk-abc" });
     const cfg = loadConfig();
-    expect(cfg.DB_PATH).toBe("./data/my-agent.db");
+    expect(cfg.DB_PATH).toBe("./data/code-agent.db");
   });
 
   it("LLM_MAX_RETRIES 默认应为 3", () => {

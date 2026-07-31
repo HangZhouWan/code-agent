@@ -1,5 +1,5 @@
 /**
- * @my-agent/server/db —— 数据库层
+ * @code-agent/server/db —— 数据库层
  *
  * 基于 SQLite + Drizzle ORM 的持久化层，管理会话、消息、
  * 多 Agent 任务、产物和事件数据。

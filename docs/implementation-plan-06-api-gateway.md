@@ -65,7 +65,7 @@ const envSchema = z.object({
   HOST: z.string().default("0.0.0.0"),
   PORT: z.coerce.number().default(3000),
   WORKSPACE_PATH: z.string().default("./workspace"),
-  DB_PATH: z.string().default("./data/my-agent.db"),
+  DB_PATH: z.string().default("./data/code-agent.db"),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

@@ -12,8 +12,8 @@ import * as readline from "node:readline";
 import { HumanMessage, AIMessageChunk } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import type { ToolRegistry, AgentRegistry, PermissionRegistry } from "@my-agent/core";
-import { createOrchestratorGraph } from "@my-agent/server";
+import type { ToolRegistry, AgentRegistry, PermissionRegistry } from "@code-agent/core";
+import { createOrchestratorGraph } from "@code-agent/server";
 import { createApprovalHandler } from "./approval.js";
 import {
   green,
@@ -255,7 +255,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
   // Track whether a task is currently running (for SIGINT handling)
   let running = false;
 
-  process.stdout.write(cyan("\n  my-agent CLI REPL"));
+  process.stdout.write(cyan("\n  code-agent CLI REPL"));
   process.stdout.write(dim(`\n  Type /help for commands, or just start chatting.\n\n`));
 
   rl.prompt();

@@ -8,7 +8,7 @@
 import { Annotation } from '@langchain/langgraph';
 import type { BaseMessage } from '@langchain/core/messages';
 import type { SubTask, Plan, NextAction, ReplanSignal, Artifacts } from './types.js';
-import type { WorkerOutput } from '@my-agent/core';
+import type { WorkerOutput } from '@code-agent/core';
 
 /**
  * Orchestrator 工作流的状态图 Annotation

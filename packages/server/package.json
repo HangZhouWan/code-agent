@@ -1,5 +1,5 @@
 {
-  "name": "@my-agent/server",
+  "name": "@code-agent/server",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -22,7 +22,7 @@
     "db:migrate": "tsx src/db/migrate.ts"
   },
   "dependencies": {
-    "@my-agent/core": "workspace:*",
+    "@code-agent/core": "workspace:*",
     "fastify": "^5.3.0",
     "@fastify/websocket": "^11.0.0",
     "@fastify/cors": "^11.0.0",

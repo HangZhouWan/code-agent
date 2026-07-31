@@ -1,9 +1,9 @@
 {
-  "name": "my-agent",
+  "name": "code-agent",
   "private": true,
   "scripts": {
     "dev": "pnpm --parallel -r dev",
-    "cli": "pnpm --filter @my-agent/cli dev",
+    "cli": "pnpm --filter @code-agent/cli dev",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck"

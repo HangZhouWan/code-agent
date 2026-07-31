@@ -2,7 +2,7 @@
  * 工具层 —— 统一导出入口
  *
  * 集中导出所有工具定义、注册表和基础类型，
- * 使用者只需 import from '@my-agent/core' 即可获取所有工具。
+ * 使用者只需 import from '@code-agent/core' 即可获取所有工具。
  */
 
 // 基础接口和工厂函数

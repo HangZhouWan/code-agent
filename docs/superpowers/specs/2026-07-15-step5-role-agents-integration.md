@@ -320,5 +320,5 @@ StateManager 中 `AgentState.onChange` → 推送 `agent_status` 到前端。
 | Finalizer 输出 | Markdown 含文件变更、测试结果、下一步建议 |
 | Storage 持久化 | tasks / artifacts / events 表有数据 |
 | 中断恢复 | kill 服务 → 重启 → resume task-1 |
-| `pnpm --filter @my-agent/server test` | 集成测试全过 |
+| `pnpm --filter @code-agent/server test` | 集成测试全过 |
 | 端到端 | "重构 src/utils.ts 并写测试" → 完整协作 → 用户收到报告 |

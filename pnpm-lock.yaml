@@ -17,10 +17,10 @@ importers:
       '@langchain/core':
         specifier: ^1.0.0
         version: 1.2.1(openai@6.45.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0)
-      '@my-agent/core':
+      '@code-agent/core':
         specifier: workspace:*
         version: link:../core
-      '@my-agent/server':
+      '@code-agent/server':
         specifier: workspace:*
         version: link:../server
       dotenv:
@@ -73,7 +73,7 @@ importers:
       '@langchain/langgraph':
         specifier: ^1.0.0
         version: 1.4.7(@langchain/core@1.2.1(openai@6.45.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(zod@3.25.76)
-      '@my-agent/core':
+      '@code-agent/core':
         specifier: workspace:*
         version: link:../core
       better-sqlite3:

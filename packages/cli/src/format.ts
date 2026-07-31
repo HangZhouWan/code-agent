@@ -76,7 +76,7 @@ export function formatDone(): string {
 
 /** Prompt string */
 export function formatPrompt(): string {
-  return bold(green("my-agent > "));
+  return bold(green("code-agent > "));
 }
 
 /** Section heading */

@@ -24,7 +24,7 @@ import {
   type IEventBus,
   type AgentRegistry,
   type AgentOutput,
-} from '@my-agent/core';
+} from '@code-agent/core';
 import type { SubTask, NextAction, ReplanSignal } from '../types.js';
 
 // ---------------------------------------------------------------------------

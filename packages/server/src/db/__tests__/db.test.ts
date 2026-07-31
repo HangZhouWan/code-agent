@@ -26,7 +26,7 @@ import { SessionRepository, MessageRepository } from "../repositories/index.js";
 
 /** 测试数据库路径 */
 function testDbPath(name: string): string {
-  return join(tmpdir(), `my-agent-test-${name}-${Date.now()}.db`);
+  return join(tmpdir(), `code-agent-test-${name}-${Date.now()}.db`);
 }
 
 /** 创建测试数据库实例 */

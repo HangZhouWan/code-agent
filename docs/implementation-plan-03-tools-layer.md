@@ -189,7 +189,7 @@ export {
 ## 6. 验证方式
 
 ```typescript
-import { ToolRegistry, fileReadTool, codeSearchTool } from '@my-agent/core';
+import { ToolRegistry, fileReadTool, codeSearchTool } from '@code-agent/core';
 
 const registry = ToolRegistry.createDefault();
 registry.register(fileReadTool);

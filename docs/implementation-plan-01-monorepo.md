@@ -21,7 +21,7 @@
 ## 3. 产出物清单
 
 ```
-my-agent/
+code-agent/
 ├── pnpm-workspace.yaml
 ├── package.json                    # 根 workspace 脚本
 ├── tsconfig.base.json              # 共享 TS 配置
@@ -61,7 +61,7 @@ pnpm init
 设置 `package.json` 为 workspace root：
 ```json
 {
-  "name": "my-agent",
+  "name": "code-agent",
   "private": true,
   "scripts": {
     "dev": "pnpm --parallel -r dev",
@@ -89,17 +89,17 @@ packages:
 
 ### 步骤 4：初始化三个子包
 
-**packages/core**（`@my-agent/core`）：
+**packages/core**（`@code-agent/core`）：
 - `type: "module"`
 - 依赖：`@langchain/core`, `@langchain/openai`, `@langchain/anthropic`, `langchain`, `zod`, `simple-git`
 - `tsconfig.json` 继承 `../../tsconfig.base.json`
 
-**packages/server**（`@my-agent/server`）：
+**packages/server**（`@code-agent/server`）：
 - `type: "module"`
-- 依赖：`@my-agent/core: workspace:*`，以及 `fastify`, `@langchain/langgraph`, `better-sqlite3`, `drizzle-orm` 等
+- 依赖：`@code-agent/core: workspace:*`，以及 `fastify`, `@langchain/langgraph`, `better-sqlite3`, `drizzle-orm` 等
 - dev 脚本使用 `tsx watch`
 
-**packages/web**（`@my-agent/web`）：
+**packages/web**（`@code-agent/web`）：
 - `type: "module"`
 - 依赖：`react`, `react-dom`, `react-markdown`, `remark-gfm`
 - dev 依赖：`vite`, `@vitejs/plugin-react`, `tailwindcss`, `@tailwindcss/vite`

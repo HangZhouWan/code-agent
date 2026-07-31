@@ -103,7 +103,7 @@ export const messages = sqliteTable("messages", {
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 
-export function createDb(path: string = "./data/my-agent.db") {
+export function createDb(path: string = "./data/code-agent.db") {
   // 自动创建 data 目录
   const sqlite = new Database(path);
   sqlite.pragma("journal_mode = WAL");   // 写前日志，提升并发性能

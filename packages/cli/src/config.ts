@@ -1,8 +1,8 @@
 /**
  * Environment variable config loading with Zod validation
  *
- * Mirrors @my-agent/server's config.ts. Duplicated here to avoid
- * importing from @my-agent/server (which triggers its main() side effect).
+ * Mirrors @code-agent/server's config.ts. Duplicated here to avoid
+ * importing from @code-agent/server (which triggers its main() side effect).
  */
 
 import { z } from "zod";
