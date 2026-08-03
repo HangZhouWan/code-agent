@@ -111,7 +111,7 @@ my-agent/
 │       ├── 2026-07-15-step4-orchestrator-refactor.md       # Step 4 详细计划
 │       └── 2026-07-15-step5-role-agents-integration.md     # Step 5 详细计划
 ├── packages/
-│   ├── core/                        # @my-agent/core — 核心引擎
+│   ├── core/                        # @code-agent/core — 核心引擎
 │   │   └── src/
 │   │       ├── llm/                 # LLM 抽象层（工厂、协议检测、重试）
 │   │       ├── tools/               # 工具层（File、Shell、Search、Git、Web）
@@ -144,7 +144,7 @@ my-agent/
 │   │               ├── test.ts      #     Test Agent
 │   │               └── doc.ts       #     Doc Agent
 │   │
-│   ├── server/                      # @my-agent/server — 后端服务
+│   ├── server/                      # @code-agent/server — 后端服务
 │   │   └── src/
 │   │       ├── gateway/             # Fastify HTTP + WebSocket 网关
 │   │       │   ├── routes/          #   RESTful 路由（会话、工具审批、Agent 列表）
@@ -169,7 +169,7 @@ my-agent/
 │   │               ├── artifacts.ts
 │   │               └── events.ts
 │   │
-│   └── web/                         # @my-agent/web — React 前端
+│   └── web/                         # @code-agent/web — React 前端
 │       └── src/
 │           ├── components/          # UI 组件
 │           │   ├── Sidebar.tsx
@@ -185,13 +185,17 @@ my-agent/
 │           └── stores/              # 状态管理
 │               └── chatStore.ts
 │
-│   └── cli/                          # @my-agent/cli — 命令行 REPL
+│   └── cli/                          # code-agent — 命令行 REPL（发布为 npm 包）
 │       └── src/
-│           ├── index.ts             #   入口 — 装配所有依赖，启动 REPL
+│           ├── index.ts             #   入口 — Claude Code-style CLI，支持 REPL + 单次查询
+│           ├── args.ts              #   参数解析（工作区路径、查询文本、标志位）
 │           ├── repl.ts              #   REPL 循环 — readline + 命令分发 + 流式输出
-│           ├── config.ts            #   环境变量配置加载
+│           ├── config.ts            #   分层配置加载（全局 → 项目 → .env → 环境变量）
+│           ├── config-loader.ts     #   配置加载器 + Zod 校验
 │           ├── format.ts            #   ANSI 终端格式化
-│           └── approval.ts          #   stdin 交互式工具审批
+│           ├── approval.ts          #   stdin 交互式工具审批
+│           └── scripts/
+│               └── bundle.js        #   esbuild 打包脚本（内联 core + server）
 ```
 
 ---
@@ -244,28 +248,50 @@ pnpm dev
 ```
 
 这将并行启动三个子包：
-- **@my-agent/core**：TypeScript 编译监听（`tsc --watch`）
-- **@my-agent/server**：后端服务，默认监听 `http://localhost:3000`（`tsx watch`）
-- **@my-agent/web**：前端开发服务器，默认 `http://localhost:5173`（Vite）
+- **@code-agent/core**：TypeScript 编译监听（`tsc --watch`）
+- **@code-agent/server**：后端服务，默认监听 `http://localhost:3000`（`tsx watch`）
+- **@code-agent/web**：前端开发服务器，默认 `http://localhost:5173`（Vite）
 
 > 前端开发时建议访问 Vite 地址 `http://localhost:5173`，Vite 会自动代理 API 请求到后端。
 
 ### 5. 启动 CLI REPL（可选）
 
+#### 本地开发
+
 ```bash
 pnpm cli
 ```
 
-启动交互式命令行对话界面，无需浏览器即可与 Agent 对话：
+#### 全局安装（npm）
+
+```bash
+npm install -g code-agent
+```
+
+启动后即可在任何目录使用 Claude Code 式的交互命令行：
 
 ```
-$ pnpm cli
+$ code-agent
+```
 
+**使用方式：**
+
+```bash
+code-agent                          # 以当前目录为工作区，启动 REPL
+code-agent /path/to/project         # 以指定目录为工作区，启动 REPL
+code-agent "帮我分析这个项目"         # 非交互模式：执行单次查询后退出
+code-agent -p "列出所有 TS 文件"     # --print 模式
+code-agent -m claude-opus-4-8       # 指定模型启动 REPL
+```
+
+**启动输出示例：**
+
+```
 ==================================================
-  my-agent cli v0.1.0
+  code-agent cli v0.1.0
 ==================================================
-[config] LLM: openai-compatible/deepseek-v4-pro
-[config] Workspace: ./workspace
+[config] Workspace: /Users/qichen/projects/my-app
+[config] LLM: ChatOpenAI
 [tools] Registered 11 built-in tools
 [sandbox] Registered 11 tool permissions
 [memory] Three-tier memory system initialized
@@ -276,10 +302,10 @@ $ pnpm cli
   - Doc Agent (16a7f65e-...)
 [cli] Starting REPL...
 
-  my-agent CLI REPL
+  code-agent CLI REPL
   Type /help for commands, or just start chatting.
 
-my-agent > 帮我检查 git 状态并生成一个 commit 信息
+code-agent > 帮我检查 git 状态并生成一个 commit 信息
 ```
 
 **REPL 命令：**
@@ -303,17 +329,20 @@ my-agent > 帮我检查 git 状态并生成一个 commit 信息
 ### 6. 其他常用命令
 
 ```bash
-# 启动 CLI REPL
+# 启动 CLI REPL（本地开发）
 pnpm cli
 
 # 类型检查
 pnpm typecheck
 
-# 生产构建
+# 生产构建（tsc + esbuild 打包 core+server 到 CLI）
 pnpm build
 
 # 运行测试
 pnpm -r test
+
+# 发布到 npm（打包为单一 code-agent 包）
+cd packages/cli && npm publish
 ```
 
 ---
@@ -419,7 +448,7 @@ Agent 启动时声明能力范围（`tools` + `paths`），超出范围的调用
 
 - 每个 Step 执行前自动保存（taskId + step 序号 + 完整 context + tool 历史）
 - 支持 `resume(taskId)` 恢复中断的执行
-- 持久化到文件系统（`~/.my-agent/checkpoints/`）
+- 持久化到文件系统（`~/.code-agent/checkpoints/`）
 
 ### 💬 实时聊天界面
 
@@ -468,6 +497,18 @@ Agent 启动时声明能力范围（`tools` + `paths`），超出范围的调用
 
 ## 配置参考
 
+### 分层配置（CLI）
+
+CLI 支持分层配置，优先级从低到高：
+
+1. **全局配置** `~/.code-agent/config.json`
+2. **项目配置** `$WORKSPACE/.code-agent/config.json`
+3. **环境文件** `$WORKSPACE/.env` → monorepo 根目录 `.env`
+4. **环境变量** `process.env`
+5. **CLI 标志** `-m` / `--model`
+
+### 环境变量
+
 完整环境变量列表见 `.env.example`：
 
 | 变量 | 必填 | 默认值 | 说明 |
@@ -498,7 +539,8 @@ Agent 启动时声明能力范围（`tools` + `paths`），超出范围的调用
 | Step 3 | Agent 基类 + AgentRegistry + 角色定义 | ✅ 完成 |
 | Step 4 | Orchestrator 改造：双通道 Dispatcher + Replanner + Finalizer | ✅ 完成 |
 | Step 5 | 角色 Agent（Code/Test/Doc）+ Storage 扩展 + 端到端集成 | ✅ 完成 |
-| — | CLI REPL entry point | ✅ 完成 |
+| — | CLI REPL entry point（全局命令 + 分层配置 + 非交互模式） | ✅ 完成 |
+| — | esbuild 单包打包（core + server → code-agent）+ npm publish 就绪 | ✅ 完成 |
 
 ---
 
