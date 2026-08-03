@@ -1,7 +1,7 @@
 {
   "name": "@code-agent/server",
   "version": "0.1.0",
-  "private": true,
+  "description": "Server for code-agent — LangGraph orchestrator, WebSocket gateway, and database layer",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -9,11 +9,19 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./orchestrator": {
+      "import": "./dist/orchestrator/graph.js",
+      "types": "./dist/orchestrator/graph.d.ts"
     }
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
+    "prepublishOnly": "pnpm build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
     "test": "vitest run",
@@ -22,7 +30,7 @@
     "db:migrate": "tsx src/db/migrate.ts"
   },
   "dependencies": {
-    "@code-agent/core": "workspace:*",
+    "@code-agent/core": "workspace:^",
     "fastify": "^5.3.0",
     "@fastify/websocket": "^11.0.0",
     "@fastify/cors": "^11.0.0",
@@ -39,5 +47,20 @@
     "@types/better-sqlite3": "^7.6.0",
     "@types/ws": "^8.5.0",
     "drizzle-kit": "^0.30.0"
+  },
+  "keywords": [
+    "code-agent",
+    "ai",
+    "orchestrator",
+    "langgraph",
+    "agent"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/qichen/code-agent"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
   }
 }

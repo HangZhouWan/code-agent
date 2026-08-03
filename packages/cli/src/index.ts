@@ -1,6 +1,5 @@
-#!/usr/bin/env node
 /**
- * @code-agent/cli —— CLI 入口
+ * code-agent —— CLI 入口
  *
  * 支持 Claude Code 式的调用方式：
  *   code-agent                          # 以当前目录为工作区，启动 REPL
@@ -49,7 +48,7 @@ import {
 } from "@code-agent/core";
 import type { IMemoryManager } from "@code-agent/core";
 import { startRepl } from "./repl.js";
-import { createOrchestratorGraph } from "@code-agent/server";
+import { createOrchestratorGraph } from "@code-agent/server/orchestrator";
 import { HumanMessage } from "@langchain/core/messages";
 import { formatToolStart, formatToolEnd, formatError, green, dim } from "./format.js";
 

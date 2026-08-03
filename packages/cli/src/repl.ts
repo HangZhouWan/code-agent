@@ -13,7 +13,7 @@ import { HumanMessage, AIMessageChunk } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { ToolRegistry, AgentRegistry, PermissionRegistry } from "@code-agent/core";
-import { createOrchestratorGraph } from "@code-agent/server";
+import { createOrchestratorGraph } from "@code-agent/server/orchestrator";
 import { createApprovalHandler } from "./approval.js";
 import {
   green,
