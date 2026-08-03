@@ -342,7 +342,8 @@ pnpm build
 pnpm -r test
 
 # 发布到 npm（打包为单一 code-agent 包）
-cd packages/cli && npm publish
+cd packages/cli && pnpm publish:npm
+# 或从根目录：pnpm publish:cli
 ```
 
 ---

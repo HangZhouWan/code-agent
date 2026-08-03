@@ -1,18 +1,14 @@
 {
-  "name": "code-agent",
+  "name": "@code-agent/cli",
   "version": "0.1.0",
+  "private": true,
   "description": "CLI for code-agent — Claude Code-style AI coding assistant for any workspace",
   "type": "module",
-  "bin": {
-    "code-agent": "./dist/index.js"
-  },
-  "files": [
-    "dist"
-  ],
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsc && node scripts/bundle.js",
-    "prepublishOnly": "pnpm build",
+    "publish:prep": "node scripts/publish-prep.js",
+    "publish:npm": "pnpm build && node scripts/publish-prep.js && cd publish && npm publish",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
     "test": "vitest run"
@@ -44,8 +40,5 @@
     "type": "git",
     "url": "https://github.com/qichen/code-agent"
   },
-  "license": "MIT",
-  "publishConfig": {
-    "access": "public"
-  }
+  "license": "MIT"
 }
