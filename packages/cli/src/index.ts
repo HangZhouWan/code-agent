@@ -1,26 +1,24 @@
+#!/usr/bin/env node
 /**
- * @code-agent/cli —— CLI REPL 入口
+ * @code-agent/cli —— CLI 入口
+ *
+ * 支持 Claude Code 式的调用方式：
+ *   code-agent                          # 以当前目录为工作区，启动 REPL
+ *   code-agent /path/to/project         # 以指定目录为工作区，启动 REPL
+ *   code-agent "帮我分析这个项目"         # 非交互模式：执行单次查询后退出
+ *   code-agent -p "分析项目"             # --print 模式：输出后退出
  *
  * 此模块负责：
- * - 加载环境变量配置
+ * - 解析 CLI 参数（工作区路径、查询文本、标志位）
+ * - 分层加载配置（全局 → 项目 → 环境变量）
  * - 创建 LLM 模型实例
  * - 注册所有内置工具
- * - 初始化 Agent 基础设施（EventBus、StateManager、Memory、Checkpoint、ExecutionEngine）
- * - 创建 AgentRegistry 并注册三个内置角色 Agent
- * - 启动交互式 REPL 会话
- *
- * 启动命令：pnpm --filter @code-agent/cli dev
+ * - 初始化 Agent 基础设施
+ * - 根据模式：启动 REPL 或执行单次查询
  */
 
-import dotenv from "dotenv";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
-// .env 位于 monorepo 根目录
-const __dirname = dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: resolve(__dirname, "../../../.env") });
-
 import { loadConfig } from "./config.js";
+import { parseArgs, printHelp, printVersion } from "./args.js";
 import {
   createChatModel,
   ToolRegistry,
@@ -44,42 +42,52 @@ import {
   AgentRegistry,
   FileCheckpointManager,
   ExecutionEngine,
-  // Memory 三层记忆体系
+  // Memory
   InMemoryShortTermMemory,
   InMemoryWorkingMemory,
   FileLongTermMemory,
 } from "@code-agent/core";
 import type { IMemoryManager } from "@code-agent/core";
 import { startRepl } from "./repl.js";
+import { createOrchestratorGraph } from "@code-agent/server";
+import { HumanMessage } from "@langchain/core/messages";
+import { formatToolStart, formatToolEnd, formatError, green, dim } from "./format.js";
 
 // ─── Version ───────────────────────────────────────
 
 export const CLI_VERSION = "0.1.0";
 
-// ─── Main ──────────────────────────────────────────
+// ─── Infrastructure Bootstrap (shared) ─────────────
+
+interface BootstrapOptions {
+  /** Workspace path (resolved absolute path from CLI args) */
+  workspacePath: string;
+  /** Optional CLI model override (--model flag) */
+  cliModel?: string;
+}
+
+interface BootstrapResult {
+  model: ReturnType<typeof createChatModel>;
+  toolRegistry: ToolRegistry;
+  permRegistry: PermissionRegistry;
+  agentRegistry: AgentRegistry;
+  memoryManager: IMemoryManager;
+  executionEngine: ExecutionEngine;
+  checkpointManager: FileCheckpointManager;
+}
 
 /**
- * CLI 启动入口
+ * Initialize all shared infrastructure.
  *
- * 启动流程（与 server/src/index.ts 共享初始化逻辑）：
- * 1. 加载并校验环境变量
- * 2. 创建 LLM 模型实例
- * 3. 注册所有内置工具（11 个）
- * 4. 初始化 Agent 基础设施（EventBus、StateManager、CheckpointManager、ExecutionEngine）
- * 5. 创建 AgentRegistry 并注册三个内置角色 Agent
- * 6. 启动交互式 REPL 会话
+ * Extracted so both REPL and non-interactive modes use the same setup.
  */
-async function main(): Promise<void> {
-  console.log("=".repeat(50));
-  console.log("  code-agent cli v" + CLI_VERSION);
-  console.log("=".repeat(50));
+function bootstrap(options: BootstrapOptions): BootstrapResult {
+  const { workspacePath, cliModel } = options;
 
-  // 1. 加载配置
-  const cfg = loadConfig();
-  console.log(`[config] LLM: ${cfg.LLM_PROVIDER}/${cfg.LLM_MODEL}`);
-  console.log(`[config] Workspace: ${cfg.WORKSPACE_PATH}`);
+  // 1. Load config (layered: global → project .code-agent/ → .env → process.env)
+  const cfg = loadConfig({ workspacePath, cliModel });
 
-  // 2. 创建 LLM 模型
+  // 2. Create LLM model
   const model = createChatModel({
     provider: cfg.LLM_PROVIDER,
     model: cfg.LLM_MODEL,
@@ -88,7 +96,7 @@ async function main(): Promise<void> {
     maxRetries: cfg.LLM_MAX_RETRIES,
   });
 
-  // 3. 注册所有内置工具
+  // 3. Register all built-in tools
   const toolRegistry = ToolRegistry.createDefault();
   toolRegistry.register(fileReadTool);
   toolRegistry.register(fileWriteTool);
@@ -101,53 +109,78 @@ async function main(): Promise<void> {
   toolRegistry.register(gitCommitTool);
   toolRegistry.register(gitBranchTool);
   toolRegistry.register(webFetchTool);
-  console.log(
-    `[tools] Registered ${toolRegistry.listAll().length} built-in tools`,
-  );
 
-  // 注册权限策略
+  // 4. Register permission policies
   const permRegistry = PermissionRegistry.createDefault();
-  console.log(
-    `[sandbox] Registered ${permRegistry.listAll().length} tool permissions`,
-  );
 
-  // 4. 初始化 Agent 基础设施
+  // 5. Initialize Agent infrastructure
   const eventBus = new InMemoryEventBus();
   const stateManager = new InMemoryStateManager(eventBus);
 
-  // 4a. 初始化三层记忆体系
+  // 5a. Three-tier memory system
   const memoryManager: IMemoryManager = {
     shortTerm: new InMemoryShortTermMemory(),
     working: new InMemoryWorkingMemory(),
     longTerm: new FileLongTermMemory("./data"),
   };
-  console.log("[memory] Three-tier memory system initialized");
 
-  // 4b. 初始化 Checkpoint + ExecutionEngine
+  // 5b. Checkpoint + ExecutionEngine
   const checkpointManager = new FileCheckpointManager("./data/checkpoints");
   const executionEngine = new ExecutionEngine(checkpointManager, memoryManager, eventBus);
-  console.log("[agent] Infrastructure initialized");
 
-  // 5. 注册角色 Agent
+  // 6. Register role agents
   const agentRegistry = new AgentRegistry(eventBus, stateManager, checkpointManager, memoryManager);
+
+  return {
+    model,
+    toolRegistry,
+    permRegistry,
+    agentRegistry,
+    memoryManager,
+    executionEngine,
+    checkpointManager,
+  };
+}
+
+/**
+ * Register built-in agents (code, test, doc).
+ */
+async function registerAgents(
+  agentRegistry: AgentRegistry,
+  model: ReturnType<typeof createChatModel>,
+  toolRegistry: ToolRegistry,
+  workspacePath: string,
+  permRegistry: PermissionRegistry,
+): Promise<void> {
   await agentRegistry.createAgent("code", model, toolRegistry, {
-    workspacePath: cfg.WORKSPACE_PATH,
+    workspacePath,
     permissionRegistry: permRegistry,
   });
   await agentRegistry.createAgent("test", model, toolRegistry, {
-    workspacePath: cfg.WORKSPACE_PATH,
+    workspacePath,
     permissionRegistry: permRegistry,
   });
   await agentRegistry.createAgent("doc", model, toolRegistry, {
-    workspacePath: cfg.WORKSPACE_PATH,
+    workspacePath,
     permissionRegistry: permRegistry,
   });
-  console.log("[AgentRegistry] Agents started:");
-  for (const agent of agentRegistry.getAllAgents()) {
-    console.log(`  - ${agent.role.name} (${agent.id})`);
-  }
+}
 
-  // 5a. 扫描并恢复未完成的 checkpoint
+/**
+ * Resume pending checkpoints (if any).
+ */
+async function resumePendingCheckpoints(
+  checkpointManager: FileCheckpointManager,
+  agentRegistry: AgentRegistry,
+  model: ReturnType<typeof createChatModel>,
+  toolRegistry: ToolRegistry,
+  workspacePath: string,
+  permRegistry: PermissionRegistry,
+  memoryManager: IMemoryManager,
+): Promise<void> {
+  const eventBus = new InMemoryEventBus();
+  const executionEngine = new ExecutionEngine(checkpointManager, memoryManager, eventBus);
+
   const pendingTaskIds = await checkpointManager.listTasks();
   if (pendingTaskIds.length > 0) {
     console.log(`[recovery] Found ${pendingTaskIds.length} pending checkpoint(s), resuming...`);
@@ -166,32 +199,181 @@ async function main(): Promise<void> {
         model,
         toolRegistry.getToolsForAgent(
           agent.capability,
-          { workspacePath: cfg.WORKSPACE_PATH, sessionId: `recovery-${taskId}` },
+          { workspacePath, sessionId: `recovery-${taskId}` },
           permRegistry,
         ),
         agent.role.systemPrompt,
         { maxIterations: 15, timeoutMs: 360000 },
       ).then((result) => {
         console.log(`[recovery] Task ${taskId} resumed: status=${result.status}`);
-        if (result.status === 'success' || result.status === 'failed') {
+        if (result.status === "success" || result.status === "failed") {
           checkpointManager.purge(taskId).catch(() => {});
         }
       }).catch((err) => {
         console.error(`[recovery] Task ${taskId} resume failed:`, err);
       });
     }
-  } else {
-    console.log("[recovery] No pending checkpoints found");
   }
+}
 
-  // 6. 启动交互式 REPL 会话
-  console.log(`[cli] Starting REPL...\n`);
-  await startRepl({
+// ─── Non-Interactive Mode ──────────────────────────
+
+/**
+ * Run a single query in non-interactive mode and exit.
+ *
+ * Uses the Orchestrator Graph directly (not REPL) to process the query
+ * and stream the result to stdout.
+ */
+async function runSingleQuery(
+  query: string,
+  options: BootstrapResult & { workspacePath: string },
+): Promise<void> {
+  const { model, toolRegistry, permRegistry, agentRegistry, workspacePath } = options;
+
+  const graph = createOrchestratorGraph({
     model,
     toolRegistry,
-    workspacePath: cfg.WORKSPACE_PATH,
+    workspacePath,
     permissionRegistry: permRegistry,
     agentRegistry,
+  });
+
+  const messages = [new HumanMessage(query)];
+  let finalResponse = "";
+
+  try {
+    const stream = graph.streamEvents(
+      { messages },
+      { version: "v2" },
+    );
+
+    for await (const event of stream) {
+      switch (event.event) {
+        case "on_chat_model_stream": {
+          const chunk = event.data?.chunk;
+          if (chunk && typeof chunk.content === "string") {
+            process.stdout.write(green(chunk.content));
+          } else if (chunk && Array.isArray(chunk.content)) {
+            const text = (chunk.content as Array<{ type: string; text?: string }>)
+              .filter((block) => block.type === "text")
+              .map((block) => block.text ?? "")
+              .join("");
+            if (text) process.stdout.write(green(text));
+          }
+          break;
+        }
+        case "on_tool_start": {
+          const toolName = event.name || "unknown";
+          const input = (event.data?.input ?? {}) as Record<string, unknown>;
+          process.stdout.write(`\n${formatToolStart(toolName, input)}\n`);
+          break;
+        }
+        case "on_tool_end": {
+          const output = JSON.stringify(event.data?.output ?? "").slice(0, 200);
+          process.stdout.write(`${formatToolEnd(output)}\n`);
+          break;
+        }
+        case "on_chain_end": {
+          if (event.name === "finalizer") {
+            const output = event.data?.output as Record<string, unknown> | undefined;
+            finalResponse = (output?.finalResponse as string) ?? "";
+            process.stdout.write(`\n`);
+          }
+          break;
+        }
+      }
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`\n${formatError(message)}\n`);
+    process.exit(1);
+  }
+
+  // Ensure we end with a newline for clean terminal output
+  if (!finalResponse.endsWith("\n")) {
+    process.stdout.write("\n");
+  }
+}
+
+// ─── Main ──────────────────────────────────────────
+
+async function main(): Promise<void> {
+  // 0. Parse CLI arguments
+  const args = parseArgs(process.argv);
+
+  // Handle --help
+  if (args.showHelp) {
+    printHelp();
+    process.exit(0);
+  }
+
+  // Handle --version
+  if (args.showVersion) {
+    printVersion(CLI_VERSION);
+    process.exit(0);
+  }
+
+  // ── Header ──
+  console.log("=".repeat(50));
+  console.log(`  code-agent cli v${CLI_VERSION}`);
+  console.log("=".repeat(50));
+
+  // 1. Workspace resolution
+  const workspacePath = args.workspacePath;
+  console.log(`[config] Workspace: ${workspacePath}`);
+
+  // 2. Bootstrap infrastructure
+  const infra = bootstrap({ workspacePath, cliModel: args.model });
+  console.log(`[config] LLM: ${infra.model.constructor.name}`);
+  console.log(
+    `[tools] Registered ${infra.toolRegistry.listAll().length} built-in tools`,
+  );
+  console.log(
+    `[sandbox] Registered ${infra.permRegistry.listAll().length} tool permissions`,
+  );
+  console.log("[memory] Three-tier memory system initialized");
+  console.log("[agent] Infrastructure initialized");
+
+  // 3. Register agents
+  await registerAgents(
+    infra.agentRegistry,
+    infra.model,
+    infra.toolRegistry,
+    workspacePath,
+    infra.permRegistry,
+  );
+  console.log("[AgentRegistry] Agents started:");
+  for (const agent of infra.agentRegistry.getAllAgents()) {
+    console.log(`  - ${agent.role.name} (${agent.id})`);
+  }
+
+  // 4. Resume pending checkpoints
+  await resumePendingCheckpoints(
+    infra.checkpointManager,
+    infra.agentRegistry,
+    infra.model,
+    infra.toolRegistry,
+    workspacePath,
+    infra.permRegistry,
+    infra.memoryManager,
+  );
+
+  // 5. Mode switch: non-interactive query vs REPL
+  if (args.query) {
+    // ── Non-interactive mode ──
+    console.log(`[cli] Running query in non-interactive mode...\n`);
+    await runSingleQuery(args.query, { ...infra, workspacePath });
+    process.exit(0);
+  }
+
+  // ── Interactive REPL mode ──
+  console.log(`[cli] Starting REPL...\n`);
+  await startRepl({
+    model: infra.model,
+    toolRegistry: infra.toolRegistry,
+    workspacePath,
+    permissionRegistry: infra.permRegistry,
+    agentRegistry: infra.agentRegistry,
   });
 }
 

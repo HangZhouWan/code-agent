@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "tsx src/index.ts",
-    "build": "tsc",
+    "build": "tsc && node scripts/add-shebang.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
     "test": "vitest run"
@@ -16,8 +16,7 @@
   "dependencies": {
     "@code-agent/core": "workspace:*",
     "@code-agent/server": "workspace:*",
-    "@langchain/core": "^1.0.0",
-    "dotenv": "^16.4.0"
+    "@langchain/core": "^1.0.0"
   },
   "devDependencies": {
     "typescript": "^5.8.0",

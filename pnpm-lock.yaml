@@ -14,18 +14,15 @@ importers:
 
   packages/cli:
     dependencies:
-      '@langchain/core':
-        specifier: ^1.0.0
-        version: 1.2.1(openai@6.45.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0)
       '@code-agent/core':
         specifier: workspace:*
         version: link:../core
       '@code-agent/server':
         specifier: workspace:*
         version: link:../server
-      dotenv:
-        specifier: ^16.4.0
-        version: 16.6.1
+      '@langchain/core':
+        specifier: ^1.0.0
+        version: 1.2.1(openai@6.45.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0)
     devDependencies:
       tsx:
         specifier: ^4.19.0
@@ -61,6 +58,9 @@ importers:
 
   packages/server:
     dependencies:
+      '@code-agent/core':
+        specifier: workspace:*
+        version: link:../core
       '@fastify/cors':
         specifier: ^11.0.0
         version: 11.2.0
@@ -73,9 +73,6 @@ importers:
       '@langchain/langgraph':
         specifier: ^1.0.0
         version: 1.4.7(@langchain/core@1.2.1(openai@6.45.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(zod@3.25.76)
-      '@code-agent/core':
-        specifier: workspace:*
-        version: link:../core
       better-sqlite3:
         specifier: ^11.8.0
         version: 11.10.0
