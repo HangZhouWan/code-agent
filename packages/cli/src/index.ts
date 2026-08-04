@@ -16,6 +16,7 @@
  * - 根据模式：启动 REPL 或执行单次查询
  */
 
+import { getDataDir, getCheckpointDir } from "./paths.js";
 import { loadConfig } from "./config.js";
 import { parseArgs, printHelp, printVersion } from "./args.js";
 import {
@@ -120,11 +121,11 @@ function bootstrap(options: BootstrapOptions): BootstrapResult {
   const memoryManager: IMemoryManager = {
     shortTerm: new InMemoryShortTermMemory(),
     working: new InMemoryWorkingMemory(),
-    longTerm: new FileLongTermMemory("./data"),
+    longTerm: new FileLongTermMemory(getDataDir(workspacePath)),
   };
 
   // 5b. Checkpoint + ExecutionEngine
-  const checkpointManager = new FileCheckpointManager("./data/checkpoints");
+  const checkpointManager = new FileCheckpointManager(getCheckpointDir(workspacePath));
   const executionEngine = new ExecutionEngine(checkpointManager, memoryManager, eventBus);
 
   // 6. Register role agents
