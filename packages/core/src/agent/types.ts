@@ -161,6 +161,13 @@ export interface AgentInput {
     toolName: string,
     args: Record<string, unknown>,
   ) => Promise<boolean>;
+  /**
+   * AbortSignal（可选）
+   *
+   * 用于传播取消信号到 ExecutionEngine.runLoop()。
+   * 当用户按 Ctrl+C 时，此 signal 被 abort，引擎检测后停止执行。
+   */
+  signal?: AbortSignal;
 }
 
 /**

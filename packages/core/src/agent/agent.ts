@@ -390,6 +390,7 @@ export class Agent {
         systemPrompt: this.role.systemPrompt,
         context,
         capability: { maxIterations, timeoutMs },
+        signal: input.signal,
       });
 
       // ── 自动恢复循环 ──
@@ -412,9 +413,10 @@ export class Agent {
       }
 
       // 任务成功完成后清理 checkpoint
-      // 注意：失败/超时时不删除 checkpoint，保留用于潜在的恢复重试；
-      // 过期/废弃的 checkpoint 由 FileCheckpointManager.cleanup() 定期清理。
-      if (result.status === 'success') {
+      // 注意：如果 signal 已被 abort（用户取消），保留 checkpoint 用于恢复。
+      // 失败/超时时也不删除 checkpoint，保留用于潜在的恢复重试。
+      const wasAborted = input.signal?.aborted ?? false;
+      if (result.status === 'success' && !wasAborted) {
         await this.engine.purgeCheckpoint(taskId).catch((err) => {
           console.error(
             `[checkpoint] Failed to purge checkpoint for task "${taskId}":`,
