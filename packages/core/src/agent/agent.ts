@@ -409,6 +409,7 @@ export class Agent {
           tools,
           this.role.systemPrompt,
           { maxIterations, timeoutMs },
+          input.signal,
         );
       }
 

@@ -351,6 +351,9 @@ export class ExecutionEngine {
    * 从 checkpoint 恢复执行
    *
    * 加载之前的 checkpoint，从断点继续执行 ReAct 循环。
+   *
+   * @param signal - AbortSignal（可选）。传播取消信号到恢复的执行循环，
+   *                 使超时后恢复的执行同样能响应 Ctrl+C 等取消操作。
    */
   async resume(
     taskId: string,
@@ -358,6 +361,7 @@ export class ExecutionEngine {
     tools: StructuredTool[],
     systemPrompt: string,
     capability?: { maxIterations?: number; timeoutMs?: number },
+    signal?: AbortSignal,
   ): Promise<ExecutionResult> {
     const snapshot = await this.checkpoint.load(taskId);
     if (!snapshot) {
@@ -382,6 +386,7 @@ export class ExecutionEngine {
         maxIterations: capability?.maxIterations ?? ExecutionEngine.DEFAULT_MAX_ITERATIONS,
         timeoutMs: capability?.timeoutMs ?? ExecutionEngine.DEFAULT_TIMEOUT_MS,
       },
+      signal,
     };
 
     return this.runLoop(
