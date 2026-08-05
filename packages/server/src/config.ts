@@ -47,7 +47,7 @@ const envSchema = z.object({
   WORKSPACE_PATH: z.string().default("./workspace"),
 
   /** SQLite 数据库文件路径 */
-  DB_PATH: z.string().default("./data/code-agent.db"),
+  DB_PATH: z.string().default(".agent/data/code-agent.db"),
 });
 
 // ---------------------------------------------------------------------------
