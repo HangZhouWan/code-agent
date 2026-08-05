@@ -228,6 +228,9 @@ export class FileCheckpointManager implements ICheckpointManager {
     const files = fs.readdirSync(this.basePath);
     for (const file of files) {
       if (!file.endsWith('.json')) continue;
+      // 跳过 orchestrator 的 session-*.json 文件 —— 属于 FileOrchestratorCheckpointManager 管辖，
+      // 此处不应删除，避免跨管理器清理冲突。
+      if (file.startsWith('session-')) continue;
 
       const fp = path.join(this.basePath, file);
       try {
@@ -249,6 +252,9 @@ export class FileCheckpointManager implements ICheckpointManager {
     const files = fs.readdirSync(this.basePath);
     for (const file of files) {
       if (!file.endsWith('.json')) continue;
+      // 跳过 orchestrator 的 session-*.json 文件 —— 其内容为 OrchestratorCheckpoint
+      // （含 sessionId 而非 taskId），不属于 Agent 级别 checkpoint，不应在此列出。
+      if (file.startsWith('session-')) continue;
 
       const fp = path.join(this.basePath, file);
       try {
