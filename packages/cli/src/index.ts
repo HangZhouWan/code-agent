@@ -168,6 +168,9 @@ async function registerAgents(
 
 /**
  * Resume pending checkpoints (if any).
+ *
+ * Waits for ALL pending recoveries to complete before returning,
+ * preventing race conditions with new task execution.
  */
 async function resumePendingCheckpoints(
   checkpointManager: FileCheckpointManager,
@@ -184,36 +187,49 @@ async function resumePendingCheckpoints(
   const pendingTaskIds = await checkpointManager.listTasks();
   if (pendingTaskIds.length > 0) {
     console.log(`[recovery] Found ${pendingTaskIds.length} pending checkpoint(s), resuming...`);
-    for (const taskId of pendingTaskIds) {
-      const snapshot = await checkpointManager.load(taskId);
-      if (!snapshot) continue;
 
-      const agent = agentRegistry.getAgentById(snapshot.agentId);
-      if (!agent) {
-        console.log(`[recovery] Task ${taskId}: agent ${snapshot.agentId} not found, skipping`);
-        continue;
-      }
+    // Resume all pending tasks and await their completion before returning.
+    // This prevents race conditions between recovery resumes and new task
+    // execution that share the same checkpointManager.
+    const resumePromises = pendingTaskIds.map(async (taskId) => {
+      try {
+        const snapshot = await checkpointManager.load(taskId);
+        if (!snapshot) return;
 
-      executionEngine.resume(
-        taskId,
-        model,
-        toolRegistry.getToolsForAgent(
-          agent.capability,
-          { workspacePath, sessionId: `recovery-${taskId}` },
-          permRegistry,
-        ),
-        agent.role.systemPrompt,
-        { maxIterations: 15, timeoutMs: 360000 },
-      ).then((result) => {
+        const agent = agentRegistry.getAgentById(snapshot.agentId);
+        if (!agent) {
+          console.log(`[recovery] Task ${taskId}: agent ${snapshot.agentId} not found, skipping`);
+          return;
+        }
+
+        const result = await executionEngine.resume(
+          taskId,
+          model,
+          toolRegistry.getToolsForAgent(
+            agent.capability,
+            { workspacePath, sessionId: `recovery-${taskId}` },
+            permRegistry,
+          ),
+          agent.role.systemPrompt,
+          { maxIterations: 15, timeoutMs: 360000 },
+        );
+
         console.log(`[recovery] Task ${taskId} resumed: status=${result.status}`);
         // 仅在成功完成后清理 checkpoint；失败/超时时保留用于再次恢复
         if (result.status === "success") {
-          checkpointManager.purge(taskId).catch(() => {});
+          checkpointManager.purge(taskId).catch((err) => {
+            console.error(
+              `[recovery] Failed to purge checkpoint for task "${taskId}":`,
+              err instanceof Error ? err.message : String(err),
+            );
+          });
         }
-      }).catch((err) => {
+      } catch (err) {
         console.error(`[recovery] Task ${taskId} resume failed:`, err);
-      });
-    }
+      }
+    });
+
+    await Promise.allSettled(resumePromises);
   }
 }
 
@@ -348,7 +364,32 @@ async function main(): Promise<void> {
     console.log(`  - ${agent.role.name} (${agent.id})`);
   }
 
-  // 4. Resume pending checkpoints
+  // 4. Resume pending checkpoints (skip if --resume <task-id> provided)
+  if (args.resumeTaskId) {
+    // ── Manual resume mode ──
+    console.log(`[cli] Resuming task "${args.resumeTaskId}"...\n`);
+    const result = await infra.executionEngine.resume(
+      args.resumeTaskId,
+      infra.model,
+      infra.toolRegistry.getToolsForAgent(
+        { tools: [], paths: [workspacePath] },
+        { workspacePath, sessionId: `resume-${args.resumeTaskId}` },
+        infra.permRegistry,
+      ),
+      "You are a helpful coding assistant. Complete the pending task.",
+      { maxIterations: 15, timeoutMs: 360000 },
+    );
+
+    console.log(`[cli] Resume result: status=${result.status}`);
+    if (result.result) {
+      console.log(result.result);
+    }
+    if (result.error) {
+      console.error(result.error);
+    }
+    process.exit(result.status === "success" ? 0 : 1);
+  }
+
   await resumePendingCheckpoints(
     infra.checkpointManager,
     infra.agentRegistry,

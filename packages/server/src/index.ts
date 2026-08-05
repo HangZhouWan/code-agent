@@ -206,7 +206,12 @@ async function main(): Promise<void> {
         console.log(`[recovery] Task ${taskId} resumed: status=${result.status}`);
         // Only purge on success; preserve checkpoints for failed/timed-out tasks
         if (result.status === 'success') {
-          checkpointManager.purge(taskId).catch(() => {});
+          checkpointManager.purge(taskId).catch((err) => {
+            console.error(
+              `[recovery] Failed to purge checkpoint for task "${taskId}":`,
+              err instanceof Error ? err.message : String(err),
+            );
+          });
         }
       }).catch((err) => {
         console.error(`[recovery] Task ${taskId} resume failed:`, err);

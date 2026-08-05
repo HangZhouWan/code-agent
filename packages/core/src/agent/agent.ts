@@ -274,8 +274,13 @@ export class Agent {
       // 注意：失败时不删除 checkpoint，保留用于潜在的恢复重试；
       // 过期/废弃的 checkpoint 由 FileCheckpointManager.cleanup() 定期清理。
       if (result.status === 'success') {
-        await this.engine.purgeCheckpoint(taskId).catch(() => {
-          // 清理失败不影响结果返回
+        await this.engine.purgeCheckpoint(taskId).catch((err) => {
+          // Log purge failure for debugging — stale checkpoints cause
+          // recovery interference on next startup
+          console.error(
+            `[checkpoint] Failed to purge checkpoint for task "${taskId}":`,
+            err instanceof Error ? err.message : String(err),
+          );
         });
       }
 
@@ -410,8 +415,11 @@ export class Agent {
       // 注意：失败/超时时不删除 checkpoint，保留用于潜在的恢复重试；
       // 过期/废弃的 checkpoint 由 FileCheckpointManager.cleanup() 定期清理。
       if (result.status === 'success') {
-        await this.engine.purgeCheckpoint(taskId).catch(() => {
-          // 清理失败不影响结果返回
+        await this.engine.purgeCheckpoint(taskId).catch((err) => {
+          console.error(
+            `[checkpoint] Failed to purge checkpoint for task "${taskId}":`,
+            err instanceof Error ? err.message : String(err),
+          );
         });
       }
 

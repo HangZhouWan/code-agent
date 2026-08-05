@@ -440,14 +440,18 @@ export class ExecutionEngine {
     while (step < maxIterations) {
       // ── 超时检查 ──
       if (Date.now() - startTime > timeoutMs) {
-        await this.checkpoint.save(ctx.taskId, {
-          taskId: ctx.taskId,
-          agentId: ctx.agentId,
-          step,
-          context,
-          toolHistory,
-          reasoningTrail,
-        });
+        try {
+          await this.checkpoint.save(ctx.taskId, {
+            taskId: ctx.taskId,
+            agentId: ctx.agentId,
+            step,
+            context,
+            toolHistory,
+            reasoningTrail,
+          });
+        } catch {
+          // Save failed — still return timeout result
+        }
 
         return {
           taskId: ctx.taskId,
@@ -458,14 +462,27 @@ export class ExecutionEngine {
       }
 
       // ── Save checkpoint before each step ──
-      await this.checkpoint.save(ctx.taskId, {
-        taskId: ctx.taskId,
-        agentId: ctx.agentId,
-        step,
-        context,
-        toolHistory,
-        reasoningTrail,
-      });
+      try {
+        await this.checkpoint.save(ctx.taskId, {
+          taskId: ctx.taskId,
+          agentId: ctx.agentId,
+          step,
+          context,
+          toolHistory,
+          reasoningTrail,
+        });
+      } catch (saveError) {
+        // Checkpoint save failure should not crash the task.
+        // The task can still make progress; we just lose the ability to resume
+        // from this exact step. Log and continue.
+        if (this.eventBus) {
+          this.eventBus.publish('agent.event.checkpoint_save_failed' as any, {
+            taskId: ctx.taskId,
+            step,
+            error: saveError instanceof Error ? saveError.message : String(saveError),
+          }).catch(() => {});
+        }
+      }
 
       // ── Observe ──
       const events = this.collectEvents();
@@ -482,14 +499,18 @@ export class ExecutionEngine {
       } catch (error) {
         // Save checkpoint before returning failed — preserves progress
         // for potential retry (transient errors like network/rate-limit).
-        await this.checkpoint.save(ctx.taskId, {
-          taskId: ctx.taskId,
-          agentId: ctx.agentId,
-          step,
-          context,
-          toolHistory,
-          reasoningTrail,
-        });
+        try {
+          await this.checkpoint.save(ctx.taskId, {
+            taskId: ctx.taskId,
+            agentId: ctx.agentId,
+            step,
+            context,
+            toolHistory,
+            reasoningTrail,
+          });
+        } catch {
+          // Save failed — still return the failure result
+        }
 
         return {
           taskId: ctx.taskId,
