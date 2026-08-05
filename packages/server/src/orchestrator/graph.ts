@@ -35,6 +35,7 @@ import {
   type IEventBus,
   type AgentRegistry,
 } from '@code-agent/core';
+import type { IOrchestratorCheckpointManager } from '@code-agent/core';
 import { OrchestratorState } from './state.js';
 import { createPlannerNode } from './nodes/planner.js';
 import { createDispatcherNode } from './nodes/dispatcher.js';
@@ -64,6 +65,12 @@ export interface OrchestratorGraphOptions {
   eventBus?: IEventBus;
   /** Agent 注册表（direct 通道使用） */
   agentRegistry?: AgentRegistry;
+  /** AbortSignal —— 传播取消信号到 Agent */
+  signal?: AbortSignal;
+  /** Orchestrator Checkpoint 管理器 */
+  checkpointManager?: IOrchestratorCheckpointManager;
+  /** 会话 ID（用于 checkpoint 文件命名） */
+  sessionId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -110,9 +117,12 @@ export function createOrchestratorGraph(options: OrchestratorGraphOptions) {
     onConfirmRequired,
     eventBus,
     agentRegistry,
+    signal,
+    checkpointManager,
+    sessionId,
   } = options;
 
-  const plannerNode = createPlannerNode(model, toolRegistry, agentRegistry);
+  const plannerNode = createPlannerNode(model, toolRegistry, agentRegistry, checkpointManager, sessionId);
   const dispatcherNode = createDispatcherNode(
     model,
     toolRegistry,
@@ -121,9 +131,12 @@ export function createOrchestratorGraph(options: OrchestratorGraphOptions) {
     onConfirmRequired,
     eventBus,
     agentRegistry,
+    signal,
+    checkpointManager,
+    sessionId,
   );
   const replannerNode = createReplannerNode(model);
-  const finalizerNode = createFinalizerNode(model);
+  const finalizerNode = createFinalizerNode(model, checkpointManager, sessionId);
 
   const graph = new StateGraph(OrchestratorState)
     // 注册节点
@@ -132,8 +145,17 @@ export function createOrchestratorGraph(options: OrchestratorGraphOptions) {
     .addNode('replanner', replannerNode)
     .addNode('finalizer', finalizerNode)
 
-    // 构建工作流边
-    .addEdge(START, 'planner')
+    // 条件启动：从 checkpoint 恢复时跳过 planner 直接从 dispatcher 开始
+    .addConditionalEdges(
+      START,
+      (state: typeof OrchestratorState.State) =>
+        state.resumeFromCheckpoint ? 'dispatcher' : 'planner',
+      {
+        planner: 'planner',
+        dispatcher: 'dispatcher',
+      },
+    )
+
     .addEdge('planner', 'dispatcher')
 
     // 条件路由：dispatcher → continue（循环）/ replan（修正）/ finalize（结束）

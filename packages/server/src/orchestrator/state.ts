@@ -19,6 +19,8 @@ import type { WorkerOutput } from '@code-agent/core';
  * - completedTasks: 合并（浅合并，保留已完成的子任务结果）
  * - replanSignal: 替换（LastValue）
  * - artifacts: 替换（LastValue）
+ * - sessionId: 替换（LastValue）
+ * - resumeFromCheckpoint: 替换（LastValue）
  */
 export const OrchestratorState = Annotation.Root({
   /** 用户消息历史，追加模式（新消息追加到末尾） */
@@ -67,4 +69,18 @@ export const OrchestratorState = Annotation.Root({
     }),
     default: () => ({ files: [], commits: [], tests: [] }),
   }),
+
+  /**
+   * 会话 ID（Step 5 新增）
+   *
+   * 用于 orchestrator checkpoint 的文件命名和恢复标识。
+   */
+  sessionId: Annotation<string>,
+
+  /**
+   * 是否从 checkpoint 恢复（Step 5 新增）
+   *
+   * 当为 true 时，跳过 planner 直接从 dispatcher 开始。
+   */
+  resumeFromCheckpoint: Annotation<boolean>,
 });
