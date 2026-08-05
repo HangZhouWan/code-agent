@@ -345,3 +345,218 @@ export class FileCheckpointManager implements ICheckpointManager {
     };
   }
 }
+
+// ─────────────────────────────────────────────
+// Orchestrator Checkpoint 类型
+// ─────────────────────────────────────────────
+
+/**
+ * 序列化后的消息（去除 LangChain 运行时方法，只保留数据）
+ */
+export interface SerializedMessage {
+  role: 'human' | 'ai' | 'system' | 'tool';
+  content: string;
+}
+
+/**
+ * Orchestrator 级别的 checkpoint
+ *
+ * 记录整个工作流的计划状态，用于恢复被中断的编排流程。
+ * 与 Agent 级别的 CheckpointSnapshot 互补：Agent checkpoint 记录单任务执行状态，
+ * Orchestrator checkpoint 记录编排层面的计划进度。
+ */
+export interface OrchestratorCheckpoint {
+  /** 唯一会话标识 */
+  sessionId: string;
+  /** 创建时间 */
+  createdAt: Date;
+  /** 用户消息历史（序列化后） */
+  messages: SerializedMessage[];
+  /** Planner 输出 */
+  plan: {
+    complexity: 'simple' | 'complex';
+    tasks: Array<{
+      id: string;
+      description: string;
+      tools: string[];
+      dependsOn?: string[];
+      routing: 'direct' | 'bus';
+      role: string;
+    }>;
+    suggestedAgents: Record<string, string>;
+  };
+  /** 进度标签（调试用；不影响恢复逻辑） */
+  progress: {
+    currentNode: 'planner' | 'dispatcher' | 'finalizer';
+    completedTaskIds: string[];
+  };
+}
+
+// ─────────────────────────────────────────────
+// OrchestratorCheckpointManager 接口
+// ─────────────────────────────────────────────
+
+/**
+ * Orchestrator 级别的 Checkpoint 管理器接口
+ *
+ * 负责编排层面工作流快照的创建、读取、清理。
+ * 文件名格式：session-{sessionId}.json
+ */
+export interface IOrchestratorCheckpointManager {
+  /**
+   * 保存 orchestrator checkpoint（覆盖写入）
+   */
+  save(sessionId: string, checkpoint: Omit<OrchestratorCheckpoint, 'createdAt'>): Promise<void>;
+
+  /**
+   * 加载 orchestrator checkpoint
+   */
+  load(sessionId: string): Promise<OrchestratorCheckpoint | null>;
+
+  /**
+   * 删除 orchestrator checkpoint
+   */
+  purge(sessionId: string): Promise<void>;
+
+  /**
+   * 列出所有 pending 的 session ID
+   */
+  listSessions(): Promise<string[]>;
+
+  /**
+   * 清理过期的 orchestrator checkpoint
+   */
+  cleanup(olderThan: Date): Promise<void>;
+}
+
+// ─────────────────────────────────────────────
+// FileOrchestratorCheckpointManager
+// ─────────────────────────────────────────────
+
+/**
+ * 基于文件系统的 OrchestratorCheckpointManager 实现
+ *
+ * 每个 session 的 checkpoint 存储为独立 JSON 文件。
+ * 路径格式：{basePath}/session-{sessionId}.json
+ *
+ * 与 FileCheckpointManager 共享同一 basePath 目录，
+ * 通过文件名前缀 "session-" 区分。
+ */
+export class FileOrchestratorCheckpointManager implements IOrchestratorCheckpointManager {
+  private readonly basePath: string;
+
+  constructor(basePath: string) {
+    this.basePath = basePath;
+    this.ensureDir();
+  }
+
+  /** 获取 session 对应的文件路径 */
+  private filePath(sessionId: string): string {
+    const safeId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_');
+    return path.join(this.basePath, `session-${safeId}.json`);
+  }
+
+  /** 确保存储目录存在 */
+  private ensureDir(): void {
+    if (!fs.existsSync(this.basePath)) {
+      fs.mkdirSync(this.basePath, { recursive: true });
+    }
+  }
+
+  /** 保存 orchestrator checkpoint（覆盖写入） */
+  async save(
+    sessionId: string,
+    checkpoint: Omit<OrchestratorCheckpoint, 'createdAt'>,
+  ): Promise<void> {
+    this.ensureDir();
+
+    const full: OrchestratorCheckpoint = {
+      ...checkpoint,
+      createdAt: new Date(),
+    };
+
+    const serialized = {
+      sessionId: full.sessionId,
+      createdAt: full.createdAt.toISOString(),
+      messages: full.messages,
+      plan: full.plan,
+      progress: full.progress,
+    };
+
+    fs.writeFileSync(this.filePath(sessionId), JSON.stringify(serialized, null, 2), 'utf-8');
+  }
+
+  /** 加载 orchestrator checkpoint */
+  async load(sessionId: string): Promise<OrchestratorCheckpoint | null> {
+    const fp = this.filePath(sessionId);
+
+    if (!fs.existsSync(fp)) {
+      return null;
+    }
+
+    try {
+      const raw = fs.readFileSync(fp, 'utf-8');
+      const data = JSON.parse(raw);
+      return {
+        sessionId: data.sessionId as string,
+        createdAt: new Date(data.createdAt as string),
+        messages: data.messages as SerializedMessage[],
+        plan: data.plan as OrchestratorCheckpoint['plan'],
+        progress: data.progress as OrchestratorCheckpoint['progress'],
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /** 删除 orchestrator checkpoint */
+  async purge(sessionId: string): Promise<void> {
+    const fp = this.filePath(sessionId);
+    if (fs.existsSync(fp)) {
+      fs.unlinkSync(fp);
+    }
+  }
+
+  /** 列出所有 pending 的 session ID */
+  async listSessions(): Promise<string[]> {
+    if (!fs.existsSync(this.basePath)) return [];
+
+    const sessionIds: string[] = [];
+    const files = fs.readdirSync(this.basePath);
+    for (const file of files) {
+      if (!file.startsWith('session-') || !file.endsWith('.json')) continue;
+
+      const fp = path.join(this.basePath, file);
+      try {
+        const raw = fs.readFileSync(fp, 'utf-8');
+        const data = JSON.parse(raw);
+        if (data.sessionId && typeof data.sessionId === 'string') {
+          sessionIds.push(data.sessionId);
+        }
+      } catch {
+        // 文件损坏，跳过
+      }
+    }
+    return sessionIds;
+  }
+
+  /** 清理过期的 orchestrator checkpoint */
+  async cleanup(olderThan: Date): Promise<void> {
+    if (!fs.existsSync(this.basePath)) return;
+
+    const files = fs.readdirSync(this.basePath);
+    for (const file of files) {
+      if (!file.startsWith('session-') || !file.endsWith('.json')) continue;
+
+      const fp = path.join(this.basePath, file);
+      try {
+        const stat = fs.statSync(fp);
+        if (stat.mtime < olderThan) {
+          fs.unlinkSync(fp);
+        }
+      } catch {
+        // 文件可能已被删除
+      }
+    }
+  }
+}

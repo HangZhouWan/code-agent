@@ -102,6 +102,14 @@ export type {
 } from './harness/execution/checkpoint.js';
 export { FileCheckpointManager } from './harness/execution/checkpoint.js';
 
+// Orchestrator Checkpoint (Step 5)
+export type {
+  OrchestratorCheckpoint,
+  SerializedMessage,
+  IOrchestratorCheckpointManager,
+} from './harness/execution/checkpoint.js';
+export { FileOrchestratorCheckpointManager } from './harness/execution/checkpoint.js';
+
 // Memory —— 三层记忆体系（Step 2）
 export type {
   ShortTermMemory,
