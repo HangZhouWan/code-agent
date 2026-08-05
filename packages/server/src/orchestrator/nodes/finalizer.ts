@@ -139,12 +139,15 @@ function buildArtifactsSummary(artifacts: Artifacts): string {
  * @param model - LLM 实例，用于生成最终回复
  * @param checkpointManager - Orchestrator 检查点管理器（可选），用于在成功输出后清除检查点
  * @param sessionId - 会话 ID（可选），用于清除检查点
+ * @param signal - AbortSignal（可选）。当用户取消执行（signal.aborted）时跳过 purge，
+ *                 保留 orchestrator checkpoint 以便后续恢复。
  * @returns LangGraph 节点函数
  */
 export function createFinalizerNode(
   model: BaseChatModel,
   checkpointManager?: IOrchestratorCheckpointManager,
   sessionId?: string,
+  signal?: AbortSignal,
 ) {
   return async function finalizerNode(state: {
     messages: Array<HumanMessage | SystemMessage>;
@@ -187,7 +190,8 @@ export function createFinalizerNode(
         : JSON.stringify(response.content);
 
     // ── Purge orchestrator checkpoint on success ──
-    if (checkpointManager && sessionId) {
+    // 用户取消（signal.aborted）时不 purge —— 保留 checkpoint 用于恢复。
+    if (checkpointManager && sessionId && !signal?.aborted) {
       checkpointManager.purge(sessionId).catch((err) => {
         console.error(
           `[orchestrator-checkpoint] Failed to purge checkpoint for session "${sessionId}":`,

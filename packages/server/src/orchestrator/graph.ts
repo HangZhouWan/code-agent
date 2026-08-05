@@ -136,7 +136,7 @@ export function createOrchestratorGraph(options: OrchestratorGraphOptions) {
     sessionId,
   );
   const replannerNode = createReplannerNode(model);
-  const finalizerNode = createFinalizerNode(model, checkpointManager, sessionId);
+  const finalizerNode = createFinalizerNode(model, checkpointManager, sessionId, signal);
 
   const graph = new StateGraph(OrchestratorState)
     // 注册节点
