@@ -67,12 +67,12 @@ export async function compressMessages(
  * @todo 替换为 LLM 驱动的摘要生成
  */
 function summarize(toCompress: BaseMessage[], _recent: BaseMessage[]): string {
-  const excerpts = toCompress.slice(0, 5).map((msg, i) => {
+  const excerpts = toCompress.slice(0, 10).map((msg, i) => {
     const content =
       typeof msg.content === 'string'
         ? msg.content
         : JSON.stringify(msg.content);
-    const preview = content.length > 200 ? content.slice(0, 200) + '...' : content;
+    const preview = content.length > 500 ? content.slice(0, 500) + '...' : content;
     const role = msg.getType?.() ?? 'unknown';
     return `[${i + 1}] ${role}: ${preview}`;
   });

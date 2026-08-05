@@ -219,17 +219,17 @@ export function createPlannerNode(
         {
           role: 'code',
           description: 'Responsible for reading, writing, and modifying code files.',
-          tools: ['file_read', 'file_write', 'code_search', 'shell', 'git'],
+          tools: ['file_read', 'file_write', 'file_list', 'code_search', 'shell_exec', 'git_status', 'git_diff', 'git_log', 'git_commit', 'git_branch', 'web_fetch'],
         },
         {
           role: 'test',
           description: 'Responsible for running tests and analyzing failures.',
-          tools: ['shell', 'file_read', 'file_write', 'code_search'],
+          tools: ['shell_exec', 'file_read', 'file_write', 'file_list', 'code_search', 'web_fetch'],
         },
         {
           role: 'doc',
           description: 'Responsible for generating documentation and README files.',
-          tools: ['file_read', 'file_write', 'code_search'],
+          tools: ['file_read', 'file_write', 'file_list', 'code_search', 'web_fetch'],
         },
       ];
 

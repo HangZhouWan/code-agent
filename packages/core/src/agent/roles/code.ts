@@ -24,7 +24,7 @@ export const CODE_AGENT_ROLE: AgentRole = {
     'agent.command.code_generate',
   ],
   eventSubscriptions: ['agent.event.test_failed', 'agent.event.code_changed'],
-  defaultTools: ['file_read', 'file_write', 'code_search', 'shell', 'git', 'web_fetch', 'shell_exec'],
+  defaultTools: ['file_read', 'file_write', 'file_list', 'code_search', 'shell_exec', 'git_status', 'git_diff', 'git_log', 'git_commit', 'git_branch', 'web_fetch'],
   canDelegate: true,
   delegatableRoles: ['test', 'doc'],
 };

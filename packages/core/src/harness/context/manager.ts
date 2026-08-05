@@ -319,11 +319,11 @@ export class ContextManager {
     );
     const toKeep = ctx.messages.slice(-keepRecent);
 
-    const excerpts = toCompress.slice(0, 5).map((msg, i) => {
+    const excerpts = toCompress.slice(0, 10).map((msg, i) => {
       const content =
         typeof msg.content === 'string'
-          ? msg.content.slice(0, 200)
-          : JSON.stringify(msg.content).slice(0, 200);
+          ? msg.content.slice(0, 500)
+          : JSON.stringify(msg.content).slice(0, 500);
       return `[${i + 1}] ${content}`;
     });
 

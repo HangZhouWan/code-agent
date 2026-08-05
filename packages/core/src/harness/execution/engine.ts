@@ -111,15 +111,57 @@ class ToolExecutor {
   constructor(private tools: StructuredTool[]) {}
 
   /**
+   * Known tool name aliases for common LLM hallucinations.
+   * Maps what the LLM might say → actual registered tool name.
+   */
+  private static readonly TOOL_ALIASES: Record<string, string> = {
+    read_file: 'file_read',
+    write_file: 'file_write',
+    list_files: 'file_list',
+    list_dir: 'file_list',
+    read: 'file_read',
+    write: 'file_write',
+    shell: 'shell_exec',
+    bash: 'shell_exec',
+    exec: 'shell_exec',
+    run: 'shell_exec',
+    search: 'code_search',
+    grep: 'code_search',
+    fetch: 'web_fetch',
+    curl: 'web_fetch',
+  };
+
+  /**
    * 执行工具调用
    *
    * @param call - 工具名称和参数
    * @returns 工具执行结果字符串
    */
   async execute(call: { name: string; args: Record<string, unknown> }): Promise<string> {
-    const tool = this.tools.find((t) => t.name === call.name);
+    // 1. Exact match
+    let tool = this.tools.find((t) => t.name === call.name);
+
+    // 2. Alias match (common LLM hallucinations)
     if (!tool) {
-      return `Error: Tool "${call.name}" not found. Available tools: ${this.tools.map((t) => t.name).join(', ')}`;
+      const aliasTarget = ToolExecutor.TOOL_ALIASES[call.name];
+      if (aliasTarget) {
+        tool = this.tools.find((t) => t.name === aliasTarget);
+        if (tool) {
+          // Note: we don't log here since ToolExecutor has no logger;
+          // the alias is used transparently
+        }
+      }
+    }
+
+    // 3. Case-insensitive fallback
+    if (!tool) {
+      const lowerName = call.name.toLowerCase();
+      tool = this.tools.find((t) => t.name.toLowerCase() === lowerName);
+    }
+
+    if (!tool) {
+      const available = this.tools.map((t) => t.name).join(', ');
+      return `Error: Tool "${call.name}" not found. Available tools: ${available}`;
     }
 
     try {
@@ -435,7 +477,7 @@ export class ExecutionEngine {
       // ── Think (LLM call) ──
       let thought: Thought;
       try {
-        thought = await this.think(ctx.model, ctx.systemPrompt, observation);
+        thought = await this.think(ctx.model, ctx.systemPrompt, observation, ctx.tools);
       } catch (error) {
         // Save checkpoint before returning failed — preserves progress
         // for potential retry (transient errors like network/rate-limit).
@@ -566,6 +608,7 @@ export class ExecutionEngine {
     model: BaseChatModel,
     systemPrompt: string,
     obs: Observation,
+    tools: StructuredTool[],
   ): Promise<Thought> {
     const contextSummary = obs.context.summary
       ? `Summary of earlier context:\n${obs.context.summary}\n\nRecent messages:\n`
@@ -577,7 +620,7 @@ export class ExecutionEngine {
         const role = m.getType?.() ?? 'unknown';
         const content =
           typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
-        return `[${role}] ${content.slice(0, 300)}`;
+        return `[${role}] ${content.slice(0, 800)}`;
       })
       .join('\n');
 
@@ -586,7 +629,37 @@ export class ExecutionEngine {
         ? obs.events.map((e) => `[${e.topic}] ${JSON.stringify(e.payload)}`).join('\n')
         : 'None';
 
+    // Build available tools list with names, descriptions, and parameter schemas
+    const toolsList = tools
+      .map((t) => {
+        const schema = (t as any).schema ?? (t as any).lc_kwargs?.schema;
+        let paramsDesc = '';
+        if (schema) {
+          try {
+            const shape = schema.shape ?? schema._def?.shape?.();
+            if (shape) {
+              const paramEntries = Object.entries(shape as Record<string, any>)
+                .map(([key, def]: [string, any]) => {
+                  const type = def._def?.typeName ?? def.typeName ?? 'string';
+                  const desc = def.description ?? '';
+                  return `    "${key}": ${type}${desc ? ` — ${desc}` : ''}`;
+                })
+                .join('\n');
+              paramsDesc = `\n  Parameters:\n${paramEntries}`;
+            }
+          } catch {
+            // Schema introspection failed — skip parameter details
+          }
+        }
+        return `- **${t.name}**: ${t.description}${paramsDesc}`;
+      })
+      .join('\n');
+
     const prompt = `${systemPrompt}
+
+## Available Tools
+You have access to the following tools. Use EXACTLY the tool names listed below:
+${toolsList}
 
 ## Current State
 ${contextSummary}${recentMessages}
@@ -603,7 +676,7 @@ Based on the above, decide your next action. You MUST respond with ONLY a JSON o
 {
   "reasoning": "Your step-by-step reasoning about what to do next",
   "decision": "use_tool | publish_event | request_agent | done | replan",
-  "toolCall": { "name": "tool_name", "args": {} },
+  "toolCall": { "name": "EXACT_TOOL_NAME_FROM_LIST", "args": {} },
   "event": { "topic": "agent.event.xxx", "payload": {} },
   "targetAgent": "agent_role",
   "payload": {},
@@ -611,12 +684,13 @@ Based on the above, decide your next action. You MUST respond with ONLY a JSON o
 }
 
 Rules:
-- If you need to use a tool, set decision to "use_tool" and provide toolCall
+- If you need to use a tool, set decision to "use_tool" and provide toolCall with the EXACT tool name from the Available Tools list above
 - If you want to notify other agents, set decision to "publish_event"
 - If you need help from another agent, set decision to "request_agent"
 - If the task is complete, set decision to "done" and provide a summary
 - If the plan needs revision, set decision to "replan" and explain why in summary
-- Only include fields relevant to your decision`;
+- Only include fields relevant to your decision
+- CRITICAL: tool names must match EXACTLY — no aliases, no guesswork`;
 
     const response = await model.invoke([new HumanMessage(prompt)]);
     return parseThought(response);
@@ -667,11 +741,11 @@ Rules:
     const toCompress = ctx.messages.slice(0, ctx.messages.length - keepRecent);
     const toKeep = ctx.messages.slice(-keepRecent);
 
-    const excerpts = toCompress.slice(0, 5).map((msg, i) => {
+    const excerpts = toCompress.slice(0, 10).map((msg, i) => {
       const content =
         typeof msg.content === 'string'
-          ? msg.content.slice(0, 200)
-          : JSON.stringify(msg.content).slice(0, 200);
+          ? msg.content.slice(0, 500)
+          : JSON.stringify(msg.content).slice(0, 500);
       return `[${i + 1}] ${content}`;
     });
 

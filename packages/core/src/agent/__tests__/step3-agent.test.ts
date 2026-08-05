@@ -150,7 +150,7 @@ describe('AgentRole & BUILTIN_ROLES', () => {
     expect(code.delegatableRoles).toContain('test');
     expect(code.delegatableRoles).toContain('doc');
     expect(code.defaultTools).toContain('file_read');
-    expect(code.defaultTools).toContain('shell');
+    expect(code.defaultTools).toContain('shell_exec');
   });
 
   it('test agent should not be able to delegate', () => {

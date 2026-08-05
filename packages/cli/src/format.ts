@@ -55,13 +55,20 @@ export function bold(text: string): string {
 
 /** Tool start indicator: 🛠 tool_name(args) */
 export function formatToolStart(tool: string, args: Record<string, unknown>): string {
-  const argsPreview = JSON.stringify(args).slice(0, 100);
-  return yellow(`🛠  ${tool}(${argsPreview})`);
+  const argsPreview = JSON.stringify(args);
+  // Truncate long args for display, but keep enough for debugging
+  const display = argsPreview.length > 500
+    ? argsPreview.slice(0, 500) + '…(truncated)'
+    : argsPreview;
+  return yellow(`🛠  ${tool}(${display})`);
 }
 
 /** Tool result indicator */
 export function formatToolEnd(result: string): string {
-  return dim(`   → ${result.slice(0, 200)}`);
+  const display = result.length > 1000
+    ? result.slice(0, 1000) + '…(truncated)'
+    : result;
+  return dim(`   → ${display}`);
 }
 
 /** Error message */
