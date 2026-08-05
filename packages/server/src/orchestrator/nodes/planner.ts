@@ -15,6 +15,7 @@ import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { SystemMessage, HumanMessage } from '@langchain/core/messages';
 import { ToolRegistry, ToolNames, type ToolDefinition } from '@code-agent/core';
 import type { AgentRegistry } from '@code-agent/core';
+import type { IOrchestratorCheckpointManager, SerializedMessage } from '@code-agent/core';
 import type { SubTask, Plan } from '../types.js';
 
 // ---------------------------------------------------------------------------
@@ -199,12 +200,16 @@ export function validateSubTask(item: unknown, index: number): SubTask {
  * @param model - LLM 实例，用于生成计划
  * @param toolRegistry - 工具注册表，用于列出可用工具
  * @param agentRegistry - Agent 注册表，用于列出可用 Agent 角色
+ * @param checkpointManager - Orchestrator 检查点管理器（可选），用于在计划生成后保存检查点
+ * @param sessionId - 会话 ID（可选），用于保存检查点
  * @returns LangGraph 节点函数
  */
 export function createPlannerNode(
   model: BaseChatModel,
   toolRegistry: ToolRegistry,
   agentRegistry?: AgentRegistry,
+  checkpointManager?: IOrchestratorCheckpointManager,
+  sessionId?: string,
 ) {
   const availableTools = toolRegistry.listAll();
 
@@ -356,6 +361,29 @@ export function createPlannerNode(
       throw new Error(
         `Planner response is neither an array nor a valid Plan object. Response:\n${responseText}`,
       );
+    }
+
+    // ── Save orchestrator checkpoint after plan generation ──
+    if (checkpointManager && sessionId) {
+      const serializedMessages = state.messages.map((m) => ({
+        role: (m.getType?.() ?? 'unknown') as SerializedMessage['role'],
+        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+      }));
+
+      checkpointManager.save(sessionId, {
+        sessionId,
+        messages: serializedMessages,
+        plan,
+        progress: {
+          currentNode: 'planner',
+          completedTaskIds: [],
+        },
+      }).catch((err) => {
+        console.error(
+          `[orchestrator-checkpoint] Failed to save after planner:`,
+          err instanceof Error ? err.message : String(err),
+        );
+      });
     }
 
     return { plan, pendingTasks: plan.tasks };
