@@ -24,6 +24,7 @@ import {
   type IEventBus,
   type AgentRegistry,
   type AgentOutput,
+  type IOrchestratorCheckpointManager,
 } from '@code-agent/core';
 import type { SubTask, NextAction, ReplanSignal } from '../types.js';
 
@@ -127,6 +128,9 @@ function detectReplanSignal(
  * @param permissionRegistry - 权限注册表（可选）
  * @param eventBus - EventBus 实例（bus 通道必需）
  * @param agentRegistry - Agent 注册表（direct 通道使用）
+ * @param signal - AbortSignal（可选，用于传播取消信号到 Agent）
+ * @param checkpointManager - Orchestrator Checkpoint 管理器（可选）
+ * @param sessionId - 会话标识（可选，用于 checkpoint 进度更新）
  * @returns LangGraph 节点函数
  */
 export function createDispatcherNode(
@@ -140,6 +144,9 @@ export function createDispatcherNode(
   ) => Promise<boolean>,
   eventBus?: IEventBus,
   agentRegistry?: AgentRegistry,
+  signal?: AbortSignal,
+  checkpointManager?: IOrchestratorCheckpointManager,
+  sessionId?: string,
 ) {
   return async function dispatcherNode(
     state: DispatcherInput,
@@ -211,6 +218,7 @@ export function createDispatcherNode(
         permissionRegistry,
         onConfirmRequired,
         agentRegistry,
+        signal,
       );
       results.push(...directResults);
     }
@@ -244,6 +252,30 @@ export function createDispatcherNode(
       nextAction = 'finalize';
     }
 
+    // ── 更新 Orchestrator checkpoint 进度 ──
+    if (checkpointManager && sessionId) {
+      const existing = await checkpointManager.load(sessionId);
+      if (existing) {
+        const allCompletedIds = Object.keys(newCompleted);
+        await checkpointManager
+          .save(sessionId, {
+            sessionId,
+            messages: existing.messages,
+            plan: existing.plan,
+            progress: {
+              currentNode: 'dispatcher',
+              completedTaskIds: allCompletedIds,
+            },
+          })
+          .catch((err) => {
+            console.error(
+              `[orchestrator-checkpoint] Failed to update progress:`,
+              err instanceof Error ? err.message : String(err),
+            );
+          });
+      }
+    }
+
     return {
       completedTasks: newCompleted,
       pendingTasks: waiting,
@@ -275,6 +307,7 @@ async function executeDirectTasks(
     args: Record<string, unknown>,
   ) => Promise<boolean>,
   agentRegistry?: AgentRegistry,
+  signal?: AbortSignal,
 ): Promise<WorkerOutput[]> {
   return Promise.all(
     tasks.map(async (task): Promise<WorkerOutput> => {
@@ -290,6 +323,7 @@ async function executeDirectTasks(
               description: task.description,
               context,
               onConfirmRequired,
+              signal,
             });
             return agentOutputToWorkerOutput(output);
           }
