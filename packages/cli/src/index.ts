@@ -41,6 +41,7 @@ import {
   InMemoryStateManager,
   AgentRegistry,
   FileCheckpointManager,
+  FileOrchestratorCheckpointManager,
   ExecutionEngine,
   // Memory
   InMemoryShortTermMemory,
@@ -48,6 +49,7 @@ import {
   FileLongTermMemory,
 } from "@code-agent/core";
 import type { IMemoryManager } from "@code-agent/core";
+import type { OrchestratorCheckpoint } from "@code-agent/core";
 import { startRepl } from "./repl.js";
 import { createOrchestratorGraph } from "@code-agent/server/orchestrator";
 import { HumanMessage } from "@langchain/core/messages";
@@ -74,6 +76,7 @@ interface BootstrapResult {
   memoryManager: IMemoryManager;
   executionEngine: ExecutionEngine;
   checkpointManager: FileCheckpointManager;
+  orchCheckpointManager: FileOrchestratorCheckpointManager;
 }
 
 /**
@@ -126,6 +129,7 @@ function bootstrap(options: BootstrapOptions): BootstrapResult {
 
   // 5b. Checkpoint + ExecutionEngine
   const checkpointManager = new FileCheckpointManager(getCheckpointDir(workspacePath));
+  const orchCheckpointManager = new FileOrchestratorCheckpointManager(getCheckpointDir(workspacePath));
   const executionEngine = new ExecutionEngine(checkpointManager, memoryManager, eventBus);
 
   // 6. Register role agents
@@ -139,6 +143,7 @@ function bootstrap(options: BootstrapOptions): BootstrapResult {
     memoryManager,
     executionEngine,
     checkpointManager,
+    orchCheckpointManager,
   };
 }
 
@@ -230,6 +235,85 @@ async function resumePendingCheckpoints(
     });
 
     await Promise.allSettled(resumePromises);
+  }
+}
+
+/**
+ * Recover pending orchestrator sessions.
+ *
+ * Scans for session-*.json files and offers the user a choice
+ * to resume the latest (or all) pending sessions by re-entering
+ * the orchestrator graph directly at the dispatcher node.
+ */
+async function recoverOrchestratorSessions(
+  checkpointManager: FileOrchestratorCheckpointManager,
+  model: ReturnType<typeof createChatModel>,
+  toolRegistry: ToolRegistry,
+  workspacePath: string,
+  permRegistry: PermissionRegistry,
+  agentRegistry: AgentRegistry,
+): Promise<void> {
+  const pendingSessions = await checkpointManager.listSessions();
+  if (pendingSessions.length === 0) return;
+
+  console.log(`\n[recovery] Found ${pendingSessions.length} pending orchestrator session(s):`);
+
+  // Load all pending checkpoints sorted by creation time (newest first)
+  const checkpoints: OrchestratorCheckpoint[] = [];
+  for (const sessionId of pendingSessions) {
+    const cp = await checkpointManager.load(sessionId);
+    if (cp) checkpoints.push(cp);
+  }
+  checkpoints.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+  for (const cp of checkpoints) {
+    console.log(`  - session ${cp.sessionId} (${cp.createdAt.toISOString()}): ${cp.plan.tasks.length} tasks, ${cp.progress.completedTaskIds.length} completed`);
+  }
+
+  // Auto-resume the latest checkpoint
+  const latest = checkpoints[0];
+  console.log(`\n[recovery] Auto-resuming latest session: ${latest.sessionId}\n`);
+
+  try {
+    // Rebuild messages from serialized form
+    const { HumanMessage, AIMessage, SystemMessage } = await import('@langchain/core/messages');
+    const messages = latest.messages.map((m) => {
+      switch (m.role) {
+        case 'human': return new HumanMessage(m.content);
+        case 'ai': return new AIMessage(m.content);
+        case 'system': return new SystemMessage(m.content);
+        default: return new HumanMessage(m.content);
+      }
+    });
+
+    const graph = createOrchestratorGraph({
+      model,
+      toolRegistry,
+      workspacePath,
+      permissionRegistry: permRegistry,
+      agentRegistry,
+      checkpointManager,
+      sessionId: latest.sessionId,
+    });
+
+    const result = await graph.invoke({
+      messages,
+      plan: latest.plan,
+      pendingTasks: latest.plan.tasks,
+      completedTasks: {},
+      nextAction: 'continue',
+      sessionId: latest.sessionId,
+      resumeFromCheckpoint: true,
+    });
+
+    const finalResponse = result.finalResponse as string | undefined;
+    if (finalResponse) {
+      console.log(`\n[recovery] Session ${latest.sessionId} completed:\n${finalResponse}\n`);
+    } else {
+      console.log(`[recovery] Session ${latest.sessionId} completed (no output).`);
+    }
+  } catch (err) {
+    console.error(`[recovery] Session ${latest.sessionId} recovery failed:`, err);
   }
 }
 
@@ -398,6 +482,16 @@ async function main(): Promise<void> {
     workspacePath,
     infra.permRegistry,
     infra.memoryManager,
+  );
+
+  // Recover orchestrator sessions
+  await recoverOrchestratorSessions(
+    infra.orchCheckpointManager,
+    infra.model,
+    infra.toolRegistry,
+    workspacePath,
+    infra.permRegistry,
+    infra.agentRegistry,
   );
 
   // 5. Mode switch: non-interactive query vs REPL
