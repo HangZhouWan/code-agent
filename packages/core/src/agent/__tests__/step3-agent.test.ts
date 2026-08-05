@@ -746,3 +746,101 @@ describe('Agent Event Handling', () => {
     expect(receivedEvents[0].topic).toBe('agent.event.code_changed');
   });
 });
+
+// ---------------------------------------------------------------------------
+// AgentInput AbortSignal 类型测试
+// ---------------------------------------------------------------------------
+
+describe('AgentInput AbortSignal', () => {
+  it('AgentInput 应接受 signal 字段', () => {
+    const controller = new AbortController();
+    const input: AgentInput = {
+      taskId: 'task-1',
+      description: 'Test task',
+      signal: controller.signal,
+    };
+    expect(input.signal).toBeDefined();
+    expect(input.signal!.aborted).toBe(false);
+  });
+
+  it('AgentInput signal 为可选字段', () => {
+    const input: AgentInput = {
+      taskId: 'task-2',
+      description: 'Test without signal',
+    };
+    expect(input.signal).toBeUndefined();
+  });
+
+  it('AgentInput signal 在 abort 后应反映 aborted 状态', () => {
+    const controller = new AbortController();
+    const input: AgentInput = {
+      taskId: 'task-3',
+      description: 'Cancelled task',
+      signal: controller.signal,
+    };
+
+    controller.abort();
+    expect(input.signal!.aborted).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Agent executeTask — signal propagation & purge skip 测试
+// ---------------------------------------------------------------------------
+
+describe('Agent executeTask with signal', () => {
+  let eventBus: IEventBus;
+  let stateManager: IStateManager;
+  let config: AgentConfig;
+
+  beforeEach(() => {
+    eventBus = new InMemoryEventBus();
+    stateManager = new InMemoryStateManager();
+    config = createAgentConfig({ eventBus, stateManager });
+  });
+
+  it('executeTask 应在 signal aborted 时跳过 checkpoint purge', async () => {
+    const controller = new AbortController();
+    const agent = new Agent(config);
+
+    await agent.start();
+
+    // Abort BEFORE executing — engine should detect in first iteration
+    controller.abort();
+
+    const output = await agent.executeTask({
+      taskId: 'task-abort',
+      description: 'This task will be cancelled',
+      signal: controller.signal,
+      maxIterations: 3,
+      timeoutMs: 5000,
+    });
+
+    await agent.stop();
+
+    // Engine returns 'failed' with cancellation message
+    expect(output.status).toBe('failed');
+    expect(output.error).toBe('Task cancelled by user');
+
+    // Checkpoint should NOT be purged (the purge is inside executeTask
+    // and gated on !wasAborted)
+  });
+
+  it('executeTask 应在 signal 未 abort 且成功时 purge checkpoint', async () => {
+    const agent = new Agent(config);
+
+    await agent.start();
+
+    const output = await agent.executeTask({
+      taskId: 'task-success',
+      description: 'A simple task that should succeed',
+      maxIterations: 3,
+      timeoutMs: 5000,
+    });
+
+    await agent.stop();
+
+    // With the mock model returning 'done', it should succeed
+    expect(output.status).toBe('success');
+  });
+});

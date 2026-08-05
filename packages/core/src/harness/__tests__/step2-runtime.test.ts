@@ -23,6 +23,8 @@ import * as os from 'node:os';
 // --- Checkpoint ---
 import { FileCheckpointManager } from '../execution/checkpoint.js';
 import type { CheckpointSnapshot } from '../execution/checkpoint.js';
+import { FileOrchestratorCheckpointManager } from '../execution/checkpoint.js';
+import type { OrchestratorCheckpoint } from '../execution/checkpoint.js';
 
 // --- Memory ---
 import { InMemoryShortTermMemory } from '../memory/short-term.js';
@@ -167,6 +169,260 @@ describe('FileCheckpointManager', () => {
 
     const loaded = await ckpt.load('old-task');
     expect(loaded).toBeNull();
+  });
+});
+
+// =============================================================================
+// FileOrchestratorCheckpointManager 测试
+// =============================================================================
+
+describe('FileOrchestratorCheckpointManager', () => {
+  let baseDir: string;
+  let mgr: FileOrchestratorCheckpointManager;
+
+  beforeEach(() => {
+    baseDir = tempDir();
+    mgr = new FileOrchestratorCheckpointManager(path.join(baseDir, 'checkpoints'));
+  });
+
+  afterEach(() => {
+    rmDir(baseDir);
+  });
+
+  const makeOrchCheckpoint = (sessionId: string, taskCount: number): Omit<OrchestratorCheckpoint, 'createdAt'> => ({
+    sessionId,
+    messages: [{ role: 'human', content: 'Test request' }],
+    plan: {
+      complexity: 'simple' as const,
+      tasks: Array.from({ length: taskCount }, (_, i) => ({
+        id: `task-${i + 1}`,
+        description: `Test task ${i + 1}`,
+        tools: ['file_read'],
+        dependsOn: [],
+        routing: 'direct' as const,
+        role: 'code',
+      })),
+      suggestedAgents: Object.fromEntries(
+        Array.from({ length: taskCount }, (_, i) => [`task-${i + 1}`, 'code']),
+      ),
+    },
+    progress: {
+      currentNode: 'planner' as const,
+      completedTaskIds: [],
+    },
+  });
+
+  it('save → load 完成往返', async () => {
+    await mgr.save('session-abc', makeOrchCheckpoint('session-abc', 2));
+    const loaded = await mgr.load('session-abc');
+
+    expect(loaded).not.toBeNull();
+    expect(loaded!.sessionId).toBe('session-abc');
+    expect(loaded!.plan.tasks).toHaveLength(2);
+    expect(loaded!.plan.tasks[0].id).toBe('task-1');
+    expect(loaded!.progress.currentNode).toBe('planner');
+    expect(loaded!.createdAt).toBeInstanceOf(Date);
+  });
+
+  it('load 不存在 → 返回 null', async () => {
+    const loaded = await mgr.load('nonexistent');
+    expect(loaded).toBeNull();
+  });
+
+  it('save 两次 → 第二次覆盖', async () => {
+    await mgr.save('session-1', makeOrchCheckpoint('session-1', 1));
+    const snapshot2 = makeOrchCheckpoint('session-1', 3);
+    snapshot2.messages = [{ role: 'human', content: 'Updated request' }];
+    await mgr.save('session-1', snapshot2);
+
+    const loaded = await mgr.load('session-1');
+    expect(loaded!.plan.tasks).toHaveLength(3);
+    expect(loaded!.messages[0].content).toBe('Updated request');
+  });
+
+  it('purge → load 返回 null', async () => {
+    await mgr.save('session-1', makeOrchCheckpoint('session-1', 1));
+    await mgr.purge('session-1');
+    const loaded = await mgr.load('session-1');
+    expect(loaded).toBeNull();
+  });
+
+  it('listSessions 应返回所有 session ID', async () => {
+    await mgr.save('session-a', makeOrchCheckpoint('session-a', 1));
+    await mgr.save('session-b', makeOrchCheckpoint('session-b', 2));
+
+    const sessions = await mgr.listSessions();
+    expect(sessions).toHaveLength(2);
+    expect(sessions).toContain('session-a');
+    expect(sessions).toContain('session-b');
+  });
+
+  it('listSessions 空目录应返回空数组', async () => {
+    const sessions = await mgr.listSessions();
+    expect(sessions).toEqual([]);
+  });
+
+  it('cleanup 应删除过期 checkpoint', async () => {
+    await mgr.save('old-session', makeOrchCheckpoint('old-session', 1));
+
+    const fp = path.join(baseDir, 'checkpoints', 'session-old-session.json');
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    fs.utimesSync(fp, twoDaysAgo, twoDaysAgo);
+
+    await mgr.cleanup(new Date(Date.now() - 24 * 60 * 60 * 1000));
+
+    const loaded = await mgr.load('old-session');
+    expect(loaded).toBeNull();
+  });
+
+  it('cleanup 不应删除未过期的 checkpoint', async () => {
+    await mgr.save('fresh-session', makeOrchCheckpoint('fresh-session', 1));
+
+    await mgr.cleanup(new Date(Date.now() - 24 * 60 * 60 * 1000));
+
+    const loaded = await mgr.load('fresh-session');
+    expect(loaded).not.toBeNull();
+  });
+
+  it('save 应创建 session- 前缀的文件', async () => {
+    await mgr.save('my-session', makeOrchCheckpoint('my-session', 1));
+
+    const fp = path.join(baseDir, 'checkpoints', 'session-my-session.json');
+    expect(fs.existsSync(fp)).toBe(true);
+  });
+
+  it('load 损坏的 JSON 文件应返回 null', async () => {
+    const fp = path.join(baseDir, 'checkpoints', 'session-bad.json');
+    fs.mkdirSync(path.dirname(fp), { recursive: true });
+    fs.writeFileSync(fp, 'not valid json {{{', 'utf-8');
+
+    const loaded = await mgr.load('bad');
+    expect(loaded).toBeNull();
+  });
+
+  it('进度更新应保留 messages 和 plan', async () => {
+    await mgr.save('session-1', makeOrchCheckpoint('session-1', 2));
+    const loaded = await mgr.load('session-1');
+    expect(loaded!.messages).toHaveLength(1);
+    expect(loaded!.plan.tasks).toHaveLength(2);
+    expect(loaded!.plan.complexity).toBe('simple');
+  });
+});
+
+// =============================================================================
+// Cross-Manager Cleanup Isolation 测试
+// =============================================================================
+
+describe('Cross-Manager Cleanup Isolation', () => {
+  let baseDir: string;
+  let agentCkpt: FileCheckpointManager;
+  let orchCkpt: FileOrchestratorCheckpointManager;
+
+  beforeEach(() => {
+    baseDir = tempDir();
+    const sharedDir = path.join(baseDir, 'checkpoints');
+    agentCkpt = new FileCheckpointManager(sharedDir);
+    orchCkpt = new FileOrchestratorCheckpointManager(sharedDir);
+  });
+
+  afterEach(() => {
+    rmDir(baseDir);
+  });
+
+  it('orchestrator cleanup 不应删除 agent checkpoint 文件', async () => {
+    // Save an agent checkpoint
+    await agentCkpt.save('task-1', {
+      taskId: 'task-1',
+      agentId: 'agent-1',
+      step: 3,
+      context: { messages: [new HumanMessage('test')], tokenCount: 5 },
+      toolHistory: [],
+      reasoningTrail: [],
+    });
+
+    // Save an orchestrator checkpoint
+    await orchCkpt.save('session-1', {
+      sessionId: 'session-1',
+      messages: [{ role: 'human', content: 'test' }],
+      plan: { complexity: 'simple', tasks: [], suggestedAgents: {} },
+      progress: { currentNode: 'planner', completedTaskIds: [] },
+    });
+
+    // Make both files old
+    const agentFp = path.join(baseDir, 'checkpoints', 'task-1.json');
+    const orchFp = path.join(baseDir, 'checkpoints', 'session-session-1.json');
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    fs.utimesSync(agentFp, twoDaysAgo, twoDaysAgo);
+    fs.utimesSync(orchFp, twoDaysAgo, twoDaysAgo);
+
+    // Run orchestrator cleanup
+    await orchCkpt.cleanup(new Date(Date.now() - 24 * 60 * 60 * 1000));
+
+    // Agent checkpoint should still exist
+    const agentLoaded = await agentCkpt.load('task-1');
+    expect(agentLoaded).not.toBeNull();
+
+    // Orchestrator checkpoint should be deleted
+    const orchLoaded = await orchCkpt.load('session-1');
+    expect(orchLoaded).toBeNull();
+  });
+
+  it('agent cleanup 不应删除 orchestrator checkpoint 文件', async () => {
+    await agentCkpt.save('task-1', {
+      taskId: 'task-1',
+      agentId: 'agent-1',
+      step: 3,
+      context: { messages: [new HumanMessage('test')], tokenCount: 5 },
+      toolHistory: [],
+      reasoningTrail: [],
+    });
+
+    await orchCkpt.save('session-1', {
+      sessionId: 'session-1',
+      messages: [{ role: 'human', content: 'test' }],
+      plan: { complexity: 'simple', tasks: [], suggestedAgents: {} },
+      progress: { currentNode: 'planner', completedTaskIds: [] },
+    });
+
+    const agentFp = path.join(baseDir, 'checkpoints', 'task-1.json');
+    const orchFp = path.join(baseDir, 'checkpoints', 'session-session-1.json');
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    fs.utimesSync(agentFp, twoDaysAgo, twoDaysAgo);
+    fs.utimesSync(orchFp, twoDaysAgo, twoDaysAgo);
+
+    // Run agent cleanup
+    await agentCkpt.cleanup(new Date(Date.now() - 24 * 60 * 60 * 1000));
+
+    // Orchestrator checkpoint should still exist
+    const orchLoaded = await orchCkpt.load('session-1');
+    expect(orchLoaded).not.toBeNull();
+
+    // Agent checkpoint should be deleted
+    const agentLoaded = await agentCkpt.load('task-1');
+    expect(agentLoaded).toBeNull();
+  });
+
+  it('agent listTasks 不应列出 orchestrator session 文件', async () => {
+    await agentCkpt.save('task-1', {
+      taskId: 'task-1',
+      agentId: 'agent-1',
+      step: 1,
+      context: { messages: [new HumanMessage('test')], tokenCount: 5 },
+      toolHistory: [],
+      reasoningTrail: [],
+    });
+
+    await orchCkpt.save('session-1', {
+      sessionId: 'session-1',
+      messages: [{ role: 'human', content: 'test' }],
+      plan: { complexity: 'simple', tasks: [], suggestedAgents: {} },
+      progress: { currentNode: 'planner', completedTaskIds: [] },
+    });
+
+    const tasks = await agentCkpt.listTasks();
+    expect(tasks).toHaveLength(1);
+    expect(tasks).toContain('task-1');
+    expect(tasks).not.toContain('session-1');
   });
 });
 
@@ -389,6 +645,81 @@ describe('ExecutionEngine', () => {
   it('不带参数创建时使用 Noop 实现', () => {
     const engine = new ExecutionEngine();
     expect(engine).toBeInstanceOf(ExecutionEngine);
+  });
+});
+
+// =============================================================================
+// ExecutionEngine — AbortSignal 测试
+// =============================================================================
+
+describe('ExecutionEngine — AbortSignal', () => {
+  it('ExecutionContext 应接受 signal 字段', () => {
+    const controller = new AbortController();
+    const ctx: ExecutionContext = {
+      agentId: 'test-agent',
+      taskId: 'test-task',
+      agent: {},
+      model: {} as any,
+      tools: [],
+      systemPrompt: 'test',
+      context: { messages: [], tokenCount: 0 },
+      capability: { maxIterations: 5, timeoutMs: 10000 },
+      signal: controller.signal,
+    };
+    expect(ctx.signal).toBeDefined();
+    expect(ctx.signal!.aborted).toBe(false);
+  });
+
+  it('ExecutionContext signal 为可选字段', () => {
+    const ctx: ExecutionContext = {
+      agentId: 'test-agent',
+      taskId: 'test-task',
+      agent: {},
+      model: {} as any,
+      tools: [],
+      systemPrompt: 'test',
+      context: { messages: [], tokenCount: 0 },
+      capability: { maxIterations: 5, timeoutMs: 10000 },
+    };
+    expect(ctx.signal).toBeUndefined();
+  });
+
+  it('resume() 应传递 signal 到 ExecutionContext', async () => {
+    const engine = new ExecutionEngine();
+    const controller = new AbortController();
+
+    // 先保存一个 checkpoint，然后 resume 时传入 signal
+    const ckpt = new FileCheckpointManager(path.join(os.tmpdir(), `signal-test-${Date.now()}`));
+    await ckpt.save('task-signal', {
+      taskId: 'task-signal',
+      agentId: 'agent-1',
+      step: 1,
+      context: { messages: [new HumanMessage('test')], tokenCount: 5 },
+      toolHistory: [],
+      reasoningTrail: [],
+    });
+
+    // engine.resume requires checkpointManager in constructor
+    const engineWithCkpt = new ExecutionEngine(ckpt);
+
+    // 即使 signal 已 abort，resume 也应该接受 signal 参数
+    controller.abort();
+    const result = await engineWithCkpt.resume(
+      'task-signal',
+      {} as any,
+      [],
+      'test prompt',
+      undefined,
+      controller.signal,  // new param
+    );
+
+    expect(result.status).toBe('failed');
+    expect(result.error).toBe('Task cancelled by user');
+    expect(result.taskId).toBe('task-signal');
+
+    // 清理
+    const ckptDir = ckpt['basePath'];  // access private for cleanup
+    if (fs.existsSync(ckptDir)) fs.rmSync(ckptDir, { recursive: true, force: true });
   });
 });
 
