@@ -67,6 +67,8 @@ export interface ExecutionContext {
     /** 超时时间（毫秒），默认 60000 */
     timeoutMs: number;
   };
+  /** AbortSignal —— 用于传播取消信号 */
+  signal?: AbortSignal;
 }
 
 /**
@@ -457,6 +459,17 @@ export class ExecutionEngine {
           taskId: ctx.taskId,
           status: 'timeout',
           error: `Task timed out after ${timeoutMs}ms`,
+          reasoningTrail,
+        };
+      }
+
+      // ── Abort check ──
+      if (ctx.signal?.aborted) {
+        // 不要 purge checkpoint —— 用户取消了，保留状态用于恢复
+        return {
+          taskId: ctx.taskId,
+          status: 'failed',
+          error: 'Task cancelled by user',
           reasoningTrail,
         };
       }
