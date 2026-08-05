@@ -49,13 +49,17 @@ export function getWorkspaceAgentDir(workspacePath: string): string {
  * 退回场景：工作区位只读文件系统、权限不足、磁盘满等。
  * mkdirSync({recursive: true}) 在目录已存在时是幂等的，不抛错。
  */
-function resolveWithFallback(workspacePath: string, subPath: string): string {
+function resolveWithFallback(
+  workspacePath: string,
+  subPath: string,
+  fallbackSubPath?: string
+): string {
   const localPath = join(getWorkspaceAgentDir(workspacePath), subPath);
   try {
     mkdirSync(localPath, { recursive: true });
     return localPath;
   } catch {
-    return join(getProjectDir(workspacePath), subPath);
+    return join(getProjectDir(workspacePath), fallbackSubPath ?? subPath);
   }
 }
 
@@ -84,5 +88,5 @@ export function getDataDir(workspacePath: string): string {
  * 获取指定工作区的 checkpoint 目录。
  */
 export function getCheckpointDir(workspacePath: string): string {
-  return resolveWithFallback(workspacePath, "runtime/checkpoints");
+  return resolveWithFallback(workspacePath, "runtime/checkpoints", "checkpoints");
 }
