@@ -83,6 +83,7 @@ async function streamOrchestrator(
   messages: BaseMessage[],
   options: ReplOptions,
   rl: readline.Interface,
+  signal?: AbortSignal,
 ): Promise<string> {
   const { model, toolRegistry, workspacePath, permissionRegistry, agentRegistry } = options;
 
@@ -98,14 +99,21 @@ async function streamOrchestrator(
   });
 
   let finalResponse = "";
+  let aborted = false;
 
   try {
     const stream = graph.streamEvents(
       { messages },
-      { version: "v2" },
+      { version: "v2", signal },
     );
 
     for await (const event of stream) {
+      // Check for cancellation before processing each event
+      if (signal?.aborted) {
+        aborted = true;
+        break;
+      }
+
       switch (event.event) {
         // ── LLM streaming output ──
         case "on_chat_model_stream": {
@@ -147,9 +155,19 @@ async function streamOrchestrator(
       }
     }
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : String(error);
-    process.stdout.write(`\n${formatError(message)}\n`);
+    // AbortError is expected on cancellation — suppress it gracefully
+    if (error instanceof Error && error.name === "AbortError") {
+      aborted = true;
+    } else {
+      const message =
+        error instanceof Error ? error.message : String(error);
+      process.stdout.write(`\n${formatError(message)}\n`);
+    }
+  }
+
+  // Indicate cancellation in the response if aborted
+  if (aborted) {
+    finalResponse = finalResponse || "[Task cancelled by user]";
   }
 
   return finalResponse;
@@ -254,6 +272,8 @@ export async function startRepl(options: ReplOptions): Promise<void> {
 
   // Track whether a task is currently running (for SIGINT handling)
   let running = false;
+  // AbortController for cancelling the in-flight graph stream
+  let abortController: AbortController | null = null;
 
   process.stdout.write(cyan("\n  code-agent CLI REPL"));
   process.stdout.write(dim(`\n  Type /help for commands, or just start chatting.\n\n`));
@@ -304,9 +324,15 @@ export async function startRepl(options: ReplOptions): Promise<void> {
 
     // ── Chat message ──
     running = true;
+    abortController = new AbortController();
     messages.push(new HumanMessage(input));
 
-    const finalResponse = await streamOrchestrator(messages, options, rl);
+    const finalResponse = await streamOrchestrator(
+      messages,
+      options,
+      rl,
+      abortController.signal,
+    );
 
     if (finalResponse) {
       // Stream output already displayed; also add to history
@@ -314,6 +340,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     }
 
     running = false;
+    abortController = null;
     rl.prompt();
   });
 
@@ -322,7 +349,10 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     if (running) {
       // Task is running — cancel it
       process.stdout.write(`\n${yellow("⚠  Task cancelled.")}\n`);
+      // Signal the AbortController to stop the in-flight graph stream
+      abortController?.abort();
       running = false;
+      abortController = null;
       // Clear the current line and re-prompt
       rl.prompt();
     } else {
@@ -334,6 +364,8 @@ export async function startRepl(options: ReplOptions): Promise<void> {
 
   // ── Close handler ──
   rl.on("close", () => {
+    // Abort any running task on close
+    abortController?.abort();
     process.stdout.write(`\n${dim("Session ended.")}\n`);
     process.exit(0);
   });
