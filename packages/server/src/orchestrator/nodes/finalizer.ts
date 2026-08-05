@@ -16,7 +16,7 @@
 
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { SystemMessage, HumanMessage } from '@langchain/core/messages';
-import type { WorkerOutput } from '@code-agent/core';
+import type { WorkerOutput, IOrchestratorCheckpointManager } from '@code-agent/core';
 import type { Artifacts } from '../types.js';
 
 // ---------------------------------------------------------------------------
@@ -137,9 +137,15 @@ function buildArtifactsSummary(artifacts: Artifacts): string {
  * 创建 Finalizer 节点
  *
  * @param model - LLM 实例，用于生成最终回复
+ * @param checkpointManager - Orchestrator 检查点管理器（可选），用于在成功输出后清除检查点
+ * @param sessionId - 会话 ID（可选），用于清除检查点
  * @returns LangGraph 节点函数
  */
-export function createFinalizerNode(model: BaseChatModel) {
+export function createFinalizerNode(
+  model: BaseChatModel,
+  checkpointManager?: IOrchestratorCheckpointManager,
+  sessionId?: string,
+) {
   return async function finalizerNode(state: {
     messages: Array<HumanMessage | SystemMessage>;
     completedTasks: Record<string, WorkerOutput>;
@@ -179,6 +185,16 @@ export function createFinalizerNode(model: BaseChatModel) {
       typeof response.content === 'string'
         ? response.content
         : JSON.stringify(response.content);
+
+    // ── Purge orchestrator checkpoint on success ──
+    if (checkpointManager && sessionId) {
+      checkpointManager.purge(sessionId).catch((err) => {
+        console.error(
+          `[orchestrator-checkpoint] Failed to purge checkpoint for session "${sessionId}":`,
+          err instanceof Error ? err.message : String(err),
+        );
+      });
+    }
 
     return { finalResponse };
   };
