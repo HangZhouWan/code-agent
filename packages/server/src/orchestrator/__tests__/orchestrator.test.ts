@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest';
 import { HumanMessage } from '@langchain/core/messages';
 import { SimpleChatModel } from '@langchain/core/language_models/chat_models';
 import type { BaseMessage } from '@langchain/core/messages';
-import { ToolRegistry } from '@code-agent/core';
+import { ToolRegistry, ToolNames } from '@code-agent/core';
 
 // Orchestrator 模块
 import type { SubTask, Plan, NextAction, TaskResult } from '../types.js';
@@ -51,13 +51,13 @@ describe('Orchestrator Types', () => {
     const task: SubTask = {
       id: 'task-1',
       description: 'Read config file',
-      tools: ['file_read'],
+      tools: [ToolNames.FILE_READ],
       dependsOn: [],
       routing: 'direct',
       role: 'code',
     };
     expect(task.id).toBe('task-1');
-    expect(task.tools).toEqual(['file_read']);
+    expect(task.tools).toEqual([ToolNames.FILE_READ]);
     expect(task.routing).toBe('direct');
     expect(task.role).toBe('code');
   });
@@ -66,7 +66,7 @@ describe('Orchestrator Types', () => {
     const task: SubTask = {
       id: 'task-2',
       description: 'Collaborative code review',
-      tools: ['code_search'],
+      tools: [ToolNames.CODE_SEARCH],
       routing: 'bus',
       role: 'code',
     };
@@ -77,7 +77,7 @@ describe('Orchestrator Types', () => {
     const plan: Plan = {
       complexity: 'simple',
       tasks: [
-        { id: 't1', description: 'Read file', tools: ['file_read'], routing: 'direct', role: 'code' },
+        { id: 't1', description: 'Read file', tools: [ToolNames.FILE_READ], routing: 'direct', role: 'code' },
       ],
       suggestedAgents: { t1: 'code' },
     };
@@ -109,7 +109,7 @@ describe('Orchestrator Types', () => {
       task: {
         id: 'task-1',
         description: 'Read file',
-        tools: ['file_read'],
+        tools: [ToolNames.FILE_READ],
         routing: 'direct',
         role: 'code',
       },
@@ -191,7 +191,7 @@ describe('validateSubTask', () => {
     const item = {
       id: 'task-1',
       description: 'Read package.json',
-      tools: ['file_read'],
+      tools: [ToolNames.FILE_READ],
       dependsOn: ['task-0'],
       routing: 'direct',
       role: 'code',
@@ -199,7 +199,7 @@ describe('validateSubTask', () => {
     const result = validateSubTask(item, 0);
     expect(result.id).toBe('task-1');
     expect(result.description).toBe('Read package.json');
-    expect(result.tools).toEqual(['file_read']);
+    expect(result.tools).toEqual([ToolNames.FILE_READ]);
     expect(result.dependsOn).toEqual(['task-0']);
     expect(result.routing).toBe('direct');
     expect(result.role).toBe('code');
@@ -346,8 +346,8 @@ describe('createOrchestratorGraph', () => {
     const planJson = JSON.stringify({
       complexity: 'simple',
       tasks: [
-        { id: 'task-1', description: 'Read package.json', tools: ['file_read'], routing: 'direct', role: 'code' },
-        { id: 'task-2', description: 'Check git status', tools: ['git_status'], routing: 'direct', role: 'code' },
+        { id: 'task-1', description: 'Read package.json', tools: [ToolNames.FILE_READ], routing: 'direct', role: 'code' },
+        { id: 'task-2', description: 'Check git status', tools: [ToolNames.GIT_STATUS], routing: 'direct', role: 'code' },
       ],
       suggestedAgents: { 'task-1': 'code', 'task-2': 'code' },
     });
@@ -376,7 +376,7 @@ describe('createOrchestratorGraph', () => {
     const planJson = JSON.stringify({
       complexity: 'complex',
       tasks: [
-        { id: 'task-1', description: 'Write code', tools: ['file_write'], routing: 'direct', role: 'code' },
+        { id: 'task-1', description: 'Write code', tools: [ToolNames.FILE_WRITE], routing: 'direct', role: 'code' },
         { id: 'task-2', description: 'Run tests', tools: ['shell'], dependsOn: ['task-1'], routing: 'bus', role: 'test' },
       ],
       suggestedAgents: { 'task-1': 'code', 'task-2': 'test' },
@@ -404,8 +404,8 @@ describe('createOrchestratorGraph', () => {
     const planJson = JSON.stringify({
       complexity: 'simple',
       tasks: [
-        { id: 'task-1', description: 'Read config', tools: ['file_read'], routing: 'direct', role: 'code' },
-        { id: 'task-2', description: 'Process config', tools: ['file_write'], dependsOn: ['task-1'], routing: 'direct', role: 'code' },
+        { id: 'task-1', description: 'Read config', tools: [ToolNames.FILE_READ], routing: 'direct', role: 'code' },
+        { id: 'task-2', description: 'Process config', tools: [ToolNames.FILE_WRITE], dependsOn: ['task-1'], routing: 'direct', role: 'code' },
       ],
       suggestedAgents: { 'task-1': 'code', 'task-2': 'code' },
     });
@@ -460,7 +460,7 @@ describe('createOrchestratorGraph', () => {
   it('should handle legacy array format from LLM', async () => {
     // 兼容旧格式：LLM 返回数组而非 Plan 对象
     const planJson = JSON.stringify([
-      { id: 'task-1', description: 'Read file', tools: ['file_read'], routing: 'direct', role: 'code' },
+      { id: 'task-1', description: 'Read file', tools: [ToolNames.FILE_READ], routing: 'direct', role: 'code' },
     ]);
     const model = new MockChatModel(planJson);
     const registry = ToolRegistry.createDefault();

@@ -14,7 +14,7 @@
  * const output = await worker.run({
  *   taskId: 'task-1',
  *   description: 'Read package.json and report the version',
- *   tools: ['file_read'],
+ *   tools: [ToolNames.FILE_READ],
  *   context: '',
  *   workspacePath: './workspace',
  * });
@@ -109,7 +109,7 @@ const WORKER_ROLE: AgentRole = {
  * const output = await worker.run({
  *   taskId: 'task-1',
  *   description: 'Read package.json and report the version',
- *   tools: ['file_read'],
+ *   tools: [ToolNames.FILE_READ],
  *   context: '',
  *   workspacePath: './workspace',
  * });

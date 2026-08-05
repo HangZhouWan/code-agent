@@ -19,6 +19,7 @@ import { ExecutionEngine } from '../../harness/execution/engine.js';
 import { ContextManager } from '../../harness/context/manager.js';
 import { ToolRegistry } from '../../tools/registry.js';
 import type { ToolDefinition } from '../../tools/base.js';
+import { ToolNames } from '../../tools/tool-names.js';
 import { HooksEngine } from '../../harness/hooks/engine.js';
 import type { IEventBus } from '../../event-bus/types.js';
 import type { IStateManager } from '../../state/types.js';
@@ -149,8 +150,8 @@ describe('AgentRole & BUILTIN_ROLES', () => {
     expect(code.canDelegate).toBe(true);
     expect(code.delegatableRoles).toContain('test');
     expect(code.delegatableRoles).toContain('doc');
-    expect(code.defaultTools).toContain('file_read');
-    expect(code.defaultTools).toContain('shell_exec');
+    expect(code.defaultTools).toContain(ToolNames.FILE_READ);
+    expect(code.defaultTools).toContain(ToolNames.SHELL_EXEC);
   });
 
   it('test agent should not be able to delegate', () => {
@@ -189,7 +190,7 @@ describe('Agent Construction', () => {
   it('should use custom capability when provided', () => {
     const config = createAgentConfig({
       capability: {
-        tools: ['file_read'],
+        tools: [ToolNames.FILE_READ],
         paths: ['/custom/path'],
         maxTokens: 10,
         timeoutMs: 30000,
@@ -197,7 +198,7 @@ describe('Agent Construction', () => {
     });
     const agent = new Agent(config);
 
-    expect(agent.capability.tools).toEqual(['file_read']);
+    expect(agent.capability.tools).toEqual([ToolNames.FILE_READ]);
     expect(agent.capability.paths).toEqual(['/custom/path']);
   });
 });
@@ -483,7 +484,7 @@ describe('AgentRegistry', () => {
         systemPrompt: 'You review code.',
         commandSubscriptions: ['agent.command.review'],
         eventSubscriptions: [],
-        defaultTools: ['file_read'],
+        defaultTools: [ToolNames.FILE_READ],
         canDelegate: false,
         delegatableRoles: [],
       };

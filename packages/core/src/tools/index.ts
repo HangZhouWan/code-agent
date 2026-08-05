@@ -9,6 +9,10 @@
 export { createLangChainTool } from './base.js';
 export type { ToolDefinition, ToolContext, PermissionLevel } from './base.js';
 
+// 工具名称常量
+export { ToolNames, ALL_TOOL_NAMES, SAFE_TOOL_NAMES, CONFIRM_TOOL_NAMES } from './tool-names.js';
+export type { ToolName } from './tool-names.js';
+
 // 工具注册表
 export { ToolRegistry } from './registry.js';
 export type { AgentCapability } from './registry.js';

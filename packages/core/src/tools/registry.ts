@@ -46,7 +46,7 @@ export interface AgentCapability {
  * registry.register(codeSearchTool);
  *
  * const tools = registry.getToolsForAgent(
- *   { tools: ['file_read', 'code_search'], paths: ['./workspace'] },
+ *   { tools: [ToolNames.FILE_READ, ToolNames.CODE_SEARCH], paths: ['./workspace'] },
  *   { workspacePath: './workspace', sessionId: 'test' },
  * );
  * ```

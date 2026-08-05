@@ -6,6 +6,7 @@
  */
 
 import type { AgentRole } from '../role.js';
+import { ToolNames } from '../../tools/tool-names.js';
 
 export const TEST_AGENT_ROLE: AgentRole = {
   id: 'test',
@@ -20,7 +21,12 @@ export const TEST_AGENT_ROLE: AgentRole = {
 - Watch for code changes and automatically run relevant tests`,
   commandSubscriptions: ['agent.command.test_run', 'agent.command.test_write'],
   eventSubscriptions: ['agent.event.code_changed'],
-  defaultTools: ['shell_exec', 'file_read', 'file_write', 'file_list', 'code_search', 'web_fetch'],
+  defaultTools: [
+    ToolNames.SHELL_EXEC,
+    ToolNames.FILE_READ, ToolNames.FILE_WRITE, ToolNames.FILE_LIST,
+    ToolNames.CODE_SEARCH,
+    ToolNames.WEB_FETCH,
+  ],
   canDelegate: false,
   delegatableRoles: [],
 };

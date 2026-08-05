@@ -17,6 +17,7 @@ import { HumanMessage, AIMessage, type BaseMessage } from '@langchain/core/messa
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import type { StructuredTool } from '@langchain/core/tools';
 import type { IEventBus } from '../../event-bus/types.js';
+import { ToolNames } from '../../tools/tool-names.js';
 import type {
   ICheckpointManager,
   Thought,
@@ -115,20 +116,20 @@ class ToolExecutor {
    * Maps what the LLM might say → actual registered tool name.
    */
   private static readonly TOOL_ALIASES: Record<string, string> = {
-    read_file: 'file_read',
-    write_file: 'file_write',
-    list_files: 'file_list',
-    list_dir: 'file_list',
-    read: 'file_read',
-    write: 'file_write',
-    shell: 'shell_exec',
-    bash: 'shell_exec',
-    exec: 'shell_exec',
-    run: 'shell_exec',
-    search: 'code_search',
-    grep: 'code_search',
-    fetch: 'web_fetch',
-    curl: 'web_fetch',
+    read_file: ToolNames.FILE_READ,
+    write_file: ToolNames.FILE_WRITE,
+    list_files: ToolNames.FILE_LIST,
+    list_dir: ToolNames.FILE_LIST,
+    read: ToolNames.FILE_READ,
+    write: ToolNames.FILE_WRITE,
+    shell: ToolNames.SHELL_EXEC,
+    bash: ToolNames.SHELL_EXEC,
+    exec: ToolNames.SHELL_EXEC,
+    run: ToolNames.SHELL_EXEC,
+    search: ToolNames.CODE_SEARCH,
+    grep: ToolNames.CODE_SEARCH,
+    fetch: ToolNames.WEB_FETCH,
+    curl: ToolNames.WEB_FETCH,
   };
 
   /**

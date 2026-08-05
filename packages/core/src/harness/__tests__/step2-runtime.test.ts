@@ -36,6 +36,7 @@ import type { ExecutionContext } from '../execution/engine.js';
 // --- Context ---
 import { ContextManager } from '../context/manager.js';
 import type { RuntimeContext } from '../context/types.js';
+import { ToolNames } from '../../tools/tool-names.js';
 
 // =============================================================================
 // 测试辅助工具
@@ -131,10 +132,10 @@ describe('FileCheckpointManager', () => {
         summary: 'Compressed earlier content',
       },
       toolHistory: [
-        { call: { name: 'file_read', args: { path: 'test.txt' } }, result: 'content' },
+        { call: { name: ToolNames.FILE_READ, args: { path: 'test.txt' } }, result: 'content' },
       ],
       reasoningTrail: [
-        { reasoning: 'Need to read file', decision: 'use_tool', toolCall: { name: 'file_read', args: { path: 'test.txt' } } },
+        { reasoning: 'Need to read file', decision: 'use_tool', toolCall: { name: ToolNames.FILE_READ, args: { path: 'test.txt' } } },
       ],
     });
 

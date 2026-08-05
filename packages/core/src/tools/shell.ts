@@ -17,6 +17,7 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as path from 'node:path';
 import type { ToolDefinition } from './base.js';
+import { ToolNames } from './tool-names.js';
 
 const execAsync = promisify(exec);
 
@@ -53,7 +54,7 @@ const ALLOWED_COMMANDS = new Set([
 ]);
 
 export const shellExecTool: ToolDefinition = {
-  name: 'shell_exec',
+  name: ToolNames.SHELL_EXEC,
   description:
     '在工作区内执行一个 shell 命令。仅允许执行白名单中的命令（如 ls、cat、grep、git、npm 等）。' +
     '命令将在指定的工作目录（或默认工作区根目录）下执行。' +

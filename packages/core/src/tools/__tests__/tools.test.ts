@@ -27,6 +27,7 @@ import {
   gitCommitTool,
   gitBranchTool,
 } from '../git.js';
+import { ToolNames } from '../tool-names.js';
 import * as fs from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import * as path from 'node:path';
@@ -63,9 +64,9 @@ describe('ToolRegistry', () => {
     const registry = ToolRegistry.createDefault();
     registry.register(fileReadTool);
 
-    const def = registry.get('file_read');
+    const def = registry.get(ToolNames.FILE_READ);
     expect(def).toBeDefined();
-    expect(def?.name).toBe('file_read');
+    expect(def?.name).toBe(ToolNames.FILE_READ);
     expect(def?.permission).toBe('safe');
   });
 
@@ -111,9 +112,9 @@ describe('ToolRegistry', () => {
     const all = registry.listAll();
     expect(all).toHaveLength(3);
     const names = all.map((t) => t.name);
-    expect(names).toContain('file_read');
-    expect(names).toContain('file_write');
-    expect(names).toContain('file_list');
+    expect(names).toContain(ToolNames.FILE_READ);
+    expect(names).toContain(ToolNames.FILE_WRITE);
+    expect(names).toContain(ToolNames.FILE_LIST);
   });
 
   it('getToolsForAgent 应根据 capability 过滤工具', async () => {
@@ -126,15 +127,15 @@ describe('ToolRegistry', () => {
 
       const ctx = makeCtx(workspacePath);
       const tools = registry.getToolsForAgent(
-        { tools: ['file_read', 'file_write'], paths: [workspacePath] },
+        { tools: [ToolNames.FILE_READ, ToolNames.FILE_WRITE], paths: [workspacePath] },
         ctx,
       );
 
       expect(tools).toHaveLength(2);
       const names = tools.map((t) => t.name);
-      expect(names).toContain('file_read');
-      expect(names).toContain('file_write');
-      expect(names).not.toContain('shell_exec');
+      expect(names).toContain(ToolNames.FILE_READ);
+      expect(names).toContain(ToolNames.FILE_WRITE);
+      expect(names).not.toContain(ToolNames.SHELL_EXEC);
     } finally {
       await cleanupTempWorkspace(workspacePath);
     }
@@ -148,13 +149,13 @@ describe('ToolRegistry', () => {
 
       const ctx = makeCtx(workspacePath);
       const tools = registry.getToolsForAgent(
-        { tools: ['file_read', 'nonexistent.tool'], paths: [workspacePath] },
+        { tools: [ToolNames.FILE_READ, 'nonexistent.tool'], paths: [workspacePath] },
         ctx,
       );
 
       // 不存在的工具应被跳过
       expect(tools).toHaveLength(1);
-      expect(tools[0].name).toBe('file_read');
+      expect(tools[0].name).toBe(ToolNames.FILE_READ);
     } finally {
       await cleanupTempWorkspace(workspacePath);
     }
@@ -247,7 +248,7 @@ describe('文件工具', () => {
     await cleanupTempWorkspace(workspacePath);
   });
 
-  describe('file_read', () => {
+  describe(ToolNames.FILE_READ, () => {
     it('应读取文件内容', async () => {
       const result = await fileReadTool.execute({ path: 'test.txt' }, makeCtx(workspacePath));
       expect(result).toBe('Hello, World!');
@@ -274,7 +275,7 @@ describe('文件工具', () => {
     });
   });
 
-  describe('file_write', () => {
+  describe(ToolNames.FILE_WRITE, () => {
     it('应写入文件内容', async () => {
       const ctx = makeCtx(workspacePath);
       const result = await fileWriteTool.execute(
@@ -311,7 +312,7 @@ describe('文件工具', () => {
     });
   });
 
-  describe('file_list', () => {
+  describe(ToolNames.FILE_LIST, () => {
     it('应列出根目录内容', async () => {
       const result = await fileListTool.execute({ path: '.' }, makeCtx(workspacePath));
       expect(result).toContain('📄 test.txt');

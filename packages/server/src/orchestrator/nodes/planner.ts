@@ -13,7 +13,7 @@
 
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { SystemMessage, HumanMessage } from '@langchain/core/messages';
-import { ToolRegistry, type ToolDefinition } from '@code-agent/core';
+import { ToolRegistry, ToolNames, type ToolDefinition } from '@code-agent/core';
 import type { AgentRegistry } from '@code-agent/core';
 import type { SubTask, Plan } from '../types.js';
 
@@ -219,17 +219,32 @@ export function createPlannerNode(
         {
           role: 'code',
           description: 'Responsible for reading, writing, and modifying code files.',
-          tools: ['file_read', 'file_write', 'file_list', 'code_search', 'shell_exec', 'git_status', 'git_diff', 'git_log', 'git_commit', 'git_branch', 'web_fetch'],
+          tools: [
+            ToolNames.FILE_READ, ToolNames.FILE_WRITE, ToolNames.FILE_LIST,
+            ToolNames.CODE_SEARCH, ToolNames.SHELL_EXEC,
+            ToolNames.GIT_STATUS, ToolNames.GIT_DIFF, ToolNames.GIT_LOG,
+            ToolNames.GIT_COMMIT, ToolNames.GIT_BRANCH,
+            ToolNames.WEB_FETCH,
+          ],
         },
         {
           role: 'test',
           description: 'Responsible for running tests and analyzing failures.',
-          tools: ['shell_exec', 'file_read', 'file_write', 'file_list', 'code_search', 'web_fetch'],
+          tools: [
+            ToolNames.SHELL_EXEC,
+            ToolNames.FILE_READ, ToolNames.FILE_WRITE, ToolNames.FILE_LIST,
+            ToolNames.CODE_SEARCH,
+            ToolNames.WEB_FETCH,
+          ],
         },
         {
           role: 'doc',
           description: 'Responsible for generating documentation and README files.',
-          tools: ['file_read', 'file_write', 'file_list', 'code_search', 'web_fetch'],
+          tools: [
+            ToolNames.FILE_READ, ToolNames.FILE_WRITE, ToolNames.FILE_LIST,
+            ToolNames.CODE_SEARCH,
+            ToolNames.WEB_FETCH,
+          ],
         },
       ];
 

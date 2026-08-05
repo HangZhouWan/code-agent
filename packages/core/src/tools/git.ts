@@ -15,6 +15,7 @@
 import { z } from 'zod';
 import { simpleGit } from 'simple-git';
 import type { ToolDefinition, ToolContext } from './base.js';
+import { ToolNames } from './tool-names.js';
 
 /**
  * 创建绑定到工作区的 simple-git 实例
@@ -33,7 +34,7 @@ function git(ctx: ToolContext) {
  * 返回 JSON 格式的状态信息，便于 LLM 解析
  */
 export const gitStatusTool: ToolDefinition = {
-  name: 'git_status',
+  name: ToolNames.GIT_STATUS,
   description: '查看 Git 工作区的当前状态，包括已修改、已暂存和未跟踪的文件',
   schema: z.object({}),
   permission: 'safe',
@@ -50,7 +51,7 @@ export const gitStatusTool: ToolDefinition = {
  * 支持查看未暂存和已暂存的差异
  */
 export const gitDiffTool: ToolDefinition = {
-  name: 'git_diff',
+  name: ToolNames.GIT_DIFF,
   description: '查看工作区文件的差异对比。默认显示未暂存的变更，设置 staged=true 查看已暂存的变更',
   schema: z.object({
     staged: z.boolean().default(false).describe('是否仅显示已暂存 (staged) 的变更'),
@@ -70,7 +71,7 @@ export const gitDiffTool: ToolDefinition = {
  * 默认返回最近 20 条简略日志
  */
 export const gitLogTool: ToolDefinition = {
-  name: 'git_log',
+  name: ToolNames.GIT_LOG,
   description: '查看 Git 提交日志，默认显示最近 20 条记录',
   schema: z.object({
     maxCount: z.number().default(20).describe('最大返回的提交数量'),
@@ -94,7 +95,7 @@ export const gitLogTool: ToolDefinition = {
  * 仅支持 message 参数，不处理 add 操作（需用户手动 git add）
  */
 export const gitCommitTool: ToolDefinition = {
-  name: 'git_commit',
+  name: ToolNames.GIT_COMMIT,
   description: '创建新的 Git 提交。注意：需要先手动添加文件到暂存区（git add）',
   schema: z.object({
     message: z.string().describe('提交信息'),
@@ -113,7 +114,7 @@ export const gitCommitTool: ToolDefinition = {
  * 不传 name 时列出所有本地分支，传入 name 时创建新分支
  */
 export const gitBranchTool: ToolDefinition = {
-  name: 'git_branch',
+  name: ToolNames.GIT_BRANCH,
   description:
     '列出所有本地分支，或创建新分支。传入 name 参数时创建新分支并切换过去，不传时列出所有本地分支',
   schema: z.object({

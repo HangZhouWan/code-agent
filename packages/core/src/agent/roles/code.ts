@@ -6,6 +6,7 @@
  */
 
 import type { AgentRole } from '../role.js';
+import { ToolNames } from '../../tools/tool-names.js';
 
 export const CODE_AGENT_ROLE: AgentRole = {
   id: 'code',
@@ -24,7 +25,13 @@ export const CODE_AGENT_ROLE: AgentRole = {
     'agent.command.code_generate',
   ],
   eventSubscriptions: ['agent.event.test_failed', 'agent.event.code_changed'],
-  defaultTools: ['file_read', 'file_write', 'file_list', 'code_search', 'shell_exec', 'git_status', 'git_diff', 'git_log', 'git_commit', 'git_branch', 'web_fetch'],
+  defaultTools: [
+    ToolNames.FILE_READ, ToolNames.FILE_WRITE, ToolNames.FILE_LIST,
+    ToolNames.CODE_SEARCH, ToolNames.SHELL_EXEC,
+    ToolNames.GIT_STATUS, ToolNames.GIT_DIFF, ToolNames.GIT_LOG,
+    ToolNames.GIT_COMMIT, ToolNames.GIT_BRANCH,
+    ToolNames.WEB_FETCH,
+  ],
   canDelegate: true,
   delegatableRoles: ['test', 'doc'],
 };

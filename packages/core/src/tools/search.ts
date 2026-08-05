@@ -13,11 +13,12 @@ import { z } from 'zod';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { ToolDefinition } from './base.js';
+import { ToolNames } from './tool-names.js';
 
 const execAsync = promisify(exec);
 
 export const codeSearchTool: ToolDefinition = {
-  name: 'code_search',
+  name: ToolNames.CODE_SEARCH,
   description:
     '在工作区代码中搜索匹配的文本模式（支持正则表达式）。' +
     '可以指定搜索路径和文件类型过滤。返回匹配的行及文件名和行号。',

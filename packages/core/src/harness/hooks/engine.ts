@@ -17,7 +17,7 @@
  *
  * const result = await engine.trigger('tool:before', {
  *   agentId: 'agent-1',
- *   data: { toolName: 'file_read', args: { path: './test.txt' } },
+ *   data: { toolName: ToolNames.FILE_READ, args: { path: './test.txt' } },
  * });
  * ```
  */

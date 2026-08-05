@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { InMemoryStateManager } from '../manager.js';
 import { InvalidTransitionError } from '../types.js';
 import type { Task } from '../types.js';
+import { ToolNames } from '../../tools/tool-names.js';
 
 // ─────────────────────────────────────────────
 // Helpers
@@ -397,7 +398,7 @@ describe('InMemoryStateManager', () => {
       const plan = {
         complexity: 'complex' as const,
         tasks: [
-          { id: '1', description: 'Write code', tools: ['file_write'], dependsOn: [], routing: 'bus' as const },
+          { id: '1', description: 'Write code', tools: [ToolNames.FILE_WRITE], dependsOn: [], routing: 'bus' as const },
         ],
         suggestedAgents: { '1': 'code' },
       };

@@ -6,6 +6,7 @@
  */
 
 import type { AgentRole } from '../role.js';
+import { ToolNames } from '../../tools/tool-names.js';
 
 export const DOC_AGENT_ROLE: AgentRole = {
   id: 'doc',
@@ -20,7 +21,11 @@ export const DOC_AGENT_ROLE: AgentRole = {
 - Watch for code changes and flag outdated documentation`,
   commandSubscriptions: ['agent.command.doc_generate', 'agent.command.doc_update'],
   eventSubscriptions: ['agent.event.code_changed'],
-  defaultTools: ['file_read', 'file_write', 'code_search', 'web_fetch'],
+  defaultTools: [
+    ToolNames.FILE_READ, ToolNames.FILE_WRITE,
+    ToolNames.CODE_SEARCH,
+    ToolNames.WEB_FETCH,
+  ],
   canDelegate: false,
   delegatableRoles: [],
 };

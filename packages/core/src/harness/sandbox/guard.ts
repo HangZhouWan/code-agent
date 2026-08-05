@@ -18,6 +18,7 @@ import { BaseCallbackHandler } from '@langchain/core/callbacks/base';
 import type { AgentAction } from '@langchain/core/agents';
 import type { PermissionRegistry } from './registry.js';
 import type { PermissionResult, AgentCapability } from './types.js';
+import { ToolNames } from '../../tools/tool-names.js';
 import { ConfirmRequiredError } from './types.js';
 
 /**
@@ -137,7 +138,7 @@ export class SandboxGuard extends BaseCallbackHandler {
     }
 
     // 3. Shell 高危模式检测（仅针对 shell_exec）
-    if (toolName === 'shell_exec') {
+    if (toolName === ToolNames.SHELL_EXEC) {
       const command = String(args.command ?? '');
       for (const pattern of DENY_PATTERNS) {
         if (pattern.test(command)) {

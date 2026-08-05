@@ -17,6 +17,7 @@ import { z } from 'zod';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import type { ToolDefinition, ToolContext } from './base.js';
+import { ToolNames } from './tool-names.js';
 
 // ═══════════════════════════════════════════════
 // 路径安全工具
@@ -53,7 +54,7 @@ function resolvePath(relativePath: string, ctx: ToolContext): string {
  * 权限: safe（只读操作，不修改文件系统）
  */
 export const fileReadTool: ToolDefinition = {
-  name: 'file_read',
+  name: ToolNames.FILE_READ,
   description:
     '读取工作区内的文件内容（UTF-8 编码）。支持读取任意文本文件，包括代码、配置、文档等。',
   schema: z.object({
@@ -74,7 +75,7 @@ export const fileReadTool: ToolDefinition = {
  * 功能：如果父目录不存在则自动创建
  */
 export const fileWriteTool: ToolDefinition = {
-  name: 'file_write',
+  name: ToolNames.FILE_WRITE,
   description:
     '将文本内容写入工作区的指定文件。如果文件所在目录不存在，会自动创建。会覆盖已存在的文件内容。',
   schema: z.object({
@@ -98,7 +99,7 @@ export const fileWriteTool: ToolDefinition = {
  * 以图标区分文件和目录，便于 LLM 理解目录结构
  */
 export const fileListTool: ToolDefinition = {
-  name: 'file_list',
+  name: ToolNames.FILE_LIST,
   description: '列出工作区内指定目录的内容，以图标区分文件和目录',
   schema: z.object({
     path: z.string().default('.').describe('相对于工作区的目录路径，默认为根目录'),

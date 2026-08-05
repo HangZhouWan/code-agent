@@ -13,6 +13,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AIMessageChunk } from "@langchain/core/messages";
 import type { WebSocket } from "ws";
+import { ToolNames } from "@code-agent/core";
 import {
   createChatWebSocket,
   type ChatWebSocketOptions,
@@ -486,20 +487,20 @@ describe("ServerMessage 协议", () => {
   it("tool_start 消息应有 type、tool、args", () => {
     const msg = {
       type: "tool_start" as const,
-      tool: "file_read",
+      tool: ToolNames.FILE_READ,
       args: { path: "/test.txt" },
     };
     const json = JSON.stringify(msg);
     const parsed = JSON.parse(json);
     expect(parsed.type).toBe("tool_start");
-    expect(parsed.tool).toBe("file_read");
+    expect(parsed.tool).toBe(ToolNames.FILE_READ);
     expect(parsed.args.path).toBe("/test.txt");
   });
 
   it("tool_end 消息应有 type、tool、result", () => {
     const msg = {
       type: "tool_end" as const,
-      tool: "file_read",
+      tool: ToolNames.FILE_READ,
       result: "File content here",
     };
     const json = JSON.stringify(msg);
@@ -512,14 +513,14 @@ describe("ServerMessage 协议", () => {
     const msg = {
       type: "confirm_required" as const,
       callId: "call-123",
-      tool: "shell_exec",
+      tool: ToolNames.SHELL_EXEC,
       args: { command: "rm -rf ./tmp" },
     };
     const json = JSON.stringify(msg);
     const parsed = JSON.parse(json);
     expect(parsed.type).toBe("confirm_required");
     expect(parsed.callId).toBe("call-123");
-    expect(parsed.tool).toBe("shell_exec");
+    expect(parsed.tool).toBe(ToolNames.SHELL_EXEC);
   });
 
   it("done 消息应有 type 和 finalResponse", () => {

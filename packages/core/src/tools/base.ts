@@ -55,7 +55,7 @@ export interface ToolContext {
  * @example
  * ```ts
  * const myTool: ToolDefinition = {
- *   name: 'file_read',
+ *   name: ToolNames.FILE_READ,
  *   description: '读取文件内容',
  *   schema: z.object({ path: z.string() }),
  *   permission: 'safe',

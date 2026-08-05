@@ -17,6 +17,7 @@ import type { RunnableConfig } from '@langchain/core/runnables';
 
 import { WorkerAgent } from '../worker.js';
 import { ToolRegistry, type ToolDefinition } from '../../tools/index.js';
+import { ToolNames } from '../../tools/tool-names.js';
 import type { WorkerInput, WorkerOutput } from '../types.js';
 
 // ---------------------------------------------------------------------------
@@ -54,7 +55,7 @@ describe('Agent Types', () => {
     const input: WorkerInput = {
       taskId: 'task-1',
       description: 'Read package.json',
-      tools: ['file_read'],
+      tools: [ToolNames.FILE_READ],
       context: 'Previous task completed successfully.',
       workspacePath: './workspace',
       maxIterations: 10,
@@ -63,7 +64,7 @@ describe('Agent Types', () => {
 
     expect(input.taskId).toBe('task-1');
     expect(input.description).toBe('Read package.json');
-    expect(input.tools).toEqual(['file_read']);
+    expect(input.tools).toEqual([ToolNames.FILE_READ]);
     expect(input.maxIterations).toBe(10);
     expect(input.timeoutMs).toBe(30000);
   });
@@ -72,7 +73,7 @@ describe('Agent Types', () => {
     const input: WorkerInput = {
       taskId: 'task-2',
       description: 'Check git status',
-      tools: ['git_status'],
+      tools: [ToolNames.GIT_STATUS],
       context: '',
       workspacePath: './workspace',
     };

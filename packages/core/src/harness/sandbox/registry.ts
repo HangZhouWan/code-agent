@@ -10,6 +10,7 @@
  */
 
 import type { ToolPermission } from './types.js';
+import { SAFE_TOOL_NAMES, CONFIRM_TOOL_NAMES } from '../../tools/tool-names.js';
 
 /**
  * 权限注册表
@@ -19,7 +20,7 @@ import type { ToolPermission } from './types.js';
  * @example
  * ```ts
  * const registry = PermissionRegistry.createDefault();
- * const perm = registry.get('file_read'); // { toolName: 'file_read', defaultLevel: 'safe' }
+ * const perm = registry.get(ToolNames.FILE_READ); // { toolName: ToolNames.FILE_READ, defaultLevel: 'safe' }
  * ```
  */
 export class PermissionRegistry {
@@ -70,22 +71,12 @@ export class PermissionRegistry {
     const registry = new PermissionRegistry();
 
     // ---- safe 级别：静默放行 ----
-    const safeTools = [
-      'file_read',
-      'file_list',
-      'code_search',
-      'git_status',
-      'git_diff',
-      'git_log',
-      'web_fetch',
-    ];
-    for (const name of safeTools) {
+    for (const name of SAFE_TOOL_NAMES) {
       registry.register({ toolName: name, defaultLevel: 'safe' });
     }
 
     // ---- confirm 级别：需用户确认 ----
-    const confirmTools = ['file_write', 'shell_exec', 'git_commit', 'git_branch'];
-    for (const name of confirmTools) {
+    for (const name of CONFIRM_TOOL_NAMES) {
       registry.register({ toolName: name, defaultLevel: 'confirm' });
     }
 
