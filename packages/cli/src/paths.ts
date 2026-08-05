@@ -13,6 +13,7 @@
  * 例：/Users/qichen/projects/my-app → -Users-qichen-projects-my-app
  */
 
+import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -36,6 +37,29 @@ export function workspaceToSlug(workspacePath: string): string {
 }
 
 /**
+ * 获取工作区下的 .agent 目录路径。
+ */
+export function getWorkspaceAgentDir(workspacePath: string): string {
+  return join(workspacePath, ".agent");
+}
+
+/**
+ * 尝试在工作区 .agent/ 下创建目标子目录，失败则退回全局路径。
+ *
+ * 退回场景：工作区位只读文件系统、权限不足、磁盘满等。
+ * mkdirSync({recursive: true}) 在目录已存在时是幂等的，不抛错。
+ */
+function resolveWithFallback(workspacePath: string, subPath: string): string {
+  const localPath = join(getWorkspaceAgentDir(workspacePath), subPath);
+  try {
+    mkdirSync(localPath, { recursive: true });
+    return localPath;
+  } catch {
+    return join(getProjectDir(workspacePath), subPath);
+  }
+}
+
+/**
  * 获取 code-agent 系统根目录（~/.code-agent）。
  */
 export function getCodeAgentHome(): string {
@@ -53,12 +77,12 @@ export function getProjectDir(workspacePath: string): string {
  * 获取指定工作区的运行时数据目录。
  */
 export function getDataDir(workspacePath: string): string {
-  return join(getProjectDir(workspacePath), "data");
+  return resolveWithFallback(workspacePath, "data");
 }
 
 /**
  * 获取指定工作区的 checkpoint 目录。
  */
 export function getCheckpointDir(workspacePath: string): string {
-  return join(getProjectDir(workspacePath), "checkpoints");
+  return resolveWithFallback(workspacePath, "runtime/checkpoints");
 }
