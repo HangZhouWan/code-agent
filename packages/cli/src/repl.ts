@@ -9,12 +9,15 @@
  */
 
 import * as readline from "node:readline";
+import { randomUUID } from "node:crypto";
 import { HumanMessage, AIMessageChunk } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { ToolRegistry, AgentRegistry, PermissionRegistry } from "@code-agent/core";
+import { FileOrchestratorCheckpointManager } from "@code-agent/core";
 import { createOrchestratorGraph } from "@code-agent/server/orchestrator";
 import { createApprovalHandler } from "./approval.js";
+import { getCheckpointDir } from "./paths.js";
 import {
   green,
   yellow,
@@ -89,6 +92,12 @@ async function streamOrchestrator(
 
   const onConfirmRequired = createApprovalHandler(rl);
 
+  // Generate a session ID for orchestrator checkpoint
+  const sessionId = randomUUID();
+
+  const checkpointDir = getCheckpointDir(workspacePath);
+  const checkpointManager = new FileOrchestratorCheckpointManager(checkpointDir);
+
   const graph = createOrchestratorGraph({
     model,
     toolRegistry,
@@ -96,6 +105,9 @@ async function streamOrchestrator(
     permissionRegistry,
     onConfirmRequired,
     agentRegistry,
+    signal,
+    checkpointManager,
+    sessionId,
   });
 
   let finalResponse = "";
