@@ -204,7 +204,8 @@ async function main(): Promise<void> {
         { maxIterations: 15, timeoutMs: 360000 },
       ).then((result) => {
         console.log(`[recovery] Task ${taskId} resumed: status=${result.status}`);
-        if (result.status === 'success' || result.status === 'failed') {
+        // Only purge on success; preserve checkpoints for failed/timed-out tasks
+        if (result.status === 'success') {
           checkpointManager.purge(taskId).catch(() => {});
         }
       }).catch((err) => {

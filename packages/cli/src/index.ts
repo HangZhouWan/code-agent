@@ -206,7 +206,8 @@ async function resumePendingCheckpoints(
         { maxIterations: 15, timeoutMs: 360000 },
       ).then((result) => {
         console.log(`[recovery] Task ${taskId} resumed: status=${result.status}`);
-        if (result.status === "success" || result.status === "failed") {
+        // 仅在成功完成后清理 checkpoint；失败/超时时保留用于再次恢复
+        if (result.status === "success") {
           checkpointManager.purge(taskId).catch(() => {});
         }
       }).catch((err) => {

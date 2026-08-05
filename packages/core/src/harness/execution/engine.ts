@@ -437,6 +437,17 @@ export class ExecutionEngine {
       try {
         thought = await this.think(ctx.model, ctx.systemPrompt, observation);
       } catch (error) {
+        // Save checkpoint before returning failed — preserves progress
+        // for potential retry (transient errors like network/rate-limit).
+        await this.checkpoint.save(ctx.taskId, {
+          taskId: ctx.taskId,
+          agentId: ctx.agentId,
+          step,
+          context,
+          toolHistory,
+          reasoningTrail,
+        });
+
         return {
           taskId: ctx.taskId,
           status: 'failed',

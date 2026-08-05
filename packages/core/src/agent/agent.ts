@@ -270,8 +270,10 @@ export class Agent {
         );
       }
 
-      // 任务结束（成功或最终失败）后清理 checkpoint
-      if (result.status === 'success' || result.status === 'failed') {
+      // 任务成功完成后清理 checkpoint
+      // 注意：失败时不删除 checkpoint，保留用于潜在的恢复重试；
+      // 过期/废弃的 checkpoint 由 FileCheckpointManager.cleanup() 定期清理。
+      if (result.status === 'success') {
         await this.engine.purgeCheckpoint(taskId).catch(() => {
           // 清理失败不影响结果返回
         });
@@ -404,8 +406,10 @@ export class Agent {
         );
       }
 
-      // 任务结束（成功或最终失败）后清理 checkpoint
-      if (result.status === 'success' || result.status === 'failed') {
+      // 任务成功完成后清理 checkpoint
+      // 注意：失败/超时时不删除 checkpoint，保留用于潜在的恢复重试；
+      // 过期/废弃的 checkpoint 由 FileCheckpointManager.cleanup() 定期清理。
+      if (result.status === 'success') {
         await this.engine.purgeCheckpoint(taskId).catch(() => {
           // 清理失败不影响结果返回
         });
