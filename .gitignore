@@ -5,3 +5,4 @@ dist/
 *.db*
 workspace/
 .claude/
+.agent/
