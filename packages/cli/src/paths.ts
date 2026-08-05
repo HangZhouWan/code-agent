@@ -13,7 +13,7 @@
  * 例：/Users/qichen/projects/my-app → -Users-qichen-projects-my-app
  */
 
-import { existsSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 

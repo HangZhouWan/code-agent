@@ -73,8 +73,8 @@ Config Files:
   $WORKSPACE/.code-agent/config.json  Project-level config (overrides global)
 
 Workspace:
-		Runtime data (checkpoints, memory) is stored under ~/.code-agent/projects/
-		scoped by workspace path. Project config lives in $WORKSPACE/.code-agent/.
+		Runtime data (checkpoints, memory) is stored under $WORKSPACE/.agent/,
+		with fallback to ~/.code-agent/projects/ scoped by workspace path.
 `;
 
 // ─── Parsing Logic ───────────────────────────────
