@@ -10,6 +10,6 @@ export default {
   // 数据库连接（SQLite 文件路径）
   dialect: "sqlite",
   dbCredentials: {
-    url: "./data/code-agent.db",
+    url: ".agent/data/code-agent.db",
   },
 } satisfies Config;

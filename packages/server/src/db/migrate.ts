@@ -19,7 +19,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // 迁移文件目录（与 drizzle.config.ts 的 out 配置对应）
 const MIGRATIONS_DIR = join(__dirname, "../../drizzle");
-const DB_PATH = process.env.DB_PATH || "./data/code-agent.db";
+const DB_PATH = process.env.DB_PATH || ".agent/data/code-agent.db";
 
 function main() {
   const db = new Database(DB_PATH);
