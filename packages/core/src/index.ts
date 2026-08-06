@@ -14,6 +14,10 @@ export * from './llm/factory.js';
 export * from './llm/protocol.js';
 export * from './llm/retry.js';
 
+// 全局配置管理
+export { GlobalConfigManager, globalConfigSchema } from './config/index.js';
+export type { GlobalConfig } from './config/index.js';
+
 // 工具层
 export * from './tools/index.js';
 
