@@ -48,8 +48,7 @@ import {
   InMemoryWorkingMemory,
   FileLongTermMemory,
 } from "@code-agent/core";
-import type { IMemoryManager } from "@code-agent/core";
-import type { OrchestratorCheckpoint } from "@code-agent/core";
+import type { IMemoryManager, OrchestratorCheckpoint, WorkerOutput } from "@code-agent/core";
 import { startRepl } from "./repl.js";
 import { createOrchestratorGraph } from "@code-agent/server/orchestrator";
 import { HumanMessage } from "@langchain/core/messages";
@@ -199,11 +198,18 @@ async function resumePendingCheckpoints(
     const resumePromises = pendingTaskIds.map(async (taskId) => {
       try {
         const snapshot = await checkpointManager.load(taskId);
-        if (!snapshot) return;
+        if (!snapshot) {
+          console.log(`[recovery] Task ${taskId}: checkpoint not readable, purging stale file`);
+          checkpointManager.purge(taskId).catch(() => {});
+          return;
+        }
 
         const agent = agentRegistry.getAgentById(snapshot.agentId);
         if (!agent) {
-          console.log(`[recovery] Task ${taskId}: agent ${snapshot.agentId} not found, skipping`);
+          console.log(
+            `[recovery] Task ${taskId}: agent ${snapshot.agentId} no longer exists, purging orphaned checkpoint`,
+          );
+          checkpointManager.purge(taskId).catch(() => {});
           return;
         }
 
@@ -286,6 +292,25 @@ async function recoverOrchestratorSessions(
       }
     });
 
+    // Restore completed tasks from checkpoint progress.
+    // The checkpoint stores completedTaskIds but not full WorkerOutput,
+    // so we construct placeholder entries to let the dispatcher skip
+    // already-completed work instead of re-executing it.
+    const completedTaskIds = new Set(latest.progress?.completedTaskIds ?? []);
+    const completedTasks: Record<string, WorkerOutput> = {};
+    for (const id of completedTaskIds) {
+      completedTasks[id] = {
+        taskId: id,
+        status: 'success',
+        result: '(resumed from checkpoint)',
+      };
+    }
+
+    // Filter out already-completed tasks to avoid redundant LLM calls
+    const pendingTasks = latest.plan.tasks.filter(
+      (t) => !completedTaskIds.has(t.id),
+    );
+
     const graph = createOrchestratorGraph({
       model,
       toolRegistry,
@@ -299,8 +324,8 @@ async function recoverOrchestratorSessions(
     const result = await graph.invoke({
       messages,
       plan: latest.plan,
-      pendingTasks: latest.plan.tasks,
-      completedTasks: {},
+      pendingTasks,
+      completedTasks,
       nextAction: 'continue',
       sessionId: latest.sessionId,
       resumeFromCheckpoint: true,

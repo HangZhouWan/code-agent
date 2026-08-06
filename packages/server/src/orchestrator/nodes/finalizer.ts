@@ -174,20 +174,47 @@ export function createFinalizerNode(
       : 'No artifacts recorded.';
 
     // 调用 LLM 生成最终回复
-    const response = await model.invoke([
-      new SystemMessage(FINALIZER_SYSTEM_PROMPT),
-      new HumanMessage(
-        `## User's Original Request\n${userRequest}\n\n` +
-          `## Subtask Results\n${resultsSummary}\n\n` +
-          `## Artifacts Produced\n${artifactsSummary}\n\n` +
-          `Please provide a comprehensive final response synthesizing these results.`,
-      ),
-    ]);
+    // 如果 LLM 调用失败（网络错误等），使用纯文本回退摘要，
+    // 确保 checkpoint 能被正常清理，避免每次启动都重试恢复。
+    let finalResponse: string;
+    try {
+      const response = await model.invoke([
+        new SystemMessage(FINALIZER_SYSTEM_PROMPT),
+        new HumanMessage(
+          `## User's Original Request\n${userRequest}\n\n` +
+            `## Subtask Results\n${resultsSummary}\n\n` +
+            `## Artifacts Produced\n${artifactsSummary}\n\n` +
+            `Please provide a comprehensive final response synthesizing these results.`,
+        ),
+      ]);
 
-    const finalResponse =
-      typeof response.content === 'string'
-        ? response.content
-        : JSON.stringify(response.content);
+      finalResponse =
+        typeof response.content === 'string'
+          ? response.content
+          : JSON.stringify(response.content);
+    } catch (llmError) {
+      // LLM 不可用时回退到纯文本摘要
+      const errorMsg =
+        llmError instanceof Error ? llmError.message : String(llmError);
+      console.error(
+        `[finalizer] LLM call failed, using fallback summary: ${errorMsg}`,
+      );
+
+      const successCount = Object.values(completedTasks).filter(
+        (t) => t.status === 'success',
+      ).length;
+      const failedCount = Object.values(completedTasks).filter(
+        (t) => t.status !== 'success',
+      ).length;
+
+      finalResponse =
+        `## 任务执行完成\n\n` +
+        `**原始请求:** ${userRequest}\n\n` +
+        `**执行结果:** ${successCount} 个任务成功, ${failedCount} 个任务失败\n\n` +
+        `### 详情\n\n${resultsSummary}\n\n` +
+        `### 产物\n\n${artifactsSummary}\n\n` +
+        `> ⚠️ LLM 总结生成失败 (${errorMsg})，以上为基础执行摘要。`;
+    }
 
     // ── Purge orchestrator checkpoint on success ──
     // 用户取消（signal.aborted）时不 purge —— 保留 checkpoint 用于恢复。
