@@ -50,6 +50,13 @@ import {
   FileLongTermMemory,
 } from "@code-agent/core";
 import type { IMemoryManager } from "@code-agent/core";
+import { GlobalConfigManager } from "@code-agent/core";
+
+// 降级模式所需
+import Fastify from "fastify";
+import fastifyCors from "@fastify/cors";
+import { errorHandler } from "./gateway/middleware/error.js";
+import configRoutes from "./gateway/routes/config.js";
 
 // ---------------------------------------------------------------------------
 // 服务端版本标识
@@ -82,24 +89,35 @@ export type { AppOptions } from "./gateway/server.js";
 // 主函数
 // ---------------------------------------------------------------------------
 
-/**
- * 服务启动入口
- *
- * 启动流程：
- * 1. 加载并校验环境变量
- * 2. 创建 LLM 模型实例
- * 3. 注册所有内置工具（11 个）
- * 4. 初始化 Agent 基础设施（EventBus、StateManager、CheckpointManager、ExecutionEngine）
- * 5. 创建 AgentRegistry 并注册三个内置角色 Agent（Code、Test、Doc）
- * 6. 初始化数据库连接（SQLite + Drizzle ORM）
- * 7. 构建 Fastify 服务实例（注入所有依赖）
- * 8. 挂载数据库和 Agent 基础设施到 Fastify
- * 9. 监听 HOST:PORT 启动服务
- */
 async function main(): Promise<void> {
   console.log("=".repeat(50));
   console.log("  code-agent server v" + SERVER_VERSION);
   console.log("=".repeat(50));
+
+  // 0. Check global config — if missing, enter downgrade mode
+  const configManager = new GlobalConfigManager();
+  if (!configManager.isConfigured()) {
+    console.log("[config] Global config not found — entering downgrade mode (setup required)");
+    console.log("[config] Visit the web UI to configure your LLM model, or run 'code-agent' CLI first.");
+
+    const app = Fastify({ logger: true });
+    await app.register(fastifyCors, { origin: true });
+    app.setErrorHandler(errorHandler);
+    await app.register(configRoutes, { prefix: "/api" });
+
+    await app.listen({ host: "0.0.0.0", port: 3000 });
+    console.log("[server] Downgrade mode — config API only at http://0.0.0.0:3000");
+    console.log("[server] Configure your LLM model via POST /api/config, then restart.");
+
+    const shutdown = async () => {
+      console.log("\n[server] Shutting down...");
+      await app.close();
+      process.exit(0);
+    };
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+    return;
+  }
 
   // 1. 加载配置
   const cfg = loadConfig();
@@ -277,6 +295,6 @@ if (isEntryPoint) {
   main().catch((err) => {
     console.error("[server] Fatal error during startup:");
     console.error(err);
-    process.exit(1);
+    process.exit(0);
   });
 }

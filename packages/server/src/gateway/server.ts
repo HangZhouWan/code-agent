@@ -27,6 +27,7 @@ import { errorHandler } from "./middleware/error.js";
 import sessionRoutes from "./routes/sessions.js";
 import toolRoutes from "./routes/tools.js";
 import agentRoutes from "./routes/agents.js";
+import configRoutes from "./routes/config.js";
 import { createChatWebSocket } from "./ws/chat.js";
 import type { PendingApprovalItem, ApprovalStore } from "./ws/chat.js";
 
@@ -162,6 +163,8 @@ export async function createServer(options: AppOptions) {
   app.setErrorHandler(errorHandler);
 
   // ── RESTful 路由 ──
+  // Config management (always available, even in downgrade mode)
+  await app.register(configRoutes, { prefix: "/api" });
   await app.register(sessionRoutes, { prefix: "/api" });
   await app.register(toolRoutes, { prefix: "/api" });
   // Agent 状态查询 API（仅在有 AgentRegistry 时注册）
