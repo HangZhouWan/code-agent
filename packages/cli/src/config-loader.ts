@@ -15,21 +15,15 @@ import { homedir } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { globalConfigSchema } from "@code-agent/core";
 
 // ─── Schema ────────────────────────────────────────
 
-const configFileSchema = z.object({
-  /** LLM provider */
+const configFileSchema = globalConfigSchema.extend({
   LLM_PROVIDER: z.enum(["openai", "anthropic", "openai-compatible"]).optional(),
-  /** Model name */
   LLM_MODEL: z.string().optional(),
-  /** API key */
   LLM_API_KEY: z.string().optional(),
-  /** Custom API endpoint */
-  LLM_BASE_URL: z.string().optional(),
-  /** Max retries */
   LLM_MAX_RETRIES: z.coerce.number().optional(),
-  /** Workspace root path (can be overridden by CLI args) */
   WORKSPACE_PATH: z.string().optional(),
 });
 
@@ -50,7 +44,6 @@ export type EnvConfig = z.infer<typeof finalConfigSchema>;
 
 // ─── Internal Helpers ──────────────────────────────
 
-/** Try to read and parse a JSON config file. Returns null if not found or invalid. */
 function loadJsonConfig(filePath: string): ConfigFileData | null {
   try {
     if (!existsSync(filePath)) return null;
@@ -67,7 +60,6 @@ function loadJsonConfig(filePath: string): ConfigFileData | null {
   }
 }
 
-/** Try to load a .env file. Returns key-value pairs. */
 function loadDotEnv(filePath: string): Record<string, string> {
   try {
     if (!existsSync(filePath)) return {};
@@ -76,23 +68,17 @@ function loadDotEnv(filePath: string): Record<string, string> {
 
     for (const line of raw.split("\n")) {
       const trimmed = line.trim();
-      // Skip comments and empty lines
       if (!trimmed || trimmed.startsWith("#")) continue;
-
       const eqIdx = trimmed.indexOf("=");
       if (eqIdx === -1) continue;
-
       const key = trimmed.slice(0, eqIdx).trim();
       let value = trimmed.slice(eqIdx + 1).trim();
-
-      // Remove surrounding quotes
       if (
         (value.startsWith('"') && value.endsWith('"')) ||
         (value.startsWith("'") && value.endsWith("'"))
       ) {
         value = value.slice(1, -1);
       }
-
       if (key) entries[key] = value;
     }
     return entries;
@@ -101,79 +87,41 @@ function loadDotEnv(filePath: string): Record<string, string> {
   }
 }
 
-// ─── Monorepo Root Detection ───────────────────────
-
-/**
- * Detect the monorepo root by looking for pnpm-workspace.yaml.
- * Used during development (pnpm dev) to load the monorepo's .env file.
- */
 function findMonoRepoRoot(): string | null {
   try {
-    // When running via tsx during dev, __dirname is packages/cli/src/
     const __dirname = dirname(fileURLToPath(import.meta.url));
     let dir = resolve(__dirname);
-
-    // Walk up from src/ → cli/ → packages/ → root/
     for (let i = 0; i < 10; i++) {
       const workspaceFile = join(dir, "pnpm-workspace.yaml");
-      if (existsSync(workspaceFile)) {
-        return dir;
-      }
+      if (existsSync(workspaceFile)) return dir;
       const parent = resolve(dir, "..");
       if (parent === dir) break;
       dir = parent;
     }
-  } catch {
-    // Not running as ESM or in a monorepo — that's fine
-  }
+  } catch {}
   return null;
 }
 
 // ─── Public API ────────────────────────────────────
 
 export interface LoadConfigOptions {
-  /** Resolved workspace path (from CLI args or cwd) */
   workspacePath: string;
-  /** Optional model override from CLI --model flag */
   cliModel?: string;
 }
 
-/**
- * Load and merge configuration from all sources.
- *
- * Priority (low → high):
- *   1. ~/.code-agent/config.json
- *   2. $WORKSPACE/.code-agent/config.json
- *   3. $WORKSPACE/.env
- *   4. <monorepo_root>/.env (dev mode only, if applicable)
- *   5. process.env
- *   6. CLI flags (--model)
- *
- * @param options - workspacePath and optional CLI overrides
- * @returns validated EnvConfig
- * @throws ZodError if required fields are missing
- */
 export function loadConfig(options: LoadConfigOptions): EnvConfig {
   const { workspacePath, cliModel } = options;
 
-  // Layer 1: Global config (~/.code-agent/config.json)
   const globalConfigPath = join(homedir(), ".code-agent", "config.json");
   const globalConfig = loadJsonConfig(globalConfigPath);
-  if (globalConfig) {
-    console.log(`[config] Loaded global config: ${globalConfigPath}`);
-  }
+  if (globalConfig) console.log(`[config] Loaded global config: ${globalConfigPath}`);
 
-  // Layer 2: Project-level config ($WORKSPACE/.code-agent/config.json)
   const projectConfigPath = join(workspacePath, ".code-agent", "config.json");
   const projectConfig = loadJsonConfig(projectConfigPath);
-  if (projectConfig) {
-    console.log(`[config] Loaded project config: ${projectConfigPath}`);
-  }
+  if (projectConfig) console.log(`[config] Loaded project config: ${projectConfigPath}`);
 
-  // Layer 3: Project .env
   const projectEnv = loadDotEnv(join(workspacePath, ".env"));
 
-  // Layer 4: Monorepo root .env (dev mode fallback)
   const monoRepoRoot = findMonoRepoRoot();
   let monoRepoEnv: Record<string, string> = {};
   if (monoRepoRoot) {
@@ -183,10 +131,8 @@ export function loadConfig(options: LoadConfigOptions): EnvConfig {
     }
   }
 
-  // Merge layers (each overwrites keys from previous)
   const merged: Record<string, string> = {};
 
-  // Layer 1
   if (globalConfig) {
     if (globalConfig.LLM_PROVIDER) merged.LLM_PROVIDER = globalConfig.LLM_PROVIDER;
     if (globalConfig.LLM_MODEL) merged.LLM_MODEL = globalConfig.LLM_MODEL;
@@ -196,7 +142,6 @@ export function loadConfig(options: LoadConfigOptions): EnvConfig {
     if (globalConfig.WORKSPACE_PATH) merged.WORKSPACE_PATH = globalConfig.WORKSPACE_PATH;
   }
 
-  // Layer 2
   if (projectConfig) {
     if (projectConfig.LLM_PROVIDER) merged.LLM_PROVIDER = projectConfig.LLM_PROVIDER;
     if (projectConfig.LLM_MODEL) merged.LLM_MODEL = projectConfig.LLM_MODEL;
@@ -206,33 +151,16 @@ export function loadConfig(options: LoadConfigOptions): EnvConfig {
     if (projectConfig.WORKSPACE_PATH) merged.WORKSPACE_PATH = projectConfig.WORKSPACE_PATH;
   }
 
-  // Layer 3 & 4: .env files
   for (const [key, value] of Object.entries({ ...projectEnv, ...monoRepoEnv })) {
     merged[key] = value;
   }
 
-  // Layer 5: process.env (highest priority among environment sources)
-  for (const key of [
-    "LLM_PROVIDER",
-    "LLM_MODEL",
-    "LLM_API_KEY",
-    "LLM_BASE_URL",
-    "LLM_MAX_RETRIES",
-    "WORKSPACE_PATH",
-  ]) {
-    if (process.env[key]) {
-      merged[key] = process.env[key]!;
-    }
+  for (const key of ["LLM_PROVIDER","LLM_MODEL","LLM_API_KEY","LLM_BASE_URL","LLM_MAX_RETRIES","WORKSPACE_PATH"]) {
+    if (process.env[key]) merged[key] = process.env[key]!;
   }
 
-  // Layer 6: CLI flags (--model override)
-  if (cliModel) {
-    merged.LLM_MODEL = cliModel;
-  }
-
-  // Always set WORKSPACE_PATH to the resolved workspace from CLI args
+  if (cliModel) merged.LLM_MODEL = cliModel;
   merged.WORKSPACE_PATH = workspacePath;
 
-  // Parse and validate final config
   return finalConfigSchema.parse(merged);
 }

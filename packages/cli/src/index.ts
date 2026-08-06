@@ -19,6 +19,8 @@
 import { getDataDir, getCheckpointDir } from "./paths.js";
 import { loadConfig } from "./config.js";
 import { parseArgs, printHelp, printVersion } from "./args.js";
+import { GlobalConfigManager } from "@code-agent/core";
+import { runSetupWizard } from "./setup-wizard.js";
 import {
   createChatModel,
   ToolRegistry,
@@ -447,6 +449,12 @@ async function main(): Promise<void> {
   // 1. Workspace resolution
   const workspacePath = args.workspacePath;
   console.log(`[config] Workspace: ${workspacePath}`);
+
+  // 1a. First-time setup: check global config before bootstrap
+  const configManager = new GlobalConfigManager();
+  if (!configManager.isConfigured()) {
+    await runSetupWizard(configManager);
+  }
 
   // 2. Bootstrap infrastructure
   const infra = bootstrap({ workspacePath, cliModel: args.model });
