@@ -48,23 +48,81 @@ function resolvePath(relativePath: string, ctx: ToolContext): string {
 // 工具定义
 // ═══════════════════════════════════════════════
 
+/** 单次 file_read 最大字节数（100 KB）。超过此大小建议使用 offset/limit 分段读取。 */
+const MAX_READ_BYTES = 100 * 1024;
+
 /**
  * file_read —— 读取工作区内的文件内容
  *
  * 权限: safe（只读操作，不修改文件系统）
+ *
+ * 支持通过 offset/limit 参数按行号范围读取大文件，
+ * 避免一次性读取整个大文件导致上下文溢出。
+ * 行号从 1 开始计数（与编辑器一致）。
+ *
+ * 单次读取上限为 100 KB，超出时需使用 offset/limit 分段读取。
  */
 export const fileReadTool: ToolDefinition = {
   name: ToolNames.FILE_READ,
   description:
-    '读取工作区内的文件内容（UTF-8 编码）。支持读取任意文本文件，包括代码、配置、文档等。',
+    '读取工作区内的文件内容（UTF-8 编码）。支持读取任意文本文件，包括代码、配置、文档等。' +
+    '对于大文件，建议使用 offset 和 limit 参数按行号范围读取，避免一次性加载过多内容。' +
+    '行号从 1 开始。如果不指定 offset 和 limit，则读取整个文件（上限 100KB）。',
   schema: z.object({
     path: z.string().describe('相对于工作区的文件路径'),
+    offset: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe('起始行号（从 1 开始）。不指定则从文件开头读取。'),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe('读取的最大行数。不指定则读取到文件末尾。'),
   }),
   permission: 'safe',
   async execute(args, ctx) {
     const fullPath = resolvePath(args.path, ctx);
+
+    // 先检查文件大小，避免误读超大文件
+    const stat = await fs.stat(fullPath);
+    if (stat.size > MAX_READ_BYTES && args.offset === undefined && args.limit === undefined) {
+      const sizeKB = Math.round(stat.size / 1024);
+      return (
+        `❌ 文件过大 (${sizeKB} KB)，超过单次读取上限 (100 KB)。\n` +
+        `请使用 offset 和 limit 参数分段读取。例如：offset: 1, limit: 200`
+      );
+    }
+
     const content = await fs.readFile(fullPath, 'utf-8');
-    return content;
+
+    // 如果未指定 offset/limit，返回完整内容（保持向后兼容）
+    if (args.offset === undefined && args.limit === undefined) {
+      return content;
+    }
+
+    const lines = content.split('\n');
+
+    // 归一化 offset（从 1 开始的行号 → 0 开始的数组索引）
+    const startLine = args.offset ?? 1;
+    const startIdx = Math.max(0, startLine - 1);
+
+    // 归一化 limit（默认到文件末尾）
+    const endIdx = args.limit !== undefined
+      ? Math.min(lines.length, startIdx + args.limit)
+      : lines.length;
+
+    // 边界检查
+    if (startIdx >= lines.length) {
+      return `(文件共 ${lines.length} 行，起始行 ${startLine} 超出范围)`;
+    }
+
+    const sliced = lines.slice(startIdx, endIdx);
+    const header = `[行 ${startIdx + 1}-${endIdx} / 共 ${lines.length} 行]\n`;
+    return header + sliced.join('\n');
   },
 };
 

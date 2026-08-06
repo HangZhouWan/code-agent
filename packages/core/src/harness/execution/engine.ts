@@ -654,13 +654,34 @@ export class ExecutionEngine {
       ? `Summary of earlier context:\n${obs.context.summary}\n\nRecent messages:\n`
       : '';
 
+    // Truncation strategy:
+    // - Tool results: NO truncation. The LLM must see the full output to avoid
+    //   redundant re-reads or resorting to shell_exec head/tail for chunking.
+    //   Extreme cases (e.g. reading a 10 MB file) are prevented by a hard limit
+    //   in the file_read tool itself, not by stealth-truncation here.
+    // - Other roles (human, ai, system): keep 800-char limit — they're typically short.
+    //
+    // NOTE: All messages are stored as HumanMessage with a [role] content prefix
+    // (e.g. "[tool] Tool: file_read\n..."). We detect tool results by that prefix.
+    const DEFAULT_MAX_CHARS = 800;
+
     const recentMessages = obs.context.messages
       .slice(-10)
       .map((m) => {
-        const role = m.getType?.() ?? 'unknown';
-        const content =
+        const langChainRole = m.getType?.() ?? 'unknown';
+        const rawContent =
           typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
-        return `[${role}] ${content.slice(0, 800)}`;
+        // Detect tool results by the [tool] prefix (set in appendToContext)
+        const isToolResult = rawContent.startsWith('[tool]');
+        if (isToolResult) {
+          // Tool results: pass through at full length
+          return `[${langChainRole}] ${rawContent}`;
+        }
+        // Non-tool messages: apply 800-char limit
+        const truncated = rawContent.length > DEFAULT_MAX_CHARS
+          ? rawContent.slice(0, DEFAULT_MAX_CHARS) + `\n[... truncated, showing first ${DEFAULT_MAX_CHARS} of ${rawContent.length} chars]`
+          : rawContent;
+        return `[${langChainRole}] ${truncated}`;
       })
       .join('\n');
 
