@@ -11,6 +11,7 @@ import type {
 import type {
   Plan,
   RunId,
+  SerializedMessage,
   SessionEvent,
   SessionId,
   TaskId,
@@ -38,6 +39,7 @@ export interface OrchestratorRunInput {
   runId: RunId;
   sessionId: SessionId;
   userMessage: string;
+  history?: SerializedMessage[];
   memory?: string;
   scope: RunScope;
   resumeNode?: SessionNode;
@@ -66,6 +68,7 @@ export class SessionOrchestrator {
       runId: input.runId,
       sessionId: input.sessionId,
       userMessage: input.userMessage,
+      history: input.history ?? [],
       ...(input.memory ? { memory: input.memory } : {}),
       tasks: input.tasks ?? [],
       results: input.results ?? [],

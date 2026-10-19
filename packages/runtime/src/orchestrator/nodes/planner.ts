@@ -35,13 +35,27 @@ export function createPlannerNode(deps: PlannerNodeDeps) {
   return async (state: OrchestratorStateValue) => {
     let output: PlannerPlan | null = null;
 
+    const historyText = (state.history ?? [])
+      .map((message) => `[${message.role}] ${message.content}`)
+      .join("\n")
+      .slice(0, 6_000);
+
     try {
       const response = await deps.model.invoke(
         [
           new SystemMessage({
             content: plannerPrompt(deps.roles.list().map((role) => role.id)),
           }),
-          new HumanMessage({ content: state.userMessage }),
+          new HumanMessage({
+            content: [
+              historyText
+                ? `Conversation history:\n${historyText}`
+                : "",
+              `Current request: ${state.userMessage}`,
+            ]
+              .filter(Boolean)
+              .join("\n\n"),
+          }),
         ],
         deps.signal ? { signal: deps.signal } : {},
       );

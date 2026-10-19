@@ -32,6 +32,7 @@ afterEach(async () => {
 
 class ScriptedModel implements ChatModelLike {
   private index = 0;
+  readonly calls: BaseMessage[][] = [];
 
   constructor(private readonly responses: Array<BaseMessage | Error>) {}
 
@@ -39,7 +40,8 @@ class ScriptedModel implements ChatModelLike {
     return this;
   }
 
-  async invoke(): Promise<BaseMessage> {
+  async invoke(messages: BaseMessage[]): Promise<BaseMessage> {
+    this.calls.push([...messages]);
     const response = this.responses[this.index++];
     if (!response) throw new Error("no scripted response left");
     if (response instanceof Error) throw response;
@@ -62,6 +64,7 @@ async function setup(
 ): Promise<{
   session: AgentSession;
   workspace: string;
+  model: ScriptedModel;
 }> {
   const model = new ScriptedModel(responses);
   const ports = createInMemoryPorts();
@@ -73,7 +76,7 @@ async function setup(
     title: "Orchestrator Test",
     orchestration: true,
   });
-  return { session, workspace };
+  return { session, workspace, model };
 }
 
 describe("orchestrated session", () => {
@@ -159,6 +162,32 @@ describe("orchestrated session", () => {
     expect(snapshot.tasks.some((task) => task.status === "completed")).toBe(
       true,
     );
+  });
+
+  it("多轮 run 会把历史传入 planner", async () => {
+    const { session, model } = await setup([
+      plan([{ role: "code", description: "first", routing: "direct" }]),
+      text("first answer"),
+      text("first final"),
+      plan([{ role: "code", description: "second", routing: "direct" }]),
+      text("second answer"),
+      text("second final"),
+    ]);
+
+    const first = await session.run({ content: "first request" });
+    await first.done;
+
+    const second = await session.run({ content: "second request" });
+    await second.done;
+
+    const secondPlannerCall = model.calls[3] ?? [];
+    const prompt = secondPlannerCall
+      .map((message) => String(message.content))
+      .join("\n");
+
+    expect(prompt).toContain("first request");
+    expect(prompt).toContain("first final");
+    expect(prompt).toContain("second request");
   });
 
   it("发出 plan.updated / task.status / run.completed 事件", async () => {

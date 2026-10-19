@@ -6,6 +6,7 @@ import { Annotation } from "@langchain/langgraph";
 import type {
   Plan,
   RunId,
+  SerializedMessage,
   SessionId,
   TaskRecord,
   TaskResult,
@@ -29,6 +30,13 @@ export const OrchestratorState = Annotation.Root({
   runId: Annotation<RunId>(),
   sessionId: Annotation<SessionId>(),
   userMessage: Annotation<string>(),
+  history: Annotation<SerializedMessage[]>({
+    reducer: (
+      _current: SerializedMessage[],
+      update: SerializedMessage[],
+    ) => update,
+    default: () => [],
+  }),
   memory: Annotation<string | undefined>(),
   plan: Annotation<Plan | undefined>(),
   tasks: Annotation<TaskRecord[]>({
@@ -55,6 +63,7 @@ export interface OrchestratorStateValue {
   runId: RunId;
   sessionId: SessionId;
   userMessage: string;
+  history: SerializedMessage[];
   memory?: string;
   plan?: Plan;
   tasks: TaskRecord[];

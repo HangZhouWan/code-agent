@@ -40,6 +40,7 @@ import {
   type RunResult,
   type SessionEvent,
   type SessionId,
+  type SerializedMessage,
   type SessionSnapshot,
   type TaskId,
   type TaskRecord,
@@ -712,6 +713,7 @@ export class AgentSession {
     let runResults: TaskResult[] = resume?.results ?? [];
     try {
       const memoryText = await this.retrieveMemory(input.content);
+      const history = await this.loadHistory(input.content);
       await this.saveSessionCheckpoint(
         runId,
         "running",
@@ -734,6 +736,7 @@ export class AgentSession {
         runId,
         sessionId: this.id,
         userMessage: input.content,
+        history,
         ...(memoryText ? { memory: memoryText } : {}),
         scope: baseScope,
         ...(resume?.resumeNode ? { resumeNode: resume.resumeNode } : {}),
@@ -832,6 +835,7 @@ export class AgentSession {
 
     try {
       const memoryText = await this.retrieveMemory(input.content);
+      const history = await this.loadHistory(input.content);
 
       taskId = asTaskId(this.ports.ids.next("task"));
       this.state.tasks.create({
@@ -877,6 +881,7 @@ export class AgentSession {
         {
           taskId,
           description: input.content,
+          messages: history,
           ...(memoryText ? { memory: memoryText } : {}),
           ...(this.maxIterations
             ? { maxIterations: this.maxIterations }
@@ -1018,6 +1023,45 @@ export class AgentSession {
       this.approvalService.cancelRun(runId, "run finished");
       this.questionService.cancelRun(runId, "run finished");
     }
+  }
+
+  private async loadHistory(
+    currentContent: string,
+  ): Promise<SerializedMessage[]> {
+    const messages = await this.ports.sessions.listMessages(this.id, {
+      limit: 20,
+    });
+
+    const serialized: SerializedMessage[] = messages.map((message) => ({
+      id: message.id,
+      role:
+        message.role === "user"
+          ? "human"
+          : message.role === "assistant"
+            ? "ai"
+            : message.role === "system"
+              ? "system"
+              : "tool",
+      content: message.content,
+      ...(message.toolCalls
+        ? {
+            toolCalls: message.toolCalls.map((call) => ({
+              id: call.id,
+              name: call.name,
+              args: call.args,
+            })),
+          }
+        : {}),
+      ...(message.toolCallId
+        ? { toolCallId: message.toolCallId }
+        : {}),
+    }));
+
+    const last = serialized[serialized.length - 1];
+    if (last?.role === "human" && last.content === currentContent) {
+      serialized.pop();
+    }
+    return serialized;
   }
 
   private async retrieveMemory(content: string): Promise<string | undefined> {

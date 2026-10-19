@@ -5,7 +5,7 @@
 import { asSessionId } from "@code-agent/protocol";
 import {
   GlobalConfigManager,
-  createDefaultPorts,
+  createFilePorts,
   createMutex,
   createRuntime,
   createRuntimeBootstrap,
@@ -58,7 +58,10 @@ async function main(): Promise<void> {
     config: cfg,
     writeLock: createMutex(),
   });
-  const ports = createDefaultPorts(bootstrap.checkpointStore);
+  const ports = createFilePorts(
+    cfg.paths.dataDir,
+    bootstrap.checkpointStore,
+  );
   const runtime = createRuntime(bootstrap.harness, {
     ports,
     orchestration: true,
@@ -107,7 +110,7 @@ async function main(): Promise<void> {
     }
 
     const session = await runtime.createSession({
-      sessionId: asSessionId(`cli_${Date.now()}`),
+      sessionId: asSessionId("cli-default"),
       workspacePath: args.workspacePath,
       title: "CLI Session",
     });

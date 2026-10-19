@@ -28,6 +28,23 @@ export async function startRepl(options: ReplOptions): Promise<void> {
   console.log(heading("code-agent"));
   console.log(dim("输入 /help 查看命令，/exit 退出"));
 
+  // 文件持久化端口会恢复上次会话，这里展示最近消息
+  try {
+    const snapshot = await session.snapshot();
+    const recent = snapshot.messages.slice(-20);
+    if (recent.length > 0) {
+      console.log(dim("--- 最近消息 ---"));
+      for (const message of recent) {
+        console.log(
+          dim(`${message.role}> ${message.content.slice(0, 500)}`),
+        );
+      }
+      console.log(dim("----------------"));
+    }
+  } catch {
+    // 历史读取失败不影响 REPL 启动
+  }
+
   rl.on("SIGINT", () => {
     if (session.busy) {
       console.log(yellow("\n正在取消当前任务..."));

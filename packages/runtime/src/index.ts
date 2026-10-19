@@ -106,6 +106,12 @@ export {
   UuidIdGenerator,
   createInMemoryPorts,
 } from "./ports/in-memory.js";
+export {
+  FileEventLog,
+  FileRunStore,
+  FileSessionStore,
+  createFilePorts,
+} from "./ports/file.js";
 export type {
   Clock,
   CreateRunInput,
