@@ -39,7 +39,7 @@ describe('PermissionRegistry', () => {
   it('createDefault() 应正确返回 12 个工具权限', () => {
     const registry = PermissionRegistry.createDefault();
     const all = registry.listAll();
-    expect(all).toHaveLength(11);
+    expect(all).toHaveLength(20);
 
     // safe 工具
     const safeTools = [
@@ -306,7 +306,26 @@ describe('HooksEngine', () => {
   let engine: HooksEngine;
 
   beforeEach(() => {
-    engine = new HooksEngine();
+    engine = new HooksEngine({ onError: () => {} });
+  });
+
+  it('handler 异常应通过 onError 上报且不阻塞后续 handler', async () => {
+    const errors: unknown[] = [];
+    const probe = new HooksEngine({
+      onError: (_event, error) => errors.push(error),
+    });
+    let reached = false;
+    probe.on('agent:start', async () => {
+      throw new Error('boom');
+    });
+    probe.on('agent:start', async () => {
+      reached = true;
+    });
+
+    await probe.trigger('agent:start', { agentId: 'a', data: {} });
+
+    expect(errors).toHaveLength(1);
+    expect(reached).toBe(true);
   });
 
   it('应支持注册和触发 handler', async () => {

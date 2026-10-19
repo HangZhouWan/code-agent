@@ -17,11 +17,48 @@ import type { StructuredTool } from '@langchain/core/tools';
 /**
  * 权限级别
  *
- * - 'safe': 静默放行，无需用户确认
+ * - 'allow': 静默放行，无需用户确认
+ * - 'safe':  旧命名，等价于 allow（迁移期兼容）
  * - 'confirm': 需要用户确认后才能执行
- * - 'deny': 完全禁止（由 SandboxGuard 动态判断，不由工具声明）
+ * - 'deny': 完全禁止
  */
-export type PermissionLevel = 'safe' | 'confirm' | 'deny';
+export type PermissionLevel = 'allow' | 'safe' | 'confirm' | 'deny';
+
+/** 工具副作用分类，用于 checkpoint/恢复与写锁 */
+export type ToolSideEffect = 'none' | 'idempotent' | 'mutating';
+
+export interface PermissionDecision {
+  level: PermissionLevel;
+  reason?: string;
+}
+
+/**
+ * 动态权限判断；工具可以根据参数决定 allow/confirm/deny。
+ */
+export type PermissionEvaluator<T = Record<string, unknown>> = (
+  args: T,
+  ctx: ToolContext,
+) => PermissionDecision | Promise<PermissionDecision>;
+
+export type ToolPermissionSpec = PermissionLevel | PermissionEvaluator<any>;
+
+/** 工具结果（结构化，供 middleware/UI/artifact 使用） */
+export interface ToolResult {
+  ok: boolean;
+  /** 给模型的文本（已截断） */
+  content: string;
+  /** 结构化数据，供 UI/artifact 使用 */
+  metadata?: Record<string, unknown>;
+  errorCode?: string;
+  truncated?: boolean;
+  artifactId?: string;
+}
+
+export function normalizeToolResult(value: string | ToolResult): ToolResult {
+  return typeof value === 'string'
+    ? { ok: true, content: value }
+    : value;
+}
 
 /**
  * 工具执行上下文
@@ -45,6 +82,24 @@ export interface ToolContext {
     toolName: string,
     args: Record<string, unknown>,
   ) => Promise<boolean>;
+
+  /** 统一取消信号 */
+  signal?: AbortSignal;
+  /** 运行/任务标识，用于事件与审计 */
+  runId?: string;
+  taskId?: string;
+  skillId?: string;
+  roleId?: string;
+
+  /** 新的审批回调（优先于 onConfirmRequired） */
+  requestApproval?: (request: {
+    toolName: string;
+    args: Record<string, unknown>;
+    reason?: string;
+  }) => Promise<boolean>;
+
+  /** 写操作互斥锁（跨会话共享） */
+  withWriteLock?: <T>(fn: () => Promise<T>) => Promise<T>;
 }
 
 /**
@@ -72,10 +127,12 @@ export interface ToolDefinition<T extends z.ZodObject<any> = any> {
   description: string;
   /** Zod schema，定义输入参数的结构和校验规则 */
   schema: T;
-  /** 权限级别：safe 静默放行 / confirm 需用户确认 */
-  permission: PermissionLevel;
-  /** 执行函数，接收 Zod 推导的参数和工具上下文，返回字符串结果 */
-  execute(args: z.infer<T>, ctx: ToolContext): Promise<string>;
+  /** 权限：allow 放行 / confirm 需确认 / deny 禁止 / 动态 evaluator */
+  permission: ToolPermissionSpec;
+  /** 副作用分类；旧工具可省略，middleware 默认按权限推断 */
+  sideEffect?: ToolSideEffect;
+  /** 执行函数；支持返回字符串（旧）或结构化 ToolResult（新） */
+  execute(args: z.infer<T>, ctx: ToolContext): Promise<string | ToolResult>;
 }
 
 /**
@@ -96,6 +153,7 @@ export function createLangChainTool<T extends z.ZodObject<any>>(
     name: def.name,
     description: def.description,
     schema: def.schema,
-    func: async (args: z.infer<T>) => def.execute(args, ctx),
+    func: async (args: z.infer<T>) =>
+      normalizeToolResult(await def.execute(args, ctx)).content,
   });
 }

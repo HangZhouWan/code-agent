@@ -36,6 +36,8 @@ export interface ChatMessage {
  * 与 LangChain BaseMessage 解耦，恢复时再显式重建。
  */
 export interface SerializedMessage {
+  /** 稳定消息 ID，用于压缩覆盖范围与回放 */
+  id?: string;
   role: "system" | "human" | "ai" | "tool";
   content: string;
   toolCalls?: Array<{ id: string; name: string; args: JsonValue }>;

@@ -39,12 +39,58 @@ export type {
 // 工具层
 export * from './tools/index.js';
 
+// 权限与路径安全
+export { createDefaultPermissionPolicy, DefaultPermissionPolicy } from './permissions/policy.js';
+export type { PermissionPolicy } from './permissions/policy.js';
+export {
+  resolveWorkspacePath,
+  isPathWithin,
+  PathEscapeError,
+} from './permissions/paths.js';
+export {
+  evaluateShellCommand,
+  isDangerousShellCommand,
+  DENY_SHELL_PATTERNS,
+} from './permissions/shell-policy.js';
+
+// 上下文压缩
+export {
+  createTokenCounter,
+  createHeuristicTokenCounter,
+  HeuristicTokenCounter,
+  TiktokenTokenCounter,
+} from './context/token-counter.js';
+export type { TokenCounter } from './context/token-counter.js';
+export {
+  compactContext,
+  deterministicSummary,
+  mergeContextSummary,
+  renderContextSummary,
+} from './context/compressor.js';
+export { ContextManager as CompactContextManager } from './context/manager.js';
+export type { CompactOptions } from './context/manager.js';
+export {
+  createContextBudget,
+  ContextOverflowError,
+} from './context/types.js';
+export type {
+  ContextBudget,
+  ContextSummary,
+  ContextSummarizer,
+  TokenCounterLike,
+  CompactionStrategy,
+  CompactionInput,
+  CompactionResult,
+  ContextSnapshot,
+} from './context/types.js';
+
 // Agent Runtime
 export * from './harness/sandbox/types.js';
 export { PermissionRegistry } from './harness/sandbox/registry.js';
 export { SandboxGuard } from './harness/sandbox/guard.js';
 export type { HookEvent, HookContext, HookResult, HookHandler } from './harness/hooks/types.js';
 export { HooksEngine } from './harness/hooks/engine.js';
+export type { HooksEngineOptions } from './harness/hooks/engine.js';
 export { createLoggerHook } from './harness/hooks/builtins/logger.js';
 export { createSecretFilterHook } from './harness/hooks/builtins/secret-filter.js';
 export type { ContextWindow, AgentContext, RuntimeContext } from './harness/context/types.js';
@@ -143,6 +189,40 @@ export type {
 export { InMemoryShortTermMemory } from './harness/memory/short-term.js';
 export { InMemoryWorkingMemory } from './harness/memory/working.js';
 export { FileLongTermMemory } from './harness/memory/long-term.js';
+
+// 长期记忆（新实现）
+export { InMemoryMemoryStore } from './memory/in-memory-store.js';
+export { FileMemoryStore } from './memory/file-store.js';
+export type { FileMemoryStoreOptions } from './memory/file-store.js';
+export { MemoryService } from './memory/service.js';
+export type {
+  StoreMemoryInput,
+  StoreMemoryResult,
+  MemoryServiceOptions,
+} from './memory/service.js';
+export {
+  LlmMemoryExtractor,
+  NoopMemoryExtractor,
+  createLlmMemoryExtractor,
+  parseMemoryOps,
+  memoryOpSchema,
+} from './memory/extractor.js';
+export type {
+  LlmMemoryExtractorOptions,
+  ParsedMemoryOp,
+} from './memory/extractor.js';
+export {
+  DEFAULT_MEMORY_CONFIG,
+  MemoryVersionConflictError,
+} from './memory/types.js';
+export type {
+  MemoryExtractor,
+  MemoryStore,
+  MemoryConfig,
+  MemorySearchResult,
+  MemoryListFilter,
+  MemoryOpsResult,
+} from './memory/types.js';
 
 // 核心版本标识
 export const CORE_VERSION = '0.1.0';

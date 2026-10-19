@@ -81,6 +81,9 @@ importers:
       dotenv:
         specifier: ^16.4.0
         version: 16.6.1
+      js-tiktoken:
+        specifier: ^1.0.12
+        version: 1.0.21
       langchain:
         specifier: ^1.0.0
         version: 1.5.2(@langchain/core@1.2.1(openai@6.45.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0))(openai@6.45.0(ws@8.21.0)(zod@3.25.76))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(ws@8.21.0)

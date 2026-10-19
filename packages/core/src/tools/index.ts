@@ -6,12 +6,45 @@
  */
 
 // 基础接口和工厂函数
-export { createLangChainTool } from './base.js';
-export type { ToolDefinition, ToolContext, PermissionLevel } from './base.js';
+export { createLangChainTool, normalizeToolResult } from './base.js';
+export type {
+  ToolDefinition,
+  ToolContext,
+  PermissionLevel,
+  ToolSideEffect,
+  PermissionDecision,
+  PermissionEvaluator,
+  ToolPermissionSpec,
+  ToolResult,
+} from './base.js';
+
+// 执行中间件
+export {
+  executeTool,
+  toolOk,
+  toolError,
+  DEFAULT_INLINE_LIMIT,
+} from './middleware.js';
+export type {
+  ArtifactSink,
+  ToolHooks,
+  ToolExecutionDependencies,
+} from './middleware.js';
 
 // 工具名称常量
 export { ToolNames, ALL_TOOL_NAMES, SAFE_TOOL_NAMES, CONFIRM_TOOL_NAMES } from './tool-names.js';
 export type { ToolName } from './tool-names.js';
+
+// 新内置工具目录（旧工具仍保留在上方，Phase 4/5 切换）
+export { createBuiltinTools, detectTestCommand } from './builtins/index.js';
+export { createMemoryTools } from './builtins/memory.js';
+export type { MemoryToolService } from './builtins/memory.js';
+export { createCollaborationTools } from './builtins/collaboration.js';
+export type {
+  CollaborationToolService,
+  PlanTaskInput,
+} from './builtins/collaboration.js';
+export type { BuiltinToolOptions } from './builtins/index.js';
 
 // 工具注册表
 export { ToolRegistry } from './registry.js';

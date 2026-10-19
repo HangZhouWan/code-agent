@@ -14,8 +14,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { z } from 'zod';
 import { ToolRegistry } from '../registry.js';
-import { createLangChainTool } from '../base.js';
-import type { ToolDefinition, ToolContext } from '../base.js';
+import { createLangChainTool, normalizeToolResult } from '../base.js';
+import type { ToolDefinition, ToolContext, ToolResult } from '../base.js';
 import { fileReadTool, fileWriteTool, fileListTool } from '../file.js';
 import { shellExecTool } from '../shell.js';
 import { codeSearchTool } from '../search.js';
@@ -28,6 +28,11 @@ import {
   gitBranchTool,
 } from '../git.js';
 import { ToolNames } from '../tool-names.js';
+
+/** 旧测试辅助：把 string | ToolResult 归一化为文本 */
+function asText(value: string | ToolResult): string {
+  return normalizeToolResult(value).content;
+}
 import * as fs from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import * as path from 'node:path';
@@ -385,9 +390,8 @@ describe('Shell 工具', () => {
   });
 
   it('pwd 应返回当前路径', async () => {
-    const result = await shellExecTool.execute(
-      { command: 'pwd' },
-      makeCtx(workspacePath),
+    const result = asText(
+      await shellExecTool.execute({ command: 'pwd' }, makeCtx(workspacePath)),
     );
     // macOS 上 /var 是 /private/var 的符号链接，用 realpathSync 解析真实路径
     const actual = result.trim();
@@ -459,7 +463,9 @@ describe('Git 工具', () => {
 
   describe('git_status', () => {
     it('应返回 JSON 状态信息', async () => {
-      const result = await gitStatusTool.execute({}, makeCtx(workspacePath));
+      const result = asText(
+        await gitStatusTool.execute({}, makeCtx(workspacePath)),
+      );
       const parsed = JSON.parse(result);
       expect(parsed).toHaveProperty('current');
       expect(parsed).toHaveProperty('files');
@@ -522,9 +528,11 @@ describe('Web 工具', () => {
 
   it('fetch 无效 URL 应返回错误信息', async () => {
     try {
-      const result = await webFetchTool.execute(
-        { url: 'http://127.0.0.1:65535/nonexistent' },
-        makeCtx(workspacePath),
+      const result = asText(
+        await webFetchTool.execute(
+          { url: 'http://127.0.0.1:65535/nonexistent' },
+          makeCtx(workspacePath),
+        ),
       );
       expect(typeof result).toBe('string');
       expect(result.length).toBeGreaterThan(0);

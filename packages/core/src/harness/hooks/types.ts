@@ -21,13 +21,19 @@
  * - agent:error    → Agent 出错时触发
  */
 export type HookEvent =
+  | 'run:start'
+  | 'run:end'
   | 'agent:start'
   | 'agent:end'
-  | 'tool:before'
-  | 'tool:after'
   | 'agent:error'
+  | 'llm:before'
+  | 'llm:after'
   | 'message:send'
-  | 'message:receive';
+  | 'message:receive'
+  | 'message:append'
+  | 'context:compact'
+  | 'tool:before'
+  | 'tool:after';
 
 /**
  * 事件上下文

@@ -29,9 +29,16 @@ import type { HookEvent, HookContext, HookResult, HookHandler } from './types.js
  *
  * 线程不安全 —— 应在单线程环境中使用，避免并发注册/触发。
  */
+export interface HooksEngineOptions {
+  /** handler 异常上报；默认 console.error */
+  onError?: (event: HookEvent, error: unknown) => void;
+}
+
 export class HooksEngine {
   /** 事件 → handler 列表映射 */
   private handlers = new Map<HookEvent, HookHandler[]>();
+
+  constructor(private readonly options: HooksEngineOptions = {}) {}
 
   /**
    * 注册事件处理器
@@ -122,8 +129,13 @@ export class HooksEngine {
             merged.skip = true;
           }
         }
-      } catch {
-        // 单个 handler 异常不阻塞其他 handler，静默忽略
+      } catch (error) {
+        // 单个 handler 异常不阻塞其他 handler，但必须可观测
+        if (this.options.onError) {
+          this.options.onError(event, error);
+        } else {
+          console.error(`[hooks] ${event} handler failed`, error);
+        }
       }
     }
 
