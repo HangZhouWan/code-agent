@@ -138,6 +138,12 @@ export type ChatAction =
       tool: string;
       args: Record<string, unknown>;
     }
+  | {
+      type: "APPROVAL_RESOLVED";
+      callId: string;
+      decision: "approved" | "denied";
+      reason?: string;
+    }
   | { type: "FINALIZE_ASSISTANT"; id?: string; content: string }
   | { type: "QUESTION_REQUIRED"; question: QuestionPrompt }
   | { type: "QUESTION_RESOLVED" }
@@ -287,10 +293,28 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     // ── 完成最新 assistant 消息 ──
     case "FINALIZE_ASSISTANT": {
       const msgs = [...state.messages];
+
+      // 服务端重连/切换会话时会重放历史事件，而历史消息已经通过 REST 加载。
+      // 按服务端消息 ID 幂等更新，避免同一条消息被追加两次（React key 重复）。
+      const existingIndex = action.id
+        ? msgs.findIndex((message) => message.id === action.id)
+        : -1;
+      if (existingIndex !== -1) {
+        const existing = msgs[existingIndex];
+        msgs[existingIndex] = {
+          ...existing,
+          content: action.content || existing.content,
+          isStreaming: false,
+        };
+        return { ...state, messages: msgs };
+      }
+
       const last = msgs[msgs.length - 1];
       if (last?.role === "assistant" && last.isStreaming) {
         msgs[msgs.length - 1] = {
           ...last,
+          // 与后端消息对齐 ID，后续重复事件即可命中幂等更新
+          id: action.id ?? last.id,
           content: action.content || last.content,
           isStreaming: false,
         };
@@ -304,6 +328,34 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         });
       }
       return { ...state, messages: msgs };
+    }
+
+    // ── 审批已处理（用户操作或历史事件重放） ──
+    case "APPROVAL_RESOLVED": {
+      if (state.messages.length === 0) return state;
+      const msgs = [...state.messages];
+
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const message = msgs[i];
+        const toolIndex = message.toolCalls.findIndex(
+          (toolCall) =>
+            toolCall.callId === action.callId ||
+            toolCall.approvalId === action.callId,
+        );
+        if (toolIndex === -1) continue;
+
+        const toolCalls = [...message.toolCalls];
+        toolCalls[toolIndex] = {
+          ...toolCalls[toolIndex],
+          status: action.decision === "approved" ? "running" : "error",
+          ...(action.decision === "denied"
+            ? { result: action.reason ?? "已拒绝" }
+            : {}),
+        };
+        msgs[i] = { ...message, toolCalls };
+        return { ...state, messages: msgs };
+      }
+      return state;
     }
 
     // ── 用户问题 ──

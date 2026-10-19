@@ -78,6 +78,15 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
           });
           break;
 
+        case "approval.resolved":
+          dispatch({
+            type: "APPROVAL_RESOLVED",
+            callId: event.callId,
+            decision: event.decision,
+            ...(event.reason ? { reason: event.reason } : {}),
+          });
+          break;
+
         case "user.question.required":
           dispatch({
             type: "QUESTION_REQUIRED",

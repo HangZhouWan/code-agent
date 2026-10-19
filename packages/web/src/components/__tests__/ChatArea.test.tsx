@@ -5,7 +5,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
+import {
+  render,
+  screen,
+  waitFor,
+  cleanup,
+  act,
+  fireEvent,
+} from "@testing-library/react";
 import { ChatArea } from "../ChatArea.js";
 
 // ---------------------------------------------------------------------------
@@ -16,6 +23,7 @@ class MockWebSocket {
   static OPEN = 1;
   static CONNECTING = 0;
   static CLOSED = 3;
+  static instances: MockWebSocket[] = [];
   url: string;
   readyState = MockWebSocket.CONNECTING;
   onopen: (() => void) | null = null;
@@ -25,12 +33,42 @@ class MockWebSocket {
 
   constructor(url: string) {
     this.url = url;
+    MockWebSocket.instances.push(this);
   }
   send(_data: string) {}
   close() {
     this.readyState = MockWebSocket.CLOSED;
     this.onclose?.();
   }
+  /** 模拟服务端推送一条 WS 消息 */
+  receive(message: unknown) {
+    this.onmessage?.({
+      data: JSON.stringify(message),
+    } as MessageEvent);
+  }
+}
+
+/** 获取最近创建的 WebSocket 实例 */
+function latestSocket(): MockWebSocket {
+  const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1];
+  if (!socket) throw new Error("no websocket created");
+  return socket;
+}
+
+/** 构造服务端事件信封 */
+function eventMessage(seq: number, event: Record<string, unknown>) {
+  return {
+    type: "event",
+    event: {
+      v: 1,
+      id: `evt-${seq}`,
+      sessionId: "s1",
+      runId: "run-1",
+      seq,
+      ts: "2024-01-01T00:00:00.000Z",
+      event,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -65,6 +103,7 @@ function mockFetchHistory(messages: unknown[]) {
 
 describe("ChatArea", () => {
   beforeEach(() => {
+    MockWebSocket.instances = [];
     vi.stubGlobal("WebSocket", MockWebSocket as unknown as typeof WebSocket);
     mockFetchEmptyHistory();
   });
@@ -138,5 +177,100 @@ describe("ChatArea", () => {
         screen.getByText(/Send a message to start the conversation/),
       ).toBeInTheDocument();
     });
+  });
+
+  it("重放已持久化的 message.completed 时不应产生重复消息", async () => {
+    mockFetchHistory([
+      {
+        id: "msg-1",
+        sessionId: "s1",
+        role: "assistant",
+        content: "Previous answer",
+        toolName: null,
+        toolArgs: null,
+        toolResult: null,
+        createdAt: "2024-01-01T00:00:01.000Z",
+      },
+    ]);
+
+    render(<ChatArea sessionId="s1" />);
+    await screen.findByText("Previous answer");
+
+    // 服务端连接后会从 seq 0 重放历史事件
+    act(() => {
+      latestSocket().receive(
+        eventMessage(1, {
+          type: "message.completed",
+          message: {
+            id: "msg-1",
+            sessionId: "s1",
+            role: "assistant",
+            content: "Previous answer",
+            createdAt: "2024-01-01T00:00:01.000Z",
+          },
+        }),
+      );
+    });
+
+    expect(screen.getAllByText("Previous answer")).toHaveLength(1);
+  });
+
+  it("approval.resolved 后应移除确认卡片", async () => {
+    render(<ChatArea sessionId="s1" />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Send a message to start the conversation/),
+      ).toBeInTheDocument();
+    });
+
+    const socket = latestSocket();
+    act(() => {
+      socket.onopen?.();
+    });
+    fireEvent.change(screen.getByPlaceholderText(/Type a message/), {
+      target: { value: "delete it" },
+    });
+    fireEvent.click(screen.getByText("Send"));
+
+    act(() => {
+      socket.receive(
+        eventMessage(1, {
+          type: "tool.started",
+          callId: "call-1",
+          toolName: "delete_file",
+          args: { path: "/tmp/x" },
+        }),
+      );
+      socket.receive(
+        eventMessage(2, {
+          type: "approval.required",
+          request: {
+            callId: "call-1",
+            sessionId: "s1",
+            runId: "run-1",
+            taskId: "task-1",
+            toolName: "delete_file",
+            args: { path: "/tmp/x" },
+            createdAt: "2024-01-01T00:00:00.000Z",
+            expiresAt: "2024-01-01T00:02:00.000Z",
+          },
+        }),
+      );
+    });
+
+    expect(screen.getByText(/Confirm Action:/)).toBeInTheDocument();
+
+    act(() => {
+      socket.receive(
+        eventMessage(3, {
+          type: "approval.resolved",
+          callId: "call-1",
+          decision: "denied",
+        }),
+      );
+    });
+
+    expect(screen.queryByText(/Confirm Action:/)).not.toBeInTheDocument();
   });
 });

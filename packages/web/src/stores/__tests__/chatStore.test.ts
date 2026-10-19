@@ -1,10 +1,11 @@
 /**
  * chatStore 单元测试
  *
- * 覆盖 chatReducer 所有 8 种 Action：
+ * 覆盖 chatReducer 所有 Action：
  * - ADD_USER_MESSAGE / ADD_ASSISTANT_MESSAGE
  * - APPEND_TEXT / TOOL_START / TOOL_END
- * - CONFIRM_REQUIRED / DONE / ERROR
+ * - CONFIRM_REQUIRED / APPROVAL_RESOLVED / FINALIZE_ASSISTANT
+ * - DONE / ERROR / LOAD_MESSAGES
  * - 边界条件：空 messages 列表、finalResponse 为空、同名称 tool 匹配
  */
 
@@ -217,6 +218,147 @@ describe("CONFIRM_REQUIRED", () => {
     });
     expect(state.messages[0].toolCalls[0].status).toBe("awaiting_approval");
     expect(state.messages[0].toolCalls[0].callId).toBe("call-1");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// APPROVAL_RESOLVED
+// ---------------------------------------------------------------------------
+
+describe("APPROVAL_RESOLVED", () => {
+  it("批准后应把确认卡切换回 running", () => {
+    const initial: ChatState = {
+      messages: [
+        assistantMsg("a1", "", true, [
+          {
+            callId: "call-1",
+            tool: "delete_file",
+            args: {},
+            status: "awaiting_approval",
+            approvalId: "call-1",
+          },
+        ]),
+      ],
+    };
+    const state = chatReducer(initial, {
+      type: "APPROVAL_RESOLVED",
+      callId: "call-1",
+      decision: "approved",
+    });
+    expect(state.messages[0].toolCalls[0].status).toBe("running");
+  });
+
+  it("拒绝后应标记为 error 并写入原因", () => {
+    const initial: ChatState = {
+      messages: [
+        assistantMsg("a1", "", true, [
+          {
+            callId: "call-1",
+            tool: "delete_file",
+            args: {},
+            status: "awaiting_approval",
+            approvalId: "call-1",
+          },
+        ]),
+      ],
+    };
+    const state = chatReducer(initial, {
+      type: "APPROVAL_RESOLVED",
+      callId: "call-1",
+      decision: "denied",
+      reason: "user denied",
+    });
+    expect(state.messages[0].toolCalls[0]).toMatchObject({
+      status: "error",
+      result: "user denied",
+    });
+  });
+
+  it("找不到 callId 时保持状态不变", () => {
+    const initial: ChatState = {
+      messages: [assistantMsg("a1", "", true)],
+    };
+    const state = chatReducer(initial, {
+      type: "APPROVAL_RESOLVED",
+      callId: "missing",
+      decision: "approved",
+    });
+    expect(state).toBe(initial);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FINALIZE_ASSISTANT
+// ---------------------------------------------------------------------------
+
+describe("FINALIZE_ASSISTANT", () => {
+  it("应该把流式消息原地完成并采用服务端 ID", () => {
+    const initial: ChatState = {
+      messages: [assistantMsg("local-1", "partial", true)],
+    };
+    const state = chatReducer(initial, {
+      type: "FINALIZE_ASSISTANT",
+      id: "msg-1",
+      content: "final",
+    });
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0]).toMatchObject({
+      id: "msg-1",
+      content: "final",
+      isStreaming: false,
+    });
+  });
+
+  it("历史已加载时按 ID 更新，不应追加重复消息", () => {
+    const initial: ChatState = {
+      messages: [
+        userMsg("u1", "hello"),
+        assistantMsg("msg-1", "final"),
+      ],
+    };
+    const state = chatReducer(initial, {
+      type: "FINALIZE_ASSISTANT",
+      id: "msg-1",
+      content: "final",
+    });
+    expect(state.messages).toHaveLength(2);
+    expect(state.messages[1]).toMatchObject({
+      id: "msg-1",
+      content: "final",
+      isStreaming: false,
+    });
+  });
+
+  it("重复事件幂等：同一 ID 处理两次只保留一条消息", () => {
+    const first = chatReducer(
+      {
+        messages: [
+          userMsg("u1", "hello"),
+          assistantMsg("msg-1", "final"),
+        ],
+      },
+      { type: "FINALIZE_ASSISTANT", id: "msg-1", content: "final" },
+    );
+    const second = chatReducer(first, {
+      type: "FINALIZE_ASSISTANT",
+      id: "msg-1",
+      content: "final",
+    });
+    expect(second.messages).toHaveLength(2);
+    expect(second.messages.filter((m) => m.id === "msg-1")).toHaveLength(1);
+  });
+
+  it("末条不是流式 assistant 时追加新消息", () => {
+    const initial: ChatState = {
+      messages: [userMsg("u1", "hello")],
+    };
+    const state = chatReducer(initial, {
+      type: "FINALIZE_ASSISTANT",
+      id: "msg-1",
+      content: "answer",
+    });
+    expect(state.messages).toHaveLength(2);
+    expect(state.messages[1].id).toBe("msg-1");
   });
 });
 
