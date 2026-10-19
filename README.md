@@ -79,7 +79,11 @@ cd my-agent
 pnpm install
 ```
 
-### 2. 配置环境变量
+### 2. 配置 LLM
+
+**方式一（推荐）：首次启动后通过页面配置。** 未配置时 server 会进入 setup 模式，打开 `http://localhost:5173` 按提示选择 Provider、填写 API Key 即可，配置写入 `~/.code-agent/config.json`。
+
+**方式二：使用环境变量。**
 
 ```bash
 cp .env.example .env
@@ -97,6 +101,8 @@ LLM_API_KEY=sk-your-key-here     # API 密钥
 # LLM_BASE_URL=https://api.openai.com/v1
 ```
 
+> 配置目录可用 `CODE_AGENT_HOME` 覆盖（默认 `~/.code-agent`）。
+
 支持的 LLM 提供商：
 
 | 提供商 | `LLM_PROVIDER` 值 | 说明 |
@@ -111,14 +117,21 @@ LLM_API_KEY=sk-your-key-here     # API 密钥
 pnpm dev
 ```
 
-这将并行启动三个子包：
-- **@code-agent/core**：TypeScript 编译监听（`tsc --watch`）
+会先执行一次 `tsc -b`，然后并行启动：
 - **@code-agent/server**：后端服务，默认监听 `http://localhost:3000`（`tsx watch`）
 - **@code-agent/web**：前端开发服务器，默认 `http://localhost:5173`（Vite）
 
-> 前端开发时建议访问 Vite 地址 `http://localhost:5173`，Vite 会自动代理 API 请求到后端。
+> 请访问 Vite 地址 `http://localhost:5173`，它会把 `/api` 和 WebSocket 代理到后端。
 
-### 5. 启动 CLI REPL（可选）
+也可以只启动其中一部分：
+
+```bash
+pnpm dev:server   # 只启动后端
+pnpm dev:web      # 只启动前端
+pnpm dev:cli      # 只启动 CLI REPL（相当于 pnpm cli）
+```
+
+### 4. 启动 CLI REPL（可选）
 
 #### 本地开发
 
@@ -151,25 +164,12 @@ code-agent -m claude-opus-4-8       # 指定模型启动 REPL
 **启动输出示例：**
 
 ```
-==================================================
-  code-agent cli v0.1.0
-==================================================
-[config] Workspace: /Users/qichen/projects/my-app
-[config] LLM: ChatOpenAI
-[tools] Registered 11 built-in tools
-[sandbox] Registered 11 tool permissions
-[memory] Three-tier memory system initialized
-[agent] Infrastructure initialized
-[AgentRegistry] Agents started:
-  - Code Agent (354df328-...)
-  - Test Agent (5dc02772-...)
-  - Doc Agent (16a7f65e-...)
-[cli] Starting REPL...
+── code-agent ──
+workspace: /Users/qichen/projects/my-app
+model: anthropic/claude-sonnet-4-5
+输入 /help 查看命令，/exit 退出
 
-  code-agent CLI REPL
-  Type /help for commands, or just start chatting.
-
-code-agent > 帮我检查 git 状态并生成一个 commit 信息
+> 帮我检查 git 状态并生成一个 commit 信息
 ```
 
 **REPL 命令：**

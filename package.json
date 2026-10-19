@@ -2,7 +2,10 @@
   "name": "code-agent",
   "private": true,
   "scripts": {
-    "dev": "tsc -b && pnpm --parallel -r dev",
+    "dev": "tsc -b && pnpm --parallel -r --filter @code-agent/server --filter @code-agent/web dev",
+    "dev:server": "tsc -b && pnpm --filter @code-agent/server dev",
+    "dev:web": "tsc -b && pnpm --filter @code-agent/web dev",
+    "dev:cli": "tsc -b && pnpm --filter @code-agent/cli dev",
     "cli": "tsc -b && pnpm --filter @code-agent/cli dev",
     "clean": "node -e \"const fs=require('fs');for(const p of fs.readdirSync('packages'))fs.rmSync('packages/'+p+'/dist',{recursive:true,force:true})\"",
     "build": "pnpm -r build",
