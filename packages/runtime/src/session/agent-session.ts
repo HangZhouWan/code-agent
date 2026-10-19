@@ -6,6 +6,7 @@
 
 import {
   AgentExecutionEngine,
+  SessionEventBus,
   SessionStateManager,
   createBuiltinTools,
   createCollaborationTools,
@@ -22,6 +23,7 @@ import {
 } from "@code-agent/core";
 import {
   abortError,
+  agentCommandTopic,
   asCallId,
   asQuestionId,
   asRunId,
@@ -45,6 +47,10 @@ import { ApprovalService } from "../approval/approval-service.js";
 import { AgentPool } from "../agents/agent-pool.js";
 import { DelegationService } from "../agents/delegation-service.js";
 import { RoleRegistry } from "../agents/role-registry.js";
+import { BusDispatcher } from "../dispatch/bus-dispatcher.js";
+import { DirectDispatcher } from "../dispatch/direct-dispatcher.js";
+import { RoutingDispatcher } from "../dispatch/routing-dispatcher.js";
+import { SessionOrchestrator } from "../orchestrator/orchestrator.js";
 import type { RuntimePorts } from "../ports/types.js";
 import { EventChannel } from "./event-channel.js";
 import { PlanState } from "./plan-state.js";
@@ -75,6 +81,8 @@ export interface AgentSessionOptions {
   approvalTimeoutMs?: number;
   questionTimeoutMs?: number;
   title?: string;
+  /** 使用 LangGraph 编排；false 时使用单 Code 任务纵向切片 */
+  orchestration?: boolean;
 }
 
 export interface RunOptions {
@@ -109,6 +117,9 @@ export class AgentSession {
   private readonly planState = new PlanState();
   private readonly titleService: TitleService;
   private readonly pool: AgentPool;
+  private readonly bus: SessionEventBus;
+  private readonly routingDispatcher: RoutingDispatcher;
+  private readonly orchestration: boolean;
   private readonly memory?: MemoryService;
   private readonly memoryExtractor?: MemoryExtractor;
   private readonly writeLock?: <T>(fn: () => Promise<T>) => Promise<T>;
@@ -234,6 +245,49 @@ export class AgentSession {
     extraTools.push(...createCollaborationTools(collaborationService));
     this.pool.registerTools(extraTools);
 
+    this.orchestration = options.orchestration ?? true;
+    this.bus = new SessionEventBus({
+      sessionId: options.sessionId,
+      clock: () => options.ports.clock.now(),
+      idGenerator: (prefix) => options.ports.ids.next(prefix),
+      onError: (error) => {
+        console.error("[agent-session] bus handler failed", error);
+      },
+    });
+
+    for (const role of this.roles.list()) {
+      this.bus.subscribeExclusive(
+        agentCommandTopic(role.id),
+        role.id,
+        async (envelope) => {
+          const payload = envelope.payload;
+          const memory = await this.retrieveMemory(
+            payload.task.description,
+          );
+          const scope = this.buildTaskScope(
+            payload.runId,
+            payload.taskId,
+            role.id,
+          );
+          return this.pool.invoke(
+            role.id,
+            {
+              taskId: payload.taskId,
+              description: payload.task.description,
+              context: payload.context,
+              ...(memory ? { memory } : {}),
+            },
+            scope,
+          );
+        },
+      );
+    }
+
+    this.routingDispatcher = new RoutingDispatcher(
+      new DirectDispatcher(this.pool),
+      new BusDispatcher(this.bus),
+    );
+
     this.titleService = new TitleService({
       sessionId: options.sessionId,
       model: options.model,
@@ -299,7 +353,10 @@ export class AgentSession {
       resumed: false,
     });
 
-    const done = this.executeRun(runId, input, controller).finally(() => {
+    const execution = this.orchestration
+      ? this.executeOrchestrated(runId, input, controller)
+      : this.executeDirect(runId, input, controller);
+    const done = execution.finally(() => {
       if (this.activeRunId === runId) {
         this.activeRunId = null;
         this.activeController = null;
@@ -362,7 +419,174 @@ export class AgentSession {
     this.eventChannel.close();
   }
 
-  private async executeRun(
+  private makeApprovalHandler(
+    runId: RunId,
+    fallbackTaskId: TaskId,
+  ): NonNullable<RunScope["requestApproval"]> {
+    return async (request) => {
+      const taskId = request.taskId
+        ? asTaskId(request.taskId)
+        : fallbackTaskId;
+      const decision = await this.approvalService.request({
+        runId,
+        taskId,
+        toolName: request.toolName,
+        args: toJsonValue(request.args),
+        ...(request.reason ? { reason: request.reason } : {}),
+      });
+      return decision === "approved";
+    };
+  }
+
+  private buildBaseScope(runId: RunId, fallbackTaskId: TaskId): RunScope {
+    return {
+      sessionId: this.id,
+      runId,
+      taskId: fallbackTaskId,
+      signal:
+        this.activeController?.signal ?? new AbortController().signal,
+      emit: (event) => this.emitEvent(event),
+      requestApproval: this.makeApprovalHandler(runId, fallbackTaskId),
+      ...(this.writeLock ? { withWriteLock: this.writeLock } : {}),
+      delegation: { depth: 0, maxDepth: 2 },
+    };
+  }
+
+  private buildTaskScope(
+    runId: RunId,
+    taskId: TaskId,
+    roleId: string,
+  ): RunScope {
+    const role = this.roles.require(roleId);
+    return {
+      sessionId: this.id,
+      runId,
+      taskId,
+      signal:
+        this.activeController?.signal ?? new AbortController().signal,
+      emit: (event) => this.emitEvent(event),
+      requestApproval: this.makeApprovalHandler(runId, taskId),
+      ...(this.writeLock ? { withWriteLock: this.writeLock } : {}),
+      delegation: {
+        depth: 1,
+        maxDepth: 2,
+        allowedRoles: role.delegatableRoles,
+      },
+    };
+  }
+
+  private async executeOrchestrated(
+    runId: RunId,
+    input: UserTurnInput,
+    controller: AbortController,
+  ): Promise<RunResult> {
+    let runResults: TaskResult[] = [];
+    try {
+      const memoryText = await this.retrieveMemory(input.content);
+      await this.saveSessionCheckpoint(runId, "running", "planner");
+
+      const baseScope = this.buildBaseScope(runId, asTaskId(runId));
+      const orchestrator = new SessionOrchestrator({
+        model: this.options.model,
+        roles: this.roles,
+        ids: this.ports.ids,
+        clock: this.ports.clock,
+        state: this.state,
+        dispatcher: this.routingDispatcher,
+        persistTask: (taskId) => this.persistTask(taskId),
+        emit: (event) => this.emitEvent(event),
+      });
+
+      const outcome = await orchestrator.run({
+        runId,
+        sessionId: this.id,
+        userMessage: input.content,
+        ...(memoryText ? { memory: memoryText } : {}),
+        scope: baseScope,
+      });
+      runResults = outcome.results;
+
+      if (outcome.finalResponse) {
+        const assistant = await this.appendMessage(
+          "assistant",
+          outcome.finalResponse,
+        );
+        this.emitEvent({ type: "message.completed", message: assistant });
+      }
+
+      await this.saveSessionCheckpoint(
+        runId,
+        "completed",
+        "finalizer",
+        runResults,
+      );
+      try {
+        await this.ports.checkpoints.purgeRun(this.id, runId);
+      } catch {
+        // 清理失败不影响已完成 run
+      }
+
+      const result: RunResult = {
+        runId,
+        sessionId: this.id,
+        status: "completed",
+        ...(outcome.finalResponse
+          ? { finalResponse: outcome.finalResponse }
+          : {}),
+        taskResults: runResults,
+      };
+      await this.ports.runs.updateRun(runId, {
+        status: "completed",
+        finishedAt: this.ports.clock.now(),
+      });
+      this.emitEvent({ type: "run.completed", result });
+
+      void this.titleService.maybeGenerate(input.content);
+      void this.extractMemoryFromResults(
+        runId,
+        input.content,
+        runResults,
+      );
+      return result;
+    } catch (error) {
+      const aborted = controller.signal.aborted;
+      const serialized = aborted
+        ? abortError(String(controller.signal.reason ?? "aborted"))
+        : serializeError(error, "INTERNAL");
+
+      const result: RunResult = {
+        runId,
+        sessionId: this.id,
+        status: aborted ? "aborted" : "failed",
+        taskResults: runResults,
+        error: serialized,
+      };
+      await this.ports.runs.updateRun(runId, {
+        status: aborted ? "aborted" : "failed",
+        finishedAt: this.ports.clock.now(),
+      });
+      if (aborted) {
+        this.emitEvent({ type: "run.aborted", reason: serialized.message });
+      } else {
+        this.emitEvent({ type: "run.failed", error: serialized });
+      }
+      try {
+        await this.saveSessionCheckpoint(
+          runId,
+          aborted ? "aborted" : "failed",
+          "finalizer",
+        );
+      } catch {
+        // 保留原错误
+      }
+      return result;
+    } finally {
+      this.approvalService.cancelRun(runId, "run finished");
+      this.questionService.cancelRun(runId, "run finished");
+    }
+  }
+
+  private async executeDirect(
     runId: RunId,
     input: UserTurnInput,
     controller: AbortController,
@@ -451,7 +675,11 @@ export class AgentSession {
       });
 
       if (taskResult.summary) {
-        await this.appendMessage("assistant", taskResult.summary);
+        const assistant = await this.appendMessage(
+          "assistant",
+          taskResult.summary,
+        );
+        this.emitEvent({ type: "message.completed", message: assistant });
       }
 
       if (taskResult.status === "success") {
@@ -600,6 +828,35 @@ export class AgentSession {
     }
   }
 
+  private async extractMemoryFromResults(
+    runId: RunId,
+    userContent: string,
+    results: TaskResult[],
+  ): Promise<void> {
+    if (!this.memoryExtractor || !this.memory || results.length === 0) {
+      return;
+    }
+    try {
+      await this.memory.extractAndApply({
+        workspaceId: this.options.workspaceId,
+        sessionId: this.id,
+        runId,
+        userMessages: [userContent],
+        tasks: results.map((result) => ({
+          role: result.role,
+          description: result.summary,
+          result,
+          filesChanged:
+            result.artifacts?.filesChanged?.map((file) => file.path) ?? [],
+        })),
+        commandsRun: [],
+        finalResponse: results.map((result) => result.summary).join("\n"),
+      });
+    } catch (error) {
+      console.error("[agent-session] memory extraction failed", error);
+    }
+  }
+
   private async persistTask(taskId: TaskId): Promise<void> {
     const task = this.state.tasks.get(taskId);
     if (task) await this.ports.runs.upsertTask(task);
@@ -608,7 +865,7 @@ export class AgentSession {
   private async saveSessionCheckpoint(
     runId: RunId,
     status: RunResult["status"] | "running",
-    node: "dispatcher" | "finalizer",
+    node: "planner" | "dispatcher" | "replanner" | "finalizer",
     _results?: TaskResult[],
   ): Promise<void> {
     const tasks = this.state.tasks.snapshot();
@@ -655,14 +912,16 @@ export class AgentSession {
   private async appendMessage(
     role: ChatMessage["role"],
     content: string,
-  ): Promise<void> {
-    await this.ports.sessions.appendMessage({
+  ): Promise<ChatMessage> {
+    const message: ChatMessage = {
       id: this.ports.ids.next("msg"),
       sessionId: this.id,
       role,
       content,
       createdAt: this.ports.clock.now(),
-    });
+    };
+    await this.ports.sessions.appendMessage(message);
+    return message;
   }
 
   private emitEvent(event: SessionEvent): void {

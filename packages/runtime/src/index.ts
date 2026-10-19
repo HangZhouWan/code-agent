@@ -42,6 +42,8 @@ export {
   REVIEW_ROLE,
 } from "./agents/roles/index.js";
 export { Semaphore } from "./agents/semaphore.js";
+export * from "./dispatch/index.js";
+export * from "./orchestrator/index.js";
 export {
   createRuntime,
 } from "./factory.js";

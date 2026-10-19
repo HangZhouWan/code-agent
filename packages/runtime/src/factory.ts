@@ -36,6 +36,8 @@ export interface RuntimeOptions {
   maxIterations?: number;
   approvalTimeoutMs?: number;
   questionTimeoutMs?: number;
+  /** 默认是否启用 LangGraph 编排 */
+  orchestration?: boolean;
 }
 
 export interface CreateSessionInput {
@@ -43,6 +45,7 @@ export interface CreateSessionInput {
   workspaceId?: WorkspaceId;
   workspacePath: string;
   title?: string;
+  orchestration?: boolean;
 }
 
 export interface RecoveryReport {
@@ -70,6 +73,8 @@ export function createRuntime(
       const sessionId =
         input.sessionId ??
         asSessionId(options.ports.ids.next("session"));
+      const orchestration =
+        input.orchestration ?? options.orchestration;
       const session = await AgentSession.create({
         sessionId,
         workspaceId:
@@ -98,6 +103,7 @@ export function createRuntime(
           ? { questionTimeoutMs: options.questionTimeoutMs }
           : {}),
         ...(input.title ? { title: input.title } : {}),
+        ...(orchestration !== undefined ? { orchestration } : {}),
       });
       sessions.add(session);
       return session;

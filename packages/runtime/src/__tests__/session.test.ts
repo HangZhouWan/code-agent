@@ -124,6 +124,7 @@ async function setup(
   const session = await runtime.createSession({
     workspacePath: workspace,
     title: options.title ?? "Test Session",
+    orchestration: false,
   });
   return { ports, workspace, session, runtime };
 }
@@ -346,6 +347,7 @@ describe("memory", () => {
       workspacePath: workspace,
       workspaceId,
       title: "Test",
+      orchestration: false,
     });
 
     const handle = await session.run({ content: "pnpm 怎么用" });

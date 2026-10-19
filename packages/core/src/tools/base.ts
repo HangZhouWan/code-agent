@@ -96,6 +96,7 @@ export interface ToolContext {
   requestApproval?: (request: {
     toolName: string;
     args: Record<string, unknown>;
+    taskId?: string;
     reason?: string;
   }) => Promise<boolean>;
 

@@ -79,7 +79,8 @@ async function requestApproval(
       approved: await ctx.requestApproval({
         toolName: tool.name,
         args,
-        reason,
+        ...(ctx.taskId ? { taskId: ctx.taskId } : {}),
+        ...(reason ? { reason } : {}),
       }),
       channel: true,
     };
