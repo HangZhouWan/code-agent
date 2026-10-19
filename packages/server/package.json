@@ -1,7 +1,7 @@
 {
   "name": "@code-agent/server",
   "version": "0.1.0",
-  "description": "Server for code-agent — LangGraph orchestrator, WebSocket gateway, and database layer",
+  "description": "Server for code-agent — Fastify gateway and SQLite persistence",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -9,10 +9,6 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
-    },
-    "./orchestrator": {
-      "import": "./dist/orchestrator/graph.js",
-      "types": "./dist/orchestrator/graph.d.ts"
     }
   },
   "files": [

@@ -72,7 +72,8 @@ export class GlobalConfigManager {
   constructor(options: GlobalConfigManagerOptions = {}) {
     const homeDir = resolveCodeAgentHome({
       homeDir: options.homeDir,
-      env: options.env,
+      // 默认读取进程环境，与统一 loader 的 CODE_AGENT_HOME 覆盖行为保持一致
+      env: options.env ?? process.env,
       cwd: options.cwd,
     });
     this.filePath = options.filePath ?? join(homeDir, "config.json");

@@ -333,6 +333,19 @@ describe("GlobalConfigManager", () => {
     expect(existsSync(manager.getConfigPath())).toBe(false);
   });
 
+  it("默认构造读取 CODE_AGENT_HOME，与统一 loader 一致", () => {
+    const previous = process.env.CODE_AGENT_HOME;
+    const customHome = makeTempDir("custom-home");
+    process.env.CODE_AGENT_HOME = customHome;
+    try {
+      const manager = new GlobalConfigManager();
+      expect(manager.getConfigPath()).toBe(join(customHome, "config.json"));
+    } finally {
+      if (previous === undefined) delete process.env.CODE_AGENT_HOME;
+      else process.env.CODE_AGENT_HOME = previous;
+    }
+  });
+
   it("原子写覆盖旧内容后内容完整", () => {
     const home = makeTempDir("home");
     const manager = new GlobalConfigManager({ homeDir: home });
