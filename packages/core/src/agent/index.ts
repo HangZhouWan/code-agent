@@ -25,8 +25,6 @@ export { TEST_AGENT_ROLE } from './roles/test.js';
 export { DOC_AGENT_ROLE } from './roles/doc.js';
 
 // 推理循环
-export type { IReasoningLoop } from './reasoning.js';
-export { DefaultReasoningLoop } from './reasoning.js';
 
 // Agent 基类
 export { Agent } from './agent.js';

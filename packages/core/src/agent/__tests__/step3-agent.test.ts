@@ -182,7 +182,6 @@ describe('Agent Construction', () => {
     expect(agent.id).toMatch(/^[0-9a-f-]{36}$/); // UUID v4
     expect(agent.role).toBe(config.role);
     expect(agent.agentId).toBe(agent.id); // AgentLike 兼容
-    expect(agent.reasoning).toBeDefined();
     expect(agent.capability).toBeDefined();
     expect(agent.capability.tools).toEqual(config.role.defaultTools);
   });

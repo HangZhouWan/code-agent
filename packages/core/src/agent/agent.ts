@@ -22,7 +22,6 @@ import { ExecutionEngine, type ExecutionResult } from '../harness/execution/engi
 import type { IEventBus, BusMessage, Unsubscribe } from '../event-bus/types.js';
 import type { IStateManager } from '../state/types.js';
 import type { AgentRole } from './role.js';
-import { DefaultReasoningLoop, type IReasoningLoop } from './reasoning.js';
 import type { AgentConfig, AgentInput, AgentOutput, AgentStatus } from './types.js';
 
 // ─────────────────────────────────────────────
@@ -66,9 +65,6 @@ export class Agent {
   /** Agent 角色定义 */
   readonly role: AgentRole;
 
-  /** 推理循环（Observe → Think → Act → Reflect） */
-  readonly reasoning: IReasoningLoop;
-
   /** Agent 能力声明 */
   readonly capability: AgentCapability;
 
@@ -107,9 +103,6 @@ export class Agent {
     this.hooks = config.hooks ?? new HooksEngine();
     this.permissionRegistry = config.permissionRegistry;
     this.workspacePath = config.workspacePath ?? process.cwd();
-
-    // 组装四层结构
-    this.reasoning = new DefaultReasoningLoop(this.engine);
 
     // 合并角色默认工具和配置中的能力声明
     this.capability = config.capability ?? {

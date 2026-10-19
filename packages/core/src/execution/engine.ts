@@ -1,0 +1,498 @@
+/**
+ * AgentExecutionEngine —— 单任务的 ReAct 执行循环
+ *
+ * 原生 tool calling 为主；不支持 tool call 的 provider 走 JSON fallback。
+ */
+
+import {
+  HumanMessage,
+  SystemMessage,
+  ToolMessage,
+  type BaseMessage,
+} from "@langchain/core/messages";
+import type { StructuredTool } from "@langchain/core/tools";
+import {
+  asCallId,
+  abortError,
+  serializeError,
+  type JsonValue,
+  type TaskResult,
+} from "@code-agent/protocol";
+import type { ToolContext, ToolDefinition } from "../tools/base.js";
+import type { ToolExecutionDependencies } from "../tools/middleware.js";
+import type { HooksEngine } from "../harness/hooks/engine.js";
+import type {
+  AgentCheckpointSink,
+  AgentCheckpointV1,
+  SerializedToolCall,
+} from "../checkpoint/types.js";
+import type { TokenCounterLike } from "../context/types.js";
+import type { AgentInvoker, AgentTaskInput, RunScope } from "./contracts.js";
+import {
+  extractText,
+  extractToolCalls,
+  serializeMessages,
+} from "./messages.js";
+import { buildInitialMessages, buildSystemPrompt } from "./prompt-builder.js";
+import { parseFallbackThought } from "./thought-parser.js";
+import { ToolExecutor } from "./tool-executor.js";
+
+export interface ChatModelLike {
+  invoke(
+    messages: BaseMessage[],
+    options?: { signal?: AbortSignal },
+  ): Promise<BaseMessage>;
+  bindTools?(tools: StructuredTool[]): ChatModelLike;
+}
+
+export interface AgentExecutionEngineOptions {
+  supportsNativeToolCalling?: boolean;
+  checkpoints?: AgentCheckpointSink;
+  toolDependencies?: ToolExecutionDependencies;
+  hooks?: HooksEngine;
+  tokenCounter?: TokenCounterLike;
+  onCheckpointError?: (error: unknown) => void;
+  now?: () => string;
+}
+
+const DEFAULT_MAX_ITERATIONS = 15;
+const DEFAULT_TIMEOUT_MS = 300_000;
+
+function toJsonValue(value: unknown): JsonValue {
+  try {
+    return JSON.parse(JSON.stringify(value)) as JsonValue;
+  } catch {
+    return String(value);
+  }
+}
+
+export class AgentExecutionEngine implements AgentInvoker {
+  private readonly supportsNative: boolean;
+  private readonly now: () => string;
+
+  constructor(
+    private readonly model: ChatModelLike,
+    private readonly options: AgentExecutionEngineOptions = {},
+  ) {
+    this.supportsNative = options.supportsNativeToolCalling ?? true;
+    this.now = options.now ?? (() => new Date().toISOString());
+  }
+
+  async invoke(
+    input: AgentTaskInput,
+    scope: RunScope,
+  ): Promise<TaskResult> {
+    const maxIterations = input.maxIterations ?? DEFAULT_MAX_ITERATIONS;
+    const controller = new AbortController();
+    const onAbort = () => controller.abort(scope.signal.reason);
+    if (scope.signal.aborted) controller.abort(scope.signal.reason);
+    else scope.signal.addEventListener("abort", onAbort, { once: true });
+
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, input.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+
+    const toolContext: ToolContext = {
+      workspacePath: input.workspacePath,
+      sessionId: scope.sessionId,
+      runId: scope.runId,
+      taskId: input.taskId,
+      roleId: input.role,
+      signal: controller.signal,
+      ...(scope.requestApproval
+        ? { requestApproval: scope.requestApproval }
+        : {}),
+      ...(scope.withWriteLock ? { withWriteLock: scope.withWriteLock } : {}),
+    };
+
+    const toolExecutor = new ToolExecutor(
+      input.tools,
+      this.options.toolDependencies,
+    );
+    const messages = buildInitialMessages(input);
+    const toolHistory: SerializedToolCall[] = [];
+    const startedAt = this.now();
+
+    const saveCheckpoint = async (
+      step: number,
+      status: AgentCheckpointV1["status"],
+      pendingTool?: AgentCheckpointV1["pendingTool"],
+    ): Promise<void> => {
+      if (!this.options.checkpoints) return;
+      try {
+        const serialized = serializeMessages(messages);
+        const checkpoint: AgentCheckpointV1 = {
+          v: 1,
+          sessionId: scope.sessionId,
+          runId: scope.runId,
+          taskId: input.taskId,
+          roleId: input.role,
+          step,
+          status,
+          messages: serialized,
+          tokenCount:
+            this.options.tokenCounter?.countMessages(serialized) ?? 0,
+          toolHistory: [...toolHistory],
+          ...(pendingTool ? { pendingTool } : {}),
+          startedAt,
+          updatedAt: this.now(),
+        };
+        await this.options.checkpoints.save(checkpoint);
+      } catch (error) {
+        this.options.onCheckpointError?.(error);
+      }
+    };
+
+    const useNative =
+      this.supportsNative &&
+      input.tools.length > 0 &&
+      typeof this.model.bindTools === "function";
+
+    try {
+      await this.options.hooks?.trigger("run:start", {
+        agentId: input.role,
+        data: { taskId: input.taskId, role: input.role },
+      });
+
+      const result = useNative
+        ? await this.runNative(
+            input,
+            scope,
+            messages,
+            toolExecutor,
+            toolContext,
+            toolHistory,
+            controller,
+            () => timedOut,
+            saveCheckpoint,
+            maxIterations,
+          )
+        : await this.runFallback(
+            input,
+            messages,
+            toolExecutor,
+            toolContext,
+            toolHistory,
+            controller,
+            () => timedOut,
+            saveCheckpoint,
+            maxIterations,
+          );
+
+      await this.options.hooks?.trigger("run:end", {
+        agentId: input.role,
+        data: { taskId: input.taskId, status: result.status },
+      });
+      return result;
+    } finally {
+      clearTimeout(timer);
+      scope.signal.removeEventListener("abort", onAbort);
+    }
+  }
+
+  private async runNative(
+    input: AgentTaskInput,
+    scope: RunScope,
+    messages: BaseMessage[],
+    toolExecutor: ToolExecutor,
+    toolContext: ToolContext,
+    toolHistory: SerializedToolCall[],
+    controller: AbortController,
+    isTimedOut: () => boolean,
+    saveCheckpoint: (
+      step: number,
+      status: AgentCheckpointV1["status"],
+      pendingTool?: AgentCheckpointV1["pendingTool"],
+    ) => Promise<void>,
+    maxIterations: number,
+  ): Promise<TaskResult> {
+    const bound = this.model.bindTools!(
+      toolExecutor.toLangChainTools(toolContext),
+    ) as ChatModelLike;
+
+    for (let step = 0; step < maxIterations; step++) {
+      if (controller.signal.aborted) {
+        return this.abortResult(input, isTimedOut());
+      }
+
+      await saveCheckpoint(step, "running");
+      await this.options.hooks?.trigger("llm:before", {
+        agentId: input.role,
+        data: { step, messageCount: messages.length },
+      });
+
+      let response: BaseMessage;
+      try {
+        response = await bound.invoke(messages, {
+          signal: controller.signal,
+        });
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return this.abortResult(input, isTimedOut());
+        }
+        return this.failure(
+          input,
+          "failed",
+          serializeError(error, "LLM_FATAL"),
+        );
+      }
+
+      await this.options.hooks?.trigger("llm:after", {
+        agentId: input.role,
+        data: { step, toolCalls: extractToolCalls(response).length },
+      });
+
+      messages.push(response);
+      const calls = extractToolCalls(response);
+
+      if (calls.length === 0) {
+        const text = extractText(response);
+        return this.success(input, text || "Completed", toolHistory);
+      }
+
+      for (const call of calls) {
+        if (controller.signal.aborted) {
+          return this.abortResult(input, isTimedOut());
+        }
+
+        const callId = asCallId(call.id);
+        const definition = toolExecutor.get(call.name);
+        const started = Date.now();
+        scope.emit?.({
+          type: "tool.started",
+          callId,
+          runId: scope.runId,
+          taskId: input.taskId,
+          toolName: call.name,
+          args: toJsonValue(call.args),
+        });
+
+        await saveCheckpoint(step + 1, "awaiting_tool", {
+          callId,
+          name: call.name,
+          args: toJsonValue(call.args),
+          sideEffect:
+            definition?.sideEffect ??
+            (definition?.permission === "confirm" ? "mutating" : "none"),
+        });
+
+        const result = await toolExecutor.execute(call, toolContext);
+        toolHistory.push({
+          callId,
+          name: call.name,
+          args: toJsonValue(call.args),
+          ok: result.ok,
+          content: result.content,
+          ...(result.errorCode ? { errorCode: result.errorCode } : {}),
+        });
+
+        messages.push(
+          new ToolMessage({
+            content: result.content,
+            tool_call_id: call.id,
+          }),
+        );
+
+        scope.emit?.({
+          type: "tool.finished",
+          callId,
+          taskId: input.taskId,
+          ok: result.ok,
+          resultPreview: result.content.slice(0, 500),
+          durationMs: Date.now() - started,
+          ...(result.errorCode ? { errorCode: result.errorCode } : {}),
+        });
+
+        await saveCheckpoint(step + 1, "running");
+      }
+    }
+
+    return this.failure(
+      input,
+      "timeout",
+      serializeError(
+        new Error(`Max iterations (${maxIterations}) reached`),
+        "TIMEOUT",
+      ),
+    );
+  }
+
+  private async runFallback(
+    input: AgentTaskInput,
+    messages: BaseMessage[],
+    toolExecutor: ToolExecutor,
+    toolContext: ToolContext,
+    toolHistory: SerializedToolCall[],
+    controller: AbortController,
+    isTimedOut: () => boolean,
+    saveCheckpoint: (
+      step: number,
+      status: AgentCheckpointV1["status"],
+    ) => Promise<void>,
+    maxIterations: number,
+  ): Promise<TaskResult> {
+    const toolList = input.tools
+      .map((tool) => `- ${tool.name}: ${tool.description}`)
+      .join("\n");
+    const fallbackSystem = [
+      buildSystemPrompt(input),
+      "",
+      "You must respond with a single JSON object:",
+      '{"decision":"use_tool"|"done"|"replan","toolCall":{"name":"...","args":{}},"summary":"..."}',
+      "Use decision=use_tool when you need a tool. Use decision=done when finished.",
+      "Available tools:",
+      toolList || "(none)",
+    ].join("\n");
+
+    messages[0] = new SystemMessage({ content: fallbackSystem });
+
+    for (let step = 0; step < maxIterations; step++) {
+      if (controller.signal.aborted) {
+        return this.abortResult(input, isTimedOut());
+      }
+      await saveCheckpoint(step, "running");
+
+      let response: BaseMessage;
+      try {
+        response = await this.model.invoke(messages, {
+          signal: controller.signal,
+        });
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return this.abortResult(input, isTimedOut());
+        }
+        return this.failure(
+          input,
+          "failed",
+          serializeError(error, "LLM_FATAL"),
+        );
+      }
+
+      const text = extractText(response);
+      const thought = parseFallbackThought(text);
+
+      if (thought.decision === "done") {
+        return this.success(
+          input,
+          thought.summary ?? text ?? "Completed",
+          toolHistory,
+        );
+      }
+      if (thought.decision === "replan") {
+        return {
+          taskId: input.taskId,
+          role: input.role,
+          status: "replan_needed",
+          summary: thought.summary ?? thought.reason ?? text,
+        };
+      }
+      if (!thought.toolCall) {
+        return this.failure(
+          input,
+          "failed",
+          serializeError(new Error("Missing toolCall"), "VALIDATION"),
+        );
+      }
+
+      const call = {
+        id: `fallback-${step}`,
+        name: thought.toolCall.name,
+        args: thought.toolCall.args,
+      };
+      const result = await toolExecutor.execute(call, toolContext);
+      toolHistory.push({
+        callId: asCallId(call.id),
+        name: call.name,
+        args: toJsonValue(call.args),
+        ok: result.ok,
+        content: result.content,
+        ...(result.errorCode ? { errorCode: result.errorCode } : {}),
+      });
+      messages.push(
+        new HumanMessage({
+          content: `[tool result: ${call.name}]\n${result.content}`,
+        }),
+      );
+    }
+
+    return this.failure(
+      input,
+      "timeout",
+      serializeError(
+        new Error(`Max iterations (${maxIterations}) reached`),
+        "TIMEOUT",
+      ),
+    );
+  }
+
+  private success(
+    input: AgentTaskInput,
+    summary: string,
+    toolHistory: SerializedToolCall[],
+  ): TaskResult {
+    const filesChanged = toolHistory
+      .filter(
+        (call) =>
+          (call.name === "file_write" || call.name === "file_edit") &&
+          typeof (call.args as { path?: unknown }).path === "string",
+      )
+      .map((call) => ({
+        path: (call.args as { path: string }).path,
+        changeType: "modified" as const,
+      }));
+
+    return {
+      taskId: input.taskId,
+      role: input.role,
+      status: "success",
+      summary,
+      ...(filesChanged.length > 0
+        ? { artifacts: { filesChanged } }
+        : {}),
+    };
+  }
+
+  private failure(
+    input: AgentTaskInput,
+    status: "failed" | "timeout",
+    error: TaskResult["error"],
+  ): TaskResult {
+    return {
+      taskId: input.taskId,
+      role: input.role,
+      status,
+      summary: error?.message ?? "Task failed",
+      ...(error ? { error } : {}),
+    };
+  }
+
+  private abortResult(
+    input: AgentTaskInput,
+    timedOut: boolean,
+  ): TaskResult {
+    if (timedOut) {
+      return this.failure(
+        input,
+        "timeout",
+        serializeError(new Error("Task timed out"), "TIMEOUT"),
+      );
+    }
+    return {
+      taskId: input.taskId,
+      role: input.role,
+      status: "cancelled",
+      summary: "Task cancelled",
+      error: abortError(),
+    };
+  }
+}
+
+/** 便捷构造 */
+export function createExecutionEngine(
+  model: ChatModelLike,
+  options?: AgentExecutionEngineOptions,
+): AgentExecutionEngine {
+  return new AgentExecutionEngine(model, options);
+}

@@ -113,12 +113,21 @@ export { BUILTIN_ROLES } from './agent/role.js';
 export { CODE_AGENT_ROLE } from './agent/roles/code.js';
 export { TEST_AGENT_ROLE } from './agent/roles/test.js';
 export { DOC_AGENT_ROLE } from './agent/roles/doc.js';
-export type { IReasoningLoop } from './agent/reasoning.js';
-export { DefaultReasoningLoop } from './agent/reasoning.js';
 export { Agent } from './agent/agent.js';
 export { AgentRegistry } from './agent/registry.js';
 
-// EventBus —— 多 Agent 通信基础设施
+// 类型化 Event Bus（新实现）
+export { SessionEventBus } from './bus/index.js';
+export { BusError } from './bus/index.js';
+export type {
+  EventBus as TypedEventBus,
+  BusOptions,
+  CommandHandler,
+  EventHandler,
+  PatternEventHandler,
+} from './bus/index.js';
+
+// EventBus —— 多 Agent 通信基础设施（旧实现，Phase 5 后删除）
 export type {
   BusMessage,
   BusMessageMetadata,
@@ -132,7 +141,10 @@ export type {
 export { BusTimeoutError } from './event-bus/types.js';
 export { InMemoryEventBus } from './event-bus/bus.js';
 
-// State Manager —— 多 Agent 状态管理基础设施
+// 新状态管理（Task / Artifact / Session）
+export * from './state/index.js';
+
+// State Manager —— 多 Agent 状态管理基础设施（旧实现，Phase 5 后删除）
 export type {
   TaskStatus,
   Task,
@@ -152,7 +164,10 @@ export type {
 export { InvalidTransitionError } from './state/types.js';
 export { InMemoryStateManager } from './state/manager.js';
 
-// ExecutionEngine —— Agent 执行引擎（Step 2）
+// 新执行引擎（原生 tool calling + fallback）
+export * from './execution/index.js';
+
+// ExecutionEngine —— Agent 执行引擎（旧实现，Phase 5 后删除）
 export type {
   ExecutionContext,
   ExecutionResult,
@@ -160,7 +175,10 @@ export type {
 } from './harness/execution/engine.js';
 export { ExecutionEngine } from './harness/execution/engine.js';
 
-// CheckpointManager —— 执行快照持久化（Step 2）
+// 两层 Checkpoint（新实现）
+export * from './checkpoint/index.js';
+
+// CheckpointManager —— 执行快照持久化（旧实现，Phase 7 后删除）
 export type {
   ICheckpointManager,
   CheckpointSnapshot,
