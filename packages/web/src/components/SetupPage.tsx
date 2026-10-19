@@ -5,7 +5,7 @@
  * API Key 和自定义端点的表单，提交后保存到 ~/.code-agent/config.json。
  */
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   PROVIDER_DEFINITIONS,
   PROVIDER_IDS,
@@ -18,17 +18,17 @@ interface ProviderOption {
   value: Provider;
   label: string;
   defaultModel: string;
+  requiresApiKey: boolean;
 }
 
 const PROVIDERS: ProviderOption[] = PROVIDER_IDS.map((id) => ({
   value: id,
   label: PROVIDER_DEFINITIONS[id].label,
   defaultModel: PROVIDER_DEFINITIONS[id].defaultModel,
+  requiresApiKey: PROVIDER_DEFINITIONS[id].requiresApiKey,
 }));
 
 export function SetupPage() {
-  const [checking, setChecking] = useState(true);
-  const [setupRequired, setSetupRequired] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -38,21 +38,8 @@ export function SetupPage() {
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
 
-  useEffect(() => {
-    async function check() {
-      try {
-        const res = await fetch("/api/config/status");
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        setSetupRequired(data.setupRequired);
-      } catch {
-        setSetupRequired(true);
-      } finally {
-        setChecking(false);
-      }
-    }
-    check();
-  }, []);
+  const providerOption = PROVIDERS.find((item) => item.value === provider);
+  const requiresApiKey = providerOption?.requiresApiKey ?? true;
 
   const handleProviderChange = (value: Provider) => {
     setProvider(value);
@@ -90,22 +77,6 @@ export function SetupPage() {
       setSubmitting(false);
     }
   };
-
-  if (checking) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-gray-950">
-        <p className="text-gray-400">正在检查配置...</p>
-      </div>
-    );
-  }
-
-  if (!setupRequired && !success) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-gray-950">
-        <p className="text-gray-400">配置已就绪，请刷新页面。</p>
-      </div>
-    );
-  }
 
   if (success) {
     return (
@@ -169,14 +140,19 @@ export function SetupPage() {
 
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-300">
-              API Key <span className="text-red-400">*</span>
+              API Key{" "}
+              {requiresApiKey ? (
+                <span className="text-red-400">*</span>
+              ) : (
+                <span className="text-gray-500">(可选)</span>
+              )}
             </label>
             <input
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder="sk-..."
-              required
+              required={requiresApiKey}
               className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2.5 text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
@@ -202,7 +178,9 @@ export function SetupPage() {
 
           <button
             type="submit"
-            disabled={submitting || !apiKey.trim()}
+            disabled={
+              submitting || (requiresApiKey && !apiKey.trim())
+            }
             className="w-full rounded-lg bg-blue-600 px-4 py-2.5 font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
           >
             {submitting ? "保存中..." : "保存配置"}
