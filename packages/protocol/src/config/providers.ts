@@ -40,6 +40,7 @@ export const PROVIDER_DEFINITIONS: Record<ProviderId, ProviderDefinition> = {
     id: "openai-compatible",
     label: "OpenAI 兼容 (Ollama / LM Studio)",
     defaultModel: "llama3",
+    defaultBaseUrl: "http://localhost:11434/v1",
     requiresApiKey: false,
     modelWindow: 32_768,
     supportsToolCalling: true,

@@ -24,6 +24,7 @@
   },
   "devDependencies": {
     "@code-agent/core": "workspace:^",
+    "@code-agent/protocol": "workspace:^",
     "@code-agent/server": "workspace:^",
     "esbuild": "^0.28.1",
     "tsx": "^4.19.0",

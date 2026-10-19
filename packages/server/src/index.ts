@@ -11,13 +11,8 @@
  * 启动命令：pnpm --filter @code-agent/server dev
  */
 
-import dotenv from "dotenv";
-import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// .env 位于 monorepo 根目录，而非 packages/server
-const __dirname = dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: resolve(__dirname, "../../../.env") });
 import { loadConfig } from "./config.js";
 import { createServer } from "./gateway/server.js";
 import { createDb } from "./db/index.js";
@@ -166,12 +161,12 @@ async function main(): Promise<void> {
   const memoryManager: IMemoryManager = {
     shortTerm: new InMemoryShortTermMemory(),
     working: new InMemoryWorkingMemory(),
-    longTerm: new FileLongTermMemory("./data"),
+    longTerm: new FileLongTermMemory(cfg.paths.dataDir),
   };
   console.log("[memory] Three-tier memory system initialized (ShortTerm + Working + LongTerm)");
 
   // 4b. 初始化 Checkpoint + ExecutionEngine（注入 Memory）
-  const checkpointManager = new FileCheckpointManager("./data/checkpoints");
+  const checkpointManager = new FileCheckpointManager(cfg.paths.checkpointDir);
   const executionEngine = new ExecutionEngine(checkpointManager, memoryManager, eventBus);
   console.log("[agent] Infrastructure initialized (EventBus + StateManager + CheckpointManager + MemoryManager)");
 
@@ -295,6 +290,6 @@ if (isEntryPoint) {
   main().catch((err) => {
     console.error("[server] Fatal error during startup:");
     console.error(err);
-    process.exit(0);
+    process.exit(1);
   });
 }

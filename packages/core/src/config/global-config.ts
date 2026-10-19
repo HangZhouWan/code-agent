@@ -1,108 +1,119 @@
 /**
- * GlobalConfigManager —— 全局用户配置读写
+ * 全局用户配置读写
  *
- * 管理 ~/.code-agent/config.json 的读取、校验和写入。
- * CLI 和 Web 端共享此模块，保证配置格式一致。
+ * 文件默认位于 ~/.code-agent/config.json：
+ * - 原子写（temp + fsync + rename）
+ * - 权限 0600
+ * - 对外提供掩码视图，避免 API Key 泄漏到 UI/日志
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { homedir } from "node:os";
-import { join, dirname } from "node:path";
-import { z } from "zod";
+import {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  writeSync,
+} from "node:fs";
+import { dirname, join } from "node:path";
+import { llmConfigSchema, type LlmConfig } from "@code-agent/protocol";
+import { resolveCodeAgentHome } from "./paths.js";
 
-// ─── Schema ────────────────────────────────────────
+/** 全局配置文件 schema（与完整 LLM 配置一致） */
+export const globalConfigSchema = llmConfigSchema;
 
-/**
- * 全局配置文件 JSON Schema
- *
- * 仅包含模型相关配置。与 CLI config-loader 中的 configFileSchema 保持兼容。
- */
-export const globalConfigSchema = z.object({
-  /** LLM provider */
-  LLM_PROVIDER: z.enum(["openai", "anthropic", "openai-compatible"]),
-  /** Model name */
-  LLM_MODEL: z.string().min(1),
-  /** API key */
-  LLM_API_KEY: z.string().min(1),
-  /** Custom API endpoint (optional) */
-  LLM_BASE_URL: z.string().optional(),
-});
+export type GlobalConfig = LlmConfig;
 
-/** 从 Schema 推导的全局配置类型 */
-export type GlobalConfig = z.infer<typeof globalConfigSchema>;
+export type GlobalConfigInput = {
+  LLM_PROVIDER: LlmConfig["LLM_PROVIDER"];
+  LLM_MODEL: string;
+  LLM_API_KEY?: string;
+  LLM_BASE_URL?: string;
+  LLM_MAX_RETRIES?: number;
+};
 
-// ─── Config Path ───────────────────────────────────
-
-/** 全局配置文件路径：~/.code-agent/config.json */
-function getConfigPath(): string {
-  return join(homedir(), ".code-agent", "config.json");
+export interface GlobalConfigManagerOptions {
+  homeDir?: string;
+  filePath?: string;
+  env?: Record<string, string | undefined>;
+  cwd?: string;
 }
 
-// ─── Manager ───────────────────────────────────────
+/** 原子写文件（同目录 temp + fsync + rename） */
+export function atomicWriteFileSync(
+  filePath: string,
+  content: string,
+  mode = 0o600,
+): void {
+  mkdirSync(dirname(filePath), { recursive: true });
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  const fd = openSync(tempPath, "w", mode);
+  try {
+    writeSync(fd, content);
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+  renameSync(tempPath, filePath);
+}
+
+/** 掩码 API Key：保留首尾 4 位 */
+export function maskApiKey(key: string): string {
+  if (!key) return "";
+  if (key.length <= 8) return "***";
+  return `${key.slice(0, 4)}...${key.slice(-4)}`;
+}
 
 export class GlobalConfigManager {
-  /**
-   * 获取配置文件路径。
-   */
+  private readonly filePath: string;
+
+  constructor(options: GlobalConfigManagerOptions = {}) {
+    const homeDir = resolveCodeAgentHome({
+      homeDir: options.homeDir,
+      env: options.env,
+      cwd: options.cwd,
+    });
+    this.filePath = options.filePath ?? join(homeDir, "config.json");
+  }
+
   getConfigPath(): string {
-    return getConfigPath();
+    return this.filePath;
   }
 
-  /**
-   * 检查全局配置是否已就绪。
-   *
-   * 条件：文件存在 + JSON 格式正确 + schema 校验通过。
-   * 不满足任一条件返回 false。
-   */
-  isConfigured(): boolean {
-    try {
-      if (!existsSync(getConfigPath())) return false;
-      const raw = readFileSync(getConfigPath(), "utf-8");
-      const parsed = JSON.parse(raw);
-      const result = globalConfigSchema.safeParse(parsed);
-      return result.success;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * 读取并校验全局配置。
-   *
-   * @returns 校验通过的配置对象，失败时返回 null
-   */
+  /** 读取并校验全局配置；不存在或无效时返回 null */
   load(): GlobalConfig | null {
     try {
-      if (!existsSync(getConfigPath())) return null;
-      const raw = readFileSync(getConfigPath(), "utf-8");
-      const parsed = JSON.parse(raw);
-      const result = globalConfigSchema.safeParse(parsed);
-      return result.success ? result.data : null;
+      if (!existsSync(this.filePath)) return null;
+      const raw = readFileSync(this.filePath, "utf-8");
+      const parsed = llmConfigSchema.safeParse(JSON.parse(raw));
+      return parsed.success ? parsed.data : null;
     } catch {
       return null;
     }
   }
 
-  /**
-   * 写入全局配置到 ~/.code-agent/config.json。
-   *
-   * 自动创建 .code-agent 目录（如果不存在）。
-   * 写入前会先校验数据格式。
-   *
-   * @param config - 待写入的配置
-   * @throws {z.ZodError} 数据校验失败时抛出
-   */
-  save(config: GlobalConfig): void {
-    // 先校验
-    globalConfigSchema.parse(config);
+  /** 是否已配置（provider/model 完整，且必要 API Key 非空） */
+  isConfigured(): boolean {
+    return this.load() !== null;
+  }
 
-    const configPath = getConfigPath();
-    const dir = dirname(configPath);
+  /** 写入全局配置（校验后原子写） */
+  save(config: GlobalConfigInput): GlobalConfig {
+    const parsed = llmConfigSchema.parse(config);
+    atomicWriteFileSync(
+      this.filePath,
+      `${JSON.stringify(parsed, null, 2)}\n`,
+      0o600,
+    );
+    return parsed;
+  }
 
-    // 确保目录存在
-    mkdirSync(dir, { recursive: true });
-
-    // 写入 JSON（pretty-print，方便用户手动编辑）
-    writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+  /** 返回脱敏配置，用于 API/UI 展示 */
+  masked(): GlobalConfig | null {
+    const config = this.load();
+    if (!config) return null;
+    return { ...config, LLM_API_KEY: maskApiKey(config.LLM_API_KEY) };
   }
 }

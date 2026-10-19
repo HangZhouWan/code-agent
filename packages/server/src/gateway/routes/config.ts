@@ -11,14 +11,7 @@
 
 import type { FastifyInstance, FastifyPluginAsync } from "fastify";
 import { GlobalConfigManager } from "@code-agent/core";
-import { z } from "zod";
-
-const saveConfigSchema = z.object({
-  LLM_PROVIDER: z.enum(["openai", "anthropic", "openai-compatible"]),
-  LLM_MODEL: z.string().min(1, "模型名称不能为空"),
-  LLM_API_KEY: z.string().min(1, "API Key 不能为空"),
-  LLM_BASE_URL: z.string().optional(),
-});
+import { llmConfigSchema } from "@code-agent/protocol";
 
 const configRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const configManager = new GlobalConfigManager();
@@ -29,7 +22,7 @@ const configRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   });
 
   app.post("/config", async (request, reply) => {
-    const parsed = saveConfigSchema.safeParse(request.body);
+    const parsed = llmConfigSchema.safeParse(request.body);
 
     if (!parsed.success) {
       reply.status(400).send({

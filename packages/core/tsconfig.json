@@ -10,5 +10,6 @@
     "tsBuildInfoFile": "./dist/.tsbuildinfo"
   },
   // 仅编译 src 目录下的文件
-  "include": ["src"]
+  "include": ["src"],
+  "references": [{ "path": "../protocol" }]
 }

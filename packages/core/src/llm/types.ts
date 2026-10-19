@@ -6,6 +6,7 @@
  */
 
 import type { ToolCall } from '@langchain/core/messages';
+import type { ProviderId } from '@code-agent/protocol';
 
 // ─────────────────────────────────────────────
 // Provider 类型
@@ -14,11 +15,12 @@ import type { ToolCall } from '@langchain/core/messages';
 /**
  * 支持的模型提供商类型
  *
+ * 与 @code-agent/protocol 的 ProviderId 保持一致：
  * - `openai`: OpenAI 官方 API
  * - `anthropic`: Anthropic 官方 API (Claude)
  * - `openai-compatible`: OpenAI 兼容协议 (Ollama / LM Studio / vLLM 等)
  */
-export type ModelProvider = 'openai' | 'anthropic' | 'openai-compatible';
+export type ModelProvider = ProviderId;
 
 // ─────────────────────────────────────────────
 // 模型配置

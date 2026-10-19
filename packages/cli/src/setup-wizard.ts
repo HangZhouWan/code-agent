@@ -1,18 +1,14 @@
 /**
  * CLI 首次配置引导
  *
- * 当 ~/.code-agent/config.json 缺失或无效时，通过 readline 交互式
- * 收集 LLM 模型配置并写入全局配置。
+ * Provider 元数据来自 @code-agent/protocol，避免与 Web setup 页面重复维护。
  */
 
 import * as readline from "node:readline";
-import type { GlobalConfigManager, GlobalConfig } from "@code-agent/core";
+import type { GlobalConfigInput, GlobalConfigManager } from "@code-agent/core";
+import { PROVIDER_DEFINITIONS, PROVIDER_IDS } from "@code-agent/protocol";
 
-const PROVIDER_OPTIONS = [
-  { value: "openai" as const, label: "OpenAI", defaultModel: "gpt-4o" },
-  { value: "anthropic" as const, label: "Anthropic", defaultModel: "claude-sonnet-4-5" },
-  { value: "openai-compatible" as const, label: "OpenAI 兼容 (Ollama / LM Studio)", defaultModel: "llama3" },
-];
+const PROVIDER_OPTIONS = PROVIDER_IDS.map((id) => PROVIDER_DEFINITIONS[id]);
 
 function question(rl: readline.Interface, prompt: string): Promise<string> {
   return new Promise((resolve) => {
@@ -25,11 +21,13 @@ function providerMenu(): string {
   for (let i = 0; i < PROVIDER_OPTIONS.length; i++) {
     menu += `  [${i + 1}] ${PROVIDER_OPTIONS[i].label}\n`;
   }
-  menu += "请输入数字 (1-3): ";
+  menu += `请输入数字 (1-${PROVIDER_OPTIONS.length}): `;
   return menu;
 }
 
-export async function runSetupWizard(configManager: GlobalConfigManager): Promise<void> {
+export async function runSetupWizard(
+  configManager: GlobalConfigManager,
+): Promise<void> {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -47,26 +45,37 @@ export async function runSetupWizard(configManager: GlobalConfigManager): Promis
     if (n >= 1 && n <= PROVIDER_OPTIONS.length) {
       providerIndex = n - 1;
     } else {
-      console.log("  请输入 1-3 之间的数字。");
+      console.log(`  请输入 1-${PROVIDER_OPTIONS.length} 之间的数字。`);
     }
   }
   const provider = PROVIDER_OPTIONS[providerIndex];
 
   const model =
-    (await question(rl, `模型名称 [${provider.defaultModel}]: `)) || provider.defaultModel;
+    (await question(rl, `模型名称 [${provider.defaultModel}]: `)) ||
+    provider.defaultModel;
 
   let apiKey = "";
-  while (!apiKey) {
-    apiKey = await question(rl, "API Key (必填，注意不要泄露给他人): ");
-    if (!apiKey) console.log("  API Key 为必填项，请输入。");
+  if (provider.requiresApiKey) {
+    while (!apiKey) {
+      apiKey = await question(rl, "API Key (必填，注意不要泄露给他人): ");
+      if (!apiKey) console.log("  API Key 为必填项，请输入。");
+    }
+  } else {
+    apiKey = await question(rl, "API Key (可选，直接回车跳过): ");
   }
 
-  const baseURL = await question(rl, "自定义 API 端点 (可选，直接回车跳过): ");
+  const baseUrlHint = provider.defaultBaseUrl
+    ? ` [${provider.defaultBaseUrl}]`
+    : "";
+  const baseURL = await question(
+    rl,
+    `自定义 API 端点 (可选，直接回车跳过)${baseUrlHint}: `,
+  );
 
-  const config: GlobalConfig = {
-    LLM_PROVIDER: provider.value,
+  const config: GlobalConfigInput = {
+    LLM_PROVIDER: provider.id,
     LLM_MODEL: model,
-    LLM_API_KEY: apiKey,
+    ...(apiKey ? { LLM_API_KEY: apiKey } : {}),
     ...(baseURL ? { LLM_BASE_URL: baseURL } : {}),
   };
 
@@ -74,7 +83,10 @@ export async function runSetupWizard(configManager: GlobalConfigManager): Promis
     configManager.save(config);
     console.log(`\n✓ 配置已保存到 ${configManager.getConfigPath()}`);
   } catch (err) {
-    console.error("\n✗ 保存配置失败:", err instanceof Error ? err.message : String(err));
+    console.error(
+      "\n✗ 保存配置失败:",
+      err instanceof Error ? err.message : String(err),
+    );
     rl.close();
     process.exit(1);
   }
