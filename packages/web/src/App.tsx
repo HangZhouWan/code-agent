@@ -21,6 +21,7 @@ import { Sidebar } from "./components/Sidebar.js";
 import { ChatArea } from "./components/ChatArea.js";
 import { SetupPage } from "./components/SetupPage.js";
 import { MemoryPanel } from "./components/MemoryPanel.js";
+import { SettingsModal } from "./components/SettingsModal.js";
 
 // CodeMirror 体积较大，仅在打开工作区时加载
 const WorkspacePanel = lazy(() =>
@@ -38,6 +39,7 @@ export function App() {
   const [setupRequired, setSetupRequired] = useState<boolean | null>(null);
   const [showWorkspace, setShowWorkspace] = useState(false);
   const [showMemory, setShowMemory] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const { sessions, loading, createSession, deleteSession, updateTitle } =
     useSessions();
 
@@ -110,6 +112,13 @@ export function App() {
           >
             {showWorkspace ? "Hide workspace" : "Workspace"}
           </button>
+          <button
+            type="button"
+            onClick={() => setShowSettings(true)}
+            className="rounded border border-gray-700 px-2.5 py-1 text-xs text-gray-300 hover:bg-gray-800"
+          >
+            Settings
+          </button>
         </div>
 
         <div className="flex min-h-0 flex-1">
@@ -135,6 +144,10 @@ export function App() {
 
       {showMemory && (
         <MemoryPanel onClose={() => setShowMemory(false)} />
+      )}
+
+      {showSettings && (
+        <SettingsModal onClose={() => setShowSettings(false)} />
       )}
     </div>
   );

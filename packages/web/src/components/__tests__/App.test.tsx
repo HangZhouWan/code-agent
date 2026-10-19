@@ -5,7 +5,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
+import {
+  render,
+  screen,
+  waitFor,
+  cleanup,
+  fireEvent,
+} from "@testing-library/react";
 import { App } from "../../App.js";
 
 /**
@@ -67,5 +73,22 @@ describe("App", () => {
         screen.getByText(/Select a conversation from the sidebar/),
       ).toBeInTheDocument();
     });
+  });
+
+  it("点击 Settings 应打开模型配置弹窗", async () => {
+    mockApi();
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("New Chat")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Settings"));
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    expect(screen.getByText("模型配置")).toBeInTheDocument();
   });
 });

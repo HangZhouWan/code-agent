@@ -1,82 +1,15 @@
 /**
  * SetupPage —— 首次配置引导页面
  *
- * 当服务端未配置 LLM 模型时展示，提供 Provider、模型、
- * API Key 和自定义端点的表单，提交后保存到 ~/.code-agent/config.json。
+ * 当服务端未配置 LLM 模型时展示，复用 ModelConfigForm 完成
+ * Provider、模型、API Key 和自定义端点的配置。
  */
 
 import { useState } from "react";
-import {
-  PROVIDER_DEFINITIONS,
-  PROVIDER_IDS,
-  type ProviderId,
-} from "@code-agent/protocol";
-
-type Provider = ProviderId;
-
-interface ProviderOption {
-  value: Provider;
-  label: string;
-  defaultModel: string;
-  requiresApiKey: boolean;
-}
-
-const PROVIDERS: ProviderOption[] = PROVIDER_IDS.map((id) => ({
-  value: id,
-  label: PROVIDER_DEFINITIONS[id].label,
-  defaultModel: PROVIDER_DEFINITIONS[id].defaultModel,
-  requiresApiKey: PROVIDER_DEFINITIONS[id].requiresApiKey,
-}));
+import { ModelConfigForm } from "./ModelConfigForm.js";
 
 export function SetupPage() {
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-
-  const [provider, setProvider] = useState<Provider>("openai");
-  const [model, setModel] = useState("gpt-4o");
-  const [apiKey, setApiKey] = useState("");
-  const [baseUrl, setBaseUrl] = useState("");
-
-  const providerOption = PROVIDERS.find((item) => item.value === provider);
-  const requiresApiKey = providerOption?.requiresApiKey ?? true;
-
-  const handleProviderChange = (value: Provider) => {
-    setProvider(value);
-    const option = PROVIDERS.find((p) => p.value === value);
-    if (option) setModel(option.defaultModel);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-
-    try {
-      const res = await fetch("/api/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          LLM_PROVIDER: provider,
-          LLM_MODEL: model,
-          LLM_API_KEY: apiKey,
-          ...(baseUrl ? { LLM_BASE_URL: baseUrl } : {}),
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setError(data.error || `请求失败 (${res.status})`);
-        return;
-      }
-
-      setSuccess(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "网络请求失败，请检查服务是否运行");
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   if (success) {
     return (
@@ -99,7 +32,7 @@ export function SetupPage() {
   }
 
   return (
-    <div className="flex h-screen items-center justify-center bg-gray-950">
+    <div className="flex min-h-screen items-center justify-center bg-gray-950 py-10">
       <div className="w-full max-w-md rounded-xl border border-gray-800 bg-gray-900 p-8">
         <div className="mb-8 text-center">
           <div className="mb-3 text-4xl">⚡</div>
@@ -107,85 +40,7 @@ export function SetupPage() {
           <p className="mt-2 text-sm text-gray-400">请配置您的 LLM 模型以开始使用</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-300">
-              Provider
-            </label>
-            <select
-              value={provider}
-              onChange={(e) => handleProviderChange(e.target.value as Provider)}
-              className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2.5 text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              {PROVIDERS.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-300">
-              模型名称
-            </label>
-            <input
-              type="text"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              placeholder="gpt-4o"
-              className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2.5 text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-300">
-              API Key{" "}
-              {requiresApiKey ? (
-                <span className="text-red-400">*</span>
-              ) : (
-                <span className="text-gray-500">(可选)</span>
-              )}
-            </label>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-..."
-              required={requiresApiKey}
-              className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2.5 text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-300">
-              自定义 API 端点 <span className="text-gray-500">(可选)</span>
-            </label>
-            <input
-              type="text"
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
-              placeholder="https://api.openai.com/v1"
-              className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2.5 text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
-
-          {error && (
-            <div className="rounded-lg border border-red-800 bg-red-900/30 px-4 py-3 text-sm text-red-400">
-              {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={
-              submitting || (requiresApiKey && !apiKey.trim())
-            }
-            className="w-full rounded-lg bg-blue-600 px-4 py-2.5 font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
-          >
-            {submitting ? "保存中..." : "保存配置"}
-          </button>
-        </form>
+        <ModelConfigForm onSaved={() => setSuccess(true)} />
 
         <p className="mt-6 text-center text-xs text-gray-500">
           配置将保存到 ~/.code-agent/config.json
