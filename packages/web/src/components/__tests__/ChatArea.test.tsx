@@ -31,11 +31,15 @@ class MockWebSocket {
   onclose: (() => void) | null = null;
   onerror: (() => void) | null = null;
 
+  sent: string[] = [];
+
   constructor(url: string) {
     this.url = url;
     MockWebSocket.instances.push(this);
   }
-  send(_data: string) {}
+  send(data: string) {
+    this.sent.push(data);
+  }
   close() {
     this.readyState = MockWebSocket.CLOSED;
     this.onclose?.();
@@ -215,7 +219,7 @@ describe("ChatArea", () => {
     expect(screen.getAllByText("Previous answer")).toHaveLength(1);
   });
 
-  it("approval.resolved 后应移除确认卡片", async () => {
+  it("点击 Approve 应提交审批 ID，approval.resolved 后移除确认卡片", async () => {
     render(<ChatArea sessionId="s1" />);
 
     await waitFor(() => {
@@ -226,6 +230,7 @@ describe("ChatArea", () => {
 
     const socket = latestSocket();
     act(() => {
+      socket.readyState = MockWebSocket.OPEN;
       socket.onopen?.();
     });
     fireEvent.change(screen.getByPlaceholderText(/Type a message/), {
@@ -233,11 +238,12 @@ describe("ChatArea", () => {
     });
     fireEvent.click(screen.getByText("Send"));
 
+    // tool.started 携带 LLM 工具调用 ID，approval.required 携带审批 ID，两者不同
     act(() => {
       socket.receive(
         eventMessage(1, {
           type: "tool.started",
-          callId: "call-1",
+          callId: "llm-call-1",
           toolName: "delete_file",
           args: { path: "/tmp/x" },
         }),
@@ -246,7 +252,7 @@ describe("ChatArea", () => {
         eventMessage(2, {
           type: "approval.required",
           request: {
-            callId: "call-1",
+            callId: "call-approval-1",
             sessionId: "s1",
             runId: "run-1",
             taskId: "task-1",
@@ -261,12 +267,20 @@ describe("ChatArea", () => {
 
     expect(screen.getByText(/Confirm Action:/)).toBeInTheDocument();
 
+    fireEvent.click(screen.getByText("✅ Approve"));
+
+    expect(socket.sent.map((data) => JSON.parse(data))).toContainEqual({
+      type: "approval",
+      callId: "call-approval-1",
+      approved: true,
+    });
+
     act(() => {
       socket.receive(
         eventMessage(3, {
           type: "approval.resolved",
-          callId: "call-1",
-          decision: "denied",
+          callId: "call-approval-1",
+          decision: "approved",
         }),
       );
     });
