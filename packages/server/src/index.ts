@@ -69,7 +69,7 @@ async function main(): Promise<void> {
   );
   const workspace = new WorkspaceService(cfg.WORKSPACE_PATH);
   const watcher = new WorkspaceWatcher(cfg.WORKSPACE_PATH);
-  watcher.start();
+  await watcher.start();
 
   const app = await createRuntimeServer({
     sessions: ports.sessions,
