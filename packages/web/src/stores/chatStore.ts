@@ -27,13 +27,22 @@ export type ToolCallStatus = "running" | "done" | "error" | "awaiting_approval";
 
 /** 单条工具调用状态 */
 export interface ToolCallState {
-  /** 通过 tool 名称匹配（WS 事件中不传 id） */
+  /** 工具调用 ID（新协议使用 callId 精确匹配） */
+  callId?: string;
   tool: string;
   args: Record<string, unknown>;
   result?: string;
   status: ToolCallStatus;
   /** 审批回调 ID（仅 awaiting_approval 状态时有值） */
-  callId?: string;
+  approvalId?: string;
+}
+
+/** 待回答的用户问题 */
+export interface QuestionPrompt {
+  questionId: string;
+  question: string;
+  options?: string[];
+  allowFreeText: boolean;
 }
 
 /** 聊天消息 */
@@ -50,6 +59,7 @@ export interface Message {
 /** 整个聊天状态 */
 export interface ChatState {
   messages: Message[];
+  pendingQuestion?: QuestionPrompt;
 }
 
 // ---------------------------------------------------------------------------
@@ -62,13 +72,13 @@ export interface ChatState {
  * 对应后端 Drizzle schema: packages/server/src/db/schema.ts
  */
 export interface DBMessageRow {
-  id: number;
-  sessionId: string;
-  role: "human" | "assistant" | "system" | "tool";
+  id: number | string;
+  sessionId?: string;
+  role: "human" | "user" | "assistant" | "system" | "tool";
   content: string;
-  toolName: string | null;
-  toolArgs: string | null;
-  toolResult: string | null;
+  toolName?: string | null;
+  toolArgs?: string | null;
+  toolResult?: string | null;
   createdAt: string;
 }
 
@@ -83,10 +93,18 @@ export interface DBMessageRow {
  */
 export function dbMessagesToMessages(rows: DBMessageRow[]): Message[] {
   return rows
-    .filter((row) => row.role === "human" || row.role === "assistant")
+    .filter(
+      (row) =>
+        row.role === "human" ||
+        row.role === "user" ||
+        row.role === "assistant",
+    )
     .map((row) => ({
       id: String(row.id),
-      role: (row.role === "human" ? "user" : "assistant") as "user" | "assistant",
+      role:
+        row.role === "assistant"
+          ? ("assistant" as const)
+          : ("user" as const),
       content: row.content,
       isStreaming: false,
       toolCalls: [],
@@ -101,9 +119,28 @@ export type ChatAction =
   | { type: "ADD_USER_MESSAGE"; id: string; content: string }
   | { type: "ADD_ASSISTANT_MESSAGE"; id: string }
   | { type: "APPEND_TEXT"; delta: string }
-  | { type: "TOOL_START"; tool: string; args: Record<string, unknown> }
-  | { type: "TOOL_END"; tool: string; result: string }
-  | { type: "CONFIRM_REQUIRED"; callId: string; tool: string; args: Record<string, unknown> }
+  | {
+      type: "TOOL_START";
+      callId?: string;
+      tool: string;
+      args: Record<string, unknown>;
+    }
+  | {
+      type: "TOOL_END";
+      callId?: string;
+      tool: string;
+      result: string;
+      ok?: boolean;
+    }
+  | {
+      type: "CONFIRM_REQUIRED";
+      callId: string;
+      tool: string;
+      args: Record<string, unknown>;
+    }
+  | { type: "FINALIZE_ASSISTANT"; id?: string; content: string }
+  | { type: "QUESTION_REQUIRED"; question: QuestionPrompt }
+  | { type: "QUESTION_RESOLVED" }
   | { type: "DONE"; finalResponse: string }
   | { type: "ERROR"; message: string }
   | { type: "LOAD_MESSAGES"; messages: Message[] };
@@ -170,6 +207,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       const msgs = [...state.messages];
       const last = { ...msgs[msgs.length - 1] };
       const toolCall: ToolCallState = {
+        ...(action.callId ? { callId: action.callId } : {}),
         tool: action.tool,
         args: action.args,
         status: "running",
@@ -179,26 +217,32 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return { ...state, messages: msgs };
     }
 
-    // ── 工具调用结束（通过 tool 名称匹配） ──
+    // ── 工具调用结束（优先按 callId 匹配） ──
     case "TOOL_END": {
       if (state.messages.length === 0) return state;
       const msgs = [...state.messages];
       const last = { ...msgs[msgs.length - 1] };
-      // 从后往前查找匹配的 tool call（同名称取最近的）
-      // 使用手动反向遍历代替 Array.findLastIndex（需要 ES2023+）
-      let idx = -1;
-      for (let i = last.toolCalls.length - 1; i >= 0; i--) {
-        if (last.toolCalls[i].tool === action.tool) {
-          idx = i;
-          break;
+      let idx = action.callId
+        ? last.toolCalls.findIndex(
+            (toolCall) => toolCall.callId === action.callId,
+          )
+        : -1;
+
+      if (idx === -1) {
+        for (let i = last.toolCalls.length - 1; i >= 0; i--) {
+          if (last.toolCalls[i].tool === action.tool) {
+            idx = i;
+            break;
+          }
         }
       }
+
       if (idx !== -1) {
         const updated = [...last.toolCalls];
         updated[idx] = {
           ...updated[idx],
           result: action.result,
-          status: "done",
+          status: action.ok === false ? "error" : "done",
         };
         last.toolCalls = updated;
       }
@@ -211,29 +255,86 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       if (state.messages.length === 0) return state;
       const msgs = [...state.messages];
       const last = { ...msgs[msgs.length - 1] };
-      const toolCall: ToolCallState = {
-        tool: action.tool,
-        args: action.args,
-        status: "awaiting_approval",
-        callId: action.callId,
-      };
-      last.toolCalls = [...last.toolCalls, toolCall];
+      const existing = last.toolCalls.findIndex(
+        (toolCall) =>
+          toolCall.callId === action.callId ||
+          (toolCall.tool === action.tool &&
+            toolCall.status === "running"),
+      );
+      const toolCalls = [...last.toolCalls];
+
+      if (existing !== -1) {
+        toolCalls[existing] = {
+          ...toolCalls[existing],
+          status: "awaiting_approval",
+          approvalId: action.callId,
+        };
+      } else {
+        toolCalls.push({
+          callId: action.callId,
+          tool: action.tool,
+          args: action.args,
+          status: "awaiting_approval",
+          approvalId: action.callId,
+        });
+      }
+
+      last.toolCalls = toolCalls;
       msgs[msgs.length - 1] = last;
       return { ...state, messages: msgs };
     }
 
+    // ── 完成最新 assistant 消息 ──
+    case "FINALIZE_ASSISTANT": {
+      const msgs = [...state.messages];
+      const last = msgs[msgs.length - 1];
+      if (last?.role === "assistant" && last.isStreaming) {
+        msgs[msgs.length - 1] = {
+          ...last,
+          content: action.content || last.content,
+          isStreaming: false,
+        };
+      } else {
+        msgs.push({
+          id: action.id ?? uid(),
+          role: "assistant",
+          content: action.content,
+          isStreaming: false,
+          toolCalls: [],
+        });
+      }
+      return { ...state, messages: msgs };
+    }
+
+    // ── 用户问题 ──
+    case "QUESTION_REQUIRED":
+      return { ...state, pendingQuestion: action.question };
+
+    case "QUESTION_RESOLVED":
+      return { ...state, pendingQuestion: undefined };
+
     // ── 流式输出完成 ──
     case "DONE": {
-      if (state.messages.length === 0) return state;
       const msgs = [...state.messages];
-      const last = { ...msgs[msgs.length - 1] };
-      last.isStreaming = false;
-      // finalResponse 为空时保留已流式累积的 content
-      if (action.finalResponse) {
-        last.content = action.finalResponse;
+      const last = msgs[msgs.length - 1];
+      if (last?.role === "assistant") {
+        msgs[msgs.length - 1] = {
+          ...last,
+          isStreaming: false,
+          ...(action.finalResponse
+            ? { content: action.finalResponse }
+            : {}),
+        };
+      } else if (action.finalResponse) {
+        msgs.push({
+          id: uid(),
+          role: "assistant",
+          content: action.finalResponse,
+          isStreaming: false,
+          toolCalls: [],
+        });
       }
-      msgs[msgs.length - 1] = last;
-      return { ...state, messages: msgs };
+      return { ...state, messages: msgs, pendingQuestion: undefined };
     }
 
     // ── 错误 ──
@@ -252,12 +353,16 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         }
         return m;
       });
-      return { ...state, messages: [...msgs, errMsg] };
+      return {
+        ...state,
+        messages: [...msgs, errMsg],
+        pendingQuestion: undefined,
+      };
     }
 
     // ── 批量加载历史消息（替换整个 messages 数组） ──
     case "LOAD_MESSAGES": {
-      return { ...state, messages: action.messages };
+      return { ...state, messages: action.messages, pendingQuestion: undefined };
     }
 
     default:

@@ -249,12 +249,17 @@ describe("DONE", () => {
     expect(state.messages[0].content).toBe("accumulated text");
   });
 
-  it("空 messages 时不应崩溃", () => {
+  it("空 messages 时追加最终 assistant 消息", () => {
     const state = chatReducer(empty, {
       type: "DONE",
       finalResponse: "x",
     });
-    expect(state.messages).toHaveLength(0);
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0]).toMatchObject({
+      role: "assistant",
+      content: "x",
+      isStreaming: false,
+    });
   });
 });
 

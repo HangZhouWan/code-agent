@@ -169,15 +169,32 @@ describe("useWebSocket", () => {
       mockInstance!.onopen?.();
     });
 
+    const envelope = {
+      type: "event",
+      event: {
+        v: 1,
+        id: "e1",
+        sessionId: "s1",
+        runId: "r1",
+        seq: 1,
+        ts: "2026-10-19T00:00:00.000Z",
+        event: {
+          type: "message.delta",
+          messageId: "m1",
+          delta: "Hello",
+        },
+      },
+    };
+
     await act(async () => {
       mockInstance!.onmessage?.(
         new MessageEvent("message", {
-          data: JSON.stringify({ type: "text", delta: "Hello" }),
+          data: JSON.stringify(envelope),
         }),
       );
     });
 
-    expect(onMessage).toHaveBeenCalledWith({ type: "text", delta: "Hello" });
+    expect(onMessage).toHaveBeenCalledWith(envelope);
   });
 
   it("应忽略服务端初始空 delta 消息", async () => {

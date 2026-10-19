@@ -6,8 +6,13 @@
  */
 
 import { useState, useEffect } from "react";
+import {
+  PROVIDER_DEFINITIONS,
+  PROVIDER_IDS,
+  type ProviderId,
+} from "@code-agent/protocol";
 
-type Provider = "openai" | "anthropic" | "openai-compatible";
+type Provider = ProviderId;
 
 interface ProviderOption {
   value: Provider;
@@ -15,11 +20,11 @@ interface ProviderOption {
   defaultModel: string;
 }
 
-const PROVIDERS: ProviderOption[] = [
-  { value: "openai", label: "OpenAI", defaultModel: "gpt-4o" },
-  { value: "anthropic", label: "Anthropic", defaultModel: "claude-sonnet-4-5" },
-  { value: "openai-compatible", label: "OpenAI 兼容 (Ollama / LM Studio)", defaultModel: "llama3" },
-];
+const PROVIDERS: ProviderOption[] = PROVIDER_IDS.map((id) => ({
+  value: id,
+  label: PROVIDER_DEFINITIONS[id].label,
+  defaultModel: PROVIDER_DEFINITIONS[id].defaultModel,
+}));
 
 export function SetupPage() {
   const [checking, setChecking] = useState(true);
