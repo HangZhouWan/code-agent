@@ -2,12 +2,14 @@
   "name": "code-agent",
   "private": true,
   "scripts": {
-    "dev": "pnpm --parallel -r dev",
-    "cli": "pnpm --filter @code-agent/cli dev",
+    "dev": "tsc -b && pnpm --parallel -r dev",
+    "cli": "tsc -b && pnpm --filter @code-agent/cli dev",
     "build": "pnpm -r build",
     "publish:cli": "pnpm --filter @code-agent/cli publish:npm",
-    "lint": "pnpm -r lint",
-    "typecheck": "pnpm -r typecheck"
+    "lint": "eslint packages",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
   },
   "packageManager": "pnpm@10.33.2",
   "pnpm": {
@@ -17,6 +19,8 @@
     ]
   },
   "devDependencies": {
+    "eslint": "^9.0.0",
+    "typescript-eslint": "^8.0.0",
     "vitest": "^4.1.9"
   }
 }

@@ -20,10 +20,10 @@
   ],
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "tsc -b",
     "prepublishOnly": "pnpm build",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src/",
+    "typecheck": "tsc -b",
+    "lint": "eslint src",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",

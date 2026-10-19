@@ -15,10 +15,10 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -b",
     "prepublishOnly": "pnpm build",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src/",
+    "typecheck": "tsc -b",
+    "lint": "eslint src",
     "test": "vitest run",
     "test:watch": "vitest"
   },
