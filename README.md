@@ -340,6 +340,10 @@ Agent 启动时声明能力范围（`tools` + `paths`），超出范围的调用
 | `GET` | `/api/config/providers` | Provider 元数据 |
 | `POST` | `/api/config` | 保存全局配置 |
 | `GET` | `/api/agents` | 角色列表 |
+| `GET` | `/api/memory` | 列出/筛选长期记忆 |
+| `GET` | `/api/memory/search` | 搜索长期记忆 |
+| `PATCH` | `/api/memory/:id` | 审核/编辑/置顶记忆 |
+| `DELETE` | `/api/memory/:id` | 删除记忆 |
 | `GET` | `/api/workspace/tree` | 目录懒加载 |
 | `GET` | `/api/workspace/file` | 只读文件内容 |
 | `GET` | `/api/workspace/diff` | 文件 diff |

@@ -5,10 +5,14 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import fastifyCors from "@fastify/cors";
 import fastifyWebsocket from "@fastify/websocket";
-import type { SessionStore } from "@code-agent/runtime";
+import type {
+  MemoryService,
+  SessionStore,
+} from "@code-agent/runtime";
 import { errorHandler } from "./middleware/error.js";
 import runtimeAgents from "./routes/runtime-agents.js";
 import runtimeConfig from "./routes/runtime-config.js";
+import runtimeMemory from "./routes/runtime-memory.js";
 import runtimeSessions from "./routes/runtime-sessions.js";
 import runtimeTools from "./routes/runtime-tools.js";
 import runtimeWorkspace from "./routes/runtime-workspace.js";
@@ -22,6 +26,7 @@ export interface RuntimeServerOptions {
   sessionService: SessionService;
   workspace: WorkspaceService;
   watcher?: WorkspaceWatcher;
+  memory?: MemoryService;
 }
 
 export async function createRuntimeServer(
@@ -50,6 +55,12 @@ export async function createRuntimeServer(
     prefix: "/api/tools",
     sessionService: options.sessionService,
   });
+  if (options.memory) {
+    await app.register(runtimeMemory, {
+      prefix: "/api/memory",
+      memory: options.memory,
+    });
+  }
 
   app.get(
     "/api/sessions/:id/chat",

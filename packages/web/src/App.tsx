@@ -20,6 +20,7 @@ import { useSessions } from "./hooks/useSessions.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { ChatArea } from "./components/ChatArea.js";
 import { SetupPage } from "./components/SetupPage.js";
+import { MemoryPanel } from "./components/MemoryPanel.js";
 
 // CodeMirror 体积较大，仅在打开工作区时加载
 const WorkspacePanel = lazy(() =>
@@ -36,6 +37,7 @@ export function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [setupRequired, setSetupRequired] = useState<boolean | null>(null);
   const [showWorkspace, setShowWorkspace] = useState(false);
+  const [showMemory, setShowMemory] = useState(false);
   const { sessions, loading, createSession, deleteSession, updateTitle } =
     useSessions();
 
@@ -93,7 +95,14 @@ export function App() {
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center justify-end border-b border-gray-800 px-3 py-1.5">
+        <div className="flex items-center justify-end gap-2 border-b border-gray-800 px-3 py-1.5">
+          <button
+            type="button"
+            onClick={() => setShowMemory(true)}
+            className="rounded border border-gray-700 px-2.5 py-1 text-xs text-gray-300 hover:bg-gray-800"
+          >
+            Memory
+          </button>
           <button
             type="button"
             onClick={() => setShowWorkspace((value) => !value)}
@@ -123,6 +132,10 @@ export function App() {
           )}
         </div>
       </div>
+
+      {showMemory && (
+        <MemoryPanel onClose={() => setShowMemory(false)} />
+      )}
     </div>
   );
 }

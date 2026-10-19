@@ -76,6 +76,7 @@ async function main(): Promise<void> {
     sessionService,
     workspace,
     watcher,
+    ...(bootstrap.memory ? { memory: bootstrap.memory } : {}),
   });
 
   await app.listen({ host: cfg.HOST, port: cfg.PORT });

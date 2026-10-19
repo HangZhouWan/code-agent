@@ -331,6 +331,45 @@ export class MemoryService {
     });
   }
 
+  async update(
+    id: MemoryId,
+    patch: {
+      content?: string;
+      tags?: string[];
+      keywords?: string[];
+      confidence?: number;
+      status?: MemoryStatus;
+      pinned?: boolean;
+    },
+  ): Promise<MemoryRecord | null> {
+    const existing = await this.options.store.get(id);
+    if (!existing) return null;
+
+    const next: Partial<
+      Omit<MemoryRecord, "id" | "version" | "createdAt">
+    > = { updatedAt: this.now() };
+
+    if (patch.content !== undefined) {
+      next.content = this.validateContent(patch.content);
+    }
+    if (patch.tags) next.tags = unique(patch.tags);
+    if (patch.keywords) next.keywords = unique(patch.keywords);
+    if (patch.confidence !== undefined) {
+      const confidence = Math.max(0, Math.min(1, patch.confidence));
+      next.confidence = confidence;
+      if (!existing.pinned) {
+        next.status =
+          confidence >= this.config.autoApplyConfidence
+            ? "active"
+            : "pending_review";
+      }
+    }
+    if (patch.status) next.status = patch.status;
+    if (patch.pinned !== undefined) next.pinned = patch.pinned;
+
+    return this.options.store.update(id, next, existing.version);
+  }
+
   async list(filter: MemoryListFilter = {}): Promise<MemoryRecord[]> {
     return this.options.store.list(filter);
   }

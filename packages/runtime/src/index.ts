@@ -84,9 +84,12 @@ export type {
   ResolvedConfig,
 } from "@code-agent/core";
 export type {
-  MemoryService,
   ChatModelLike,
   CheckpointStore,
+} from "@code-agent/core";
+export {
+  MemoryService,
+  InMemoryMemoryStore,
 } from "@code-agent/core";
 export type {
   CreateSessionInput,

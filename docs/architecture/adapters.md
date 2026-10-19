@@ -9,7 +9,7 @@ bootstrap: loadConfig → createHarness → createRuntime → createDb → creat
 ```
 
 - 薄 WS：解析 protocol → 获取/创建 AgentSession → run/resume → 转发事件；socket 关闭按配置 abort。
-- REST：sessions / history / runs / config / providers / agents / approvals / workspace。
+- REST：sessions / history / runs / config / providers / agents / approvals / workspace / memory（list / search / update / delete）。
 - Fastify decorations 使用 module augmentation 强类型，禁止 `(app as any)`。
 - setup/downgrade 模式复用同一 app factory，只挂 setup 所需路由。
 - 默认绑定 127.0.0.1，校验 Origin；审批/回答必须属于当前 session/run。

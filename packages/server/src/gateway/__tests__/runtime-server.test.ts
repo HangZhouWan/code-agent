@@ -8,11 +8,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AIMessage } from "@langchain/core/messages";
 import {
+  InMemoryMemoryStore,
+  MemoryService,
   createInMemoryPorts,
   createRuntime,
   type ChatModelLike,
   type Runtime,
 } from "@code-agent/runtime";
+import { asWorkspaceId } from "@code-agent/protocol";
 import { SessionService } from "../../session/session-service.js";
 import { WorkspaceService } from "../../workspace/workspace-service.js";
 import { createRuntimeServer } from "../runtime-server.js";
@@ -49,6 +52,21 @@ describe("runtime server", () => {
     const workspacePath = tempDir();
     writeFileSync(join(workspacePath, "a.ts"), "export const a = 1;\n");
 
+    const memory = new MemoryService({
+      store: new InMemoryMemoryStore(),
+      workspaceId: asWorkspaceId(workspacePath),
+    });
+    const activeMemory = await memory.store({
+      content: "项目使用 pnpm",
+      kind: "convention",
+      confidence: 0.9,
+    });
+    const pendingMemory = await memory.store({
+      content: "可能使用 pnpm",
+      kind: "fact",
+      confidence: 0.4,
+    });
+
     const ports = createInMemoryPorts();
     const runtime = createRuntime({ model: new FakeModel() }, { ports });
     runtimes.push(runtime);
@@ -58,6 +76,7 @@ describe("runtime server", () => {
       sessions: ports.sessions,
       sessionService,
       workspace,
+      memory,
     });
     await app.ready();
 
@@ -111,6 +130,36 @@ describe("runtime server", () => {
     expect(
       providers.json<{ providers: unknown[] }>().providers,
     ).toHaveLength(3);
+
+    const memoryList = await app.inject({
+      method: "GET",
+      url: "/api/memory",
+    });
+    expect(
+      memoryList.json<{ memories: unknown[] }>().memories,
+    ).toHaveLength(2);
+
+    const pendingList = await app.inject({
+      method: "GET",
+      url: "/api/memory?status=pending_review",
+    });
+    expect(
+      pendingList.json<{ memories: Array<{ id: string }> }>().memories,
+    ).toHaveLength(1);
+
+    const approved = await app.inject({
+      method: "PATCH",
+      url: `/api/memory/${pendingMemory.record.id}`,
+      payload: { status: "active" },
+    });
+    expect(approved.statusCode).toBe(200);
+    expect(approved.json<{ status: string }>().status).toBe("active");
+
+    const memoryDeleted = await app.inject({
+      method: "DELETE",
+      url: `/api/memory/${activeMemory.record.id}`,
+    });
+    expect(memoryDeleted.statusCode).toBe(200);
 
     const deleted = await app.inject({
       method: "DELETE",
