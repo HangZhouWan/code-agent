@@ -90,6 +90,26 @@ class StreamingModel implements ChatModelLike {
   }
 }
 
+/** 模拟 LangChain v1：Runnable.stream() 返回 Promise<AsyncIterable> */
+class PromiseStreamingModel implements ChatModelLike {
+  bindTools(): ChatModelLike {
+    return this;
+  }
+
+  async invoke(): Promise<BaseMessage> {
+    throw new Error("invoke should not be used");
+  }
+
+  stream(): Promise<AsyncIterable<BaseMessage>> {
+    return Promise.resolve(
+      (async function* () {
+        yield new AIMessageChunk({ content: "he" });
+        yield new AIMessageChunk({ content: "llo" });
+      })(),
+    );
+  }
+}
+
 function echoTool(permission: "allow" | "confirm" = "allow"): ToolDefinition {
   return {
     name: "echo",
@@ -292,6 +312,22 @@ describe("native tool calling", () => {
         .filter((event) => event.type === "message.delta")
         .map((event) => (event.type === "message.delta" ? event.delta : "")),
     ).toEqual(["he", "llo"]);
+  });
+
+  it("兼容 LangChain v1 返回 Promise 的 stream", async () => {
+    const events: SessionEvent[] = [];
+    const engine = new AgentExecutionEngine(new PromiseStreamingModel());
+    const { scope: runScope } = scope({
+      emit: (event) => events.push(event),
+    });
+
+    const result = await engine.invoke(input(), runScope);
+
+    expect(result.status).toBe("success");
+    expect(result.summary).toBe("hello");
+    expect(
+      events.filter((event) => event.type === "message.delta"),
+    ).toHaveLength(2);
   });
 
   it("未知工具返回错误但模型仍可完成", async () => {

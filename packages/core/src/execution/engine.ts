@@ -57,7 +57,9 @@ export interface ChatModelLike {
   stream?(
     messages: BaseMessage[],
     options?: { signal?: AbortSignal },
-  ): AsyncIterable<BaseMessage>;
+  ):
+    | AsyncIterable<BaseMessage>
+    | Promise<AsyncIterable<BaseMessage>>;
   bindTools?(tools: StructuredTool[]): ChatModelLike;
 }
 
@@ -309,9 +311,12 @@ export class AgentExecutionEngine implements AgentInvoker {
       try {
         if (typeof bound.stream === "function") {
           let aggregate: BaseMessage | undefined;
-          for await (const chunk of bound.stream(messages, {
+          // LangChain v1 的 Runnable.stream() 返回 Promise<IterableReadableStream>，
+          // 自定义 fake 可能直接返回 AsyncIterable；await 对两者都成立。
+          const stream = await bound.stream(messages, {
             signal: controller.signal,
-          })) {
+          });
+          for await (const chunk of stream) {
             const delta = extractText(chunk);
             if (delta) {
               scope.emit?.({
