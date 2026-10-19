@@ -32,6 +32,9 @@ importers:
       '@langchain/openai':
         specifier: ^1.0.0
         version: 1.5.3(@langchain/core@1.2.1(openai@6.45.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0))(ws@8.21.0)
+      dotenv:
+        specifier: ^16.4.0
+        version: 16.6.1
       langchain:
         specifier: ^1.0.0
         version: 1.5.2(@langchain/core@1.2.1(openai@6.45.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0))(openai@6.45.0(ws@8.21.0)(zod@3.25.76))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(ws@8.21.0)
@@ -42,15 +45,12 @@ importers:
         specifier: ^3.25.0
         version: 3.25.76
     devDependencies:
-      '@code-agent/core':
-        specifier: workspace:^
-        version: link:../core
       '@code-agent/protocol':
         specifier: workspace:^
         version: link:../protocol
-      '@code-agent/server':
+      '@code-agent/runtime':
         specifier: workspace:^
-        version: link:../server
+        version: link:../runtime
       esbuild:
         specifier: ^0.28.1
         version: 0.28.1

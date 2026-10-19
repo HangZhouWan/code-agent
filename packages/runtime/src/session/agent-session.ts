@@ -315,6 +315,10 @@ export class AgentSession {
     });
   }
 
+  get busy(): boolean {
+    return this.activeRunId !== null;
+  }
+
   static async create(options: AgentSessionOptions): Promise<AgentSession> {
     const eventChannel = await EventChannel.create({
       sessionId: options.sessionId,

@@ -5,7 +5,7 @@
  */
 
 import * as readline from "node:readline";
-import type { GlobalConfigInput, GlobalConfigManager } from "@code-agent/core";
+import type { GlobalConfigInput, GlobalConfigManager } from "@code-agent/runtime";
 import { PROVIDER_DEFINITIONS, PROVIDER_IDS } from "@code-agent/protocol";
 
 const PROVIDER_OPTIONS = PROVIDER_IDS.map((id) => PROVIDER_DEFINITIONS[id]);

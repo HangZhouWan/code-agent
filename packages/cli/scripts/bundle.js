@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Bundle CLI entry point with @code-agent/core and @code-agent/server inlined.
+ * Bundle CLI entry point with @code-agent/core + @code-agent/runtime inlined.
  *
  * Uses esbuild to produce a single self-contained dist/index.js.
  * Only third-party npm dependencies remain as external imports.
@@ -22,13 +22,13 @@ const externalPatterns = [
   "langchain",
   "zod",
   "simple-git",
+  "dotenv",
   // Native / platform packages
   "node:*",
   "better-sqlite3",
-  // fastify and friends — not used by orchestrator but bundle may reference them
+  // 服务端依赖不应出现在 CLI bundle 中
   "fastify",
   "@fastify/*",
-  "dotenv",
   "drizzle-orm",
   "drizzle-kit",
 ];

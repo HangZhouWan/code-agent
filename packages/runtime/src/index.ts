@@ -57,6 +57,30 @@ export * from "./orchestrator/index.js";
 export {
   createRuntime,
 } from "./factory.js";
+export {
+  createRuntimeBootstrap,
+  createDefaultPorts,
+  createMutex,
+} from "./bootstrap.js";
+export type {
+  RuntimeBootstrap,
+  RuntimeBootstrapOptions,
+} from "./bootstrap.js";
+
+// 适配器需要的应用级配置 API（避免直接依赖 core 内部）
+export {
+  GlobalConfigManager,
+  loadConfig,
+  maskApiKey,
+  resolvePaths,
+} from "@code-agent/core";
+export type {
+  GlobalConfig,
+  GlobalConfigInput,
+  LoadConfigOptions,
+  ResolvedConfig,
+} from "@code-agent/core";
+export type { MemoryService } from "@code-agent/core";
 export type {
   CreateSessionInput,
   RecoveryReport,

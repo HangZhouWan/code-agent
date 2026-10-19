@@ -8,8 +8,7 @@
   },
   "include": ["src"],
   "references": [
-    { "path": "../core" },
     { "path": "../protocol" },
-    { "path": "../server" }
+    { "path": "../runtime" }
   ]
 }
