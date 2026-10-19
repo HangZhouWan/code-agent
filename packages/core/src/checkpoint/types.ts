@@ -68,6 +68,8 @@ export interface SessionCheckpointV1 {
   runId: RunId;
   status: RunStatus;
   node: SessionNode;
+  /** 恢复时用于重建 workspace；可选以兼容旧快照 */
+  workspacePath?: string;
   plan?: Plan;
   tasks: TaskRecord[];
   completedTaskIds: TaskId[];

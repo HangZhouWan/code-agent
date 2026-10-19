@@ -5,7 +5,17 @@
 export {
   AgentSession,
   SessionBusyError,
+  SessionResumeError,
 } from "./session/agent-session.js";
+export type { SessionResumeErrorCode } from "./session/agent-session.js";
+export { RecoveryService } from "./session/recovery-service.js";
+export type {
+  RecoverOptions,
+  RecoveredRun,
+  RecoveryServiceReport,
+  RecoveryServiceOptions,
+  RecoverySessionInput,
+} from "./session/recovery-service.js";
 export type {
   AgentSessionOptions,
   RunHandle,

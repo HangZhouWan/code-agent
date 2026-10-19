@@ -19,6 +19,7 @@ import {
 import { RoleRegistry } from "./agents/role-registry.js";
 import type { RuntimePorts } from "./ports/types.js";
 import { AgentSession } from "./session/agent-session.js";
+import { RecoveryService } from "./session/recovery-service.js";
 
 export interface RuntimeHarness {
   model: ChatModelLike;
@@ -68,7 +69,7 @@ export function createRuntime(
 ): Runtime {
   const sessions = new Set<AgentSession>();
 
-  return {
+  const runtime: Runtime = {
     async createSession(input) {
       const sessionId =
         input.sessionId ??
@@ -109,10 +110,22 @@ export function createRuntime(
       return session;
     },
 
-    async recoverSessions() {
-      // Phase 7 实现真正的恢复；当前只报告可恢复数量
-      const recoverable = await options.ports.checkpoints.listRecoverable();
-      return { recovered: 0, skipped: recoverable.length };
+    async recoverSessions(recoveryOptions = {}) {
+      const service = new RecoveryService({
+        checkpoints: options.ports.checkpoints,
+        createSession: (input) =>
+          runtime.createSession({
+            sessionId: input.sessionId,
+            workspacePath: input.workspacePath,
+            title: "Recovered",
+            orchestration: true,
+          }),
+      });
+      const report = await service.recoverSessions(recoveryOptions);
+      return {
+        recovered: report.recovered,
+        skipped: report.skipped,
+      };
     },
 
     async dispose() {
@@ -122,4 +135,6 @@ export function createRuntime(
       sessions.clear();
     },
   };
+
+  return runtime;
 }

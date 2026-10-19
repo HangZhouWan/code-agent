@@ -14,6 +14,7 @@ import type {
   SessionEvent,
   SessionId,
   TaskId,
+  TaskRecord,
   TaskResult,
 } from "@code-agent/protocol";
 import type { RoleRegistry } from "../agents/role-registry.js";
@@ -40,6 +41,9 @@ export interface OrchestratorRunInput {
   memory?: string;
   scope: RunScope;
   resumeNode?: SessionNode;
+  /** 恢复时注入已完成/失败任务 */
+  tasks?: TaskRecord[];
+  results?: TaskResult[];
 }
 
 export interface OrchestratorRunResult {
@@ -63,8 +67,8 @@ export class SessionOrchestrator {
       sessionId: input.sessionId,
       userMessage: input.userMessage,
       ...(input.memory ? { memory: input.memory } : {}),
-      tasks: [],
-      results: [],
+      tasks: input.tasks ?? [],
+      results: input.results ?? [],
       replanCount: 0,
       ...(input.resumeNode ? { resumeNode: input.resumeNode } : {}),
     };

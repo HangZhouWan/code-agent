@@ -17,6 +17,7 @@ import {
   type MemoryExtractor,
   type MemoryService,
   type MemoryToolService,
+  type SessionNode,
   type TokenCounterLike,
   type ToolDefinition,
   type RunScope,
@@ -39,6 +40,7 @@ import {
   type SessionId,
   type SessionSnapshot,
   type TaskId,
+  type TaskRecord,
   type TaskResult,
   type UserTurnInput,
   type WorkspaceId,
@@ -61,6 +63,22 @@ export class SessionBusyError extends Error {
   constructor(public readonly sessionId: SessionId) {
     super(`Session ${sessionId} already has an active run`);
     this.name = "SessionBusyError";
+  }
+}
+
+export type SessionResumeErrorCode =
+  | "NOT_FOUND"
+  | "INCOMPATIBLE"
+  | "PENDING_INTERACTIONS"
+  | "FINISHED";
+
+export class SessionResumeError extends Error {
+  constructor(
+    message: string,
+    public readonly code: SessionResumeErrorCode,
+  ) {
+    super(message);
+    this.name = "SessionResumeError";
   }
 }
 
@@ -375,6 +393,190 @@ export class AgentSession {
     };
   }
 
+  async resume(
+    runId?: RunId,
+    options: RunOptions = {},
+  ): Promise<RunHandle> {
+    if (this.activeRunId) throw new SessionBusyError(this.id);
+
+    const checkpoint =
+      await this.ports.checkpoints.loadLatestSession(this.id);
+    if (!checkpoint) {
+      throw new SessionResumeError(
+        `No checkpoint for session ${this.id}`,
+        "NOT_FOUND",
+      );
+    }
+    if (checkpoint.v !== 1) {
+      throw new SessionResumeError(
+        `Incompatible checkpoint version: ${String(checkpoint.v)}`,
+        "INCOMPATIBLE",
+      );
+    }
+    if (runId && checkpoint.runId !== runId) {
+      throw new SessionResumeError(
+        `Run ${runId} not found in checkpoint`,
+        "NOT_FOUND",
+      );
+    }
+    if (
+      checkpoint.status === "completed" ||
+      checkpoint.status === "aborted"
+    ) {
+      throw new SessionResumeError(
+        `Run ${checkpoint.runId} already finished (${checkpoint.status})`,
+        "FINISHED",
+      );
+    }
+    if (
+      checkpoint.pendingApprovals.length > 0 ||
+      (checkpoint.pendingQuestions?.length ?? 0) > 0
+    ) {
+      throw new SessionResumeError(
+        "Pending approvals/questions must be resolved before resuming",
+        "PENDING_INTERACTIONS",
+      );
+    }
+
+    const controller = new AbortController();
+    if (options.signal) {
+      if (options.signal.aborted) controller.abort(options.signal.reason);
+      else {
+        options.signal.addEventListener(
+          "abort",
+          () => controller.abort(options.signal!.reason),
+          { once: true },
+        );
+      }
+    }
+
+    this.activeRunId = checkpoint.runId;
+    this.activeController = controller;
+    this.delegationService.reset();
+    this.planState.clear();
+    this.state.hydrate(checkpoint.tasks, checkpoint.artifacts);
+
+    const results: TaskResult[] = checkpoint.tasks
+      .filter((task) => task.result)
+      .map((task) => task.result!);
+
+    // 副作用策略：已开始 mutating 工具但结果未知的任务不盲目重放
+    for (const task of checkpoint.tasks) {
+      if (task.result) continue;
+      if (
+        !["assigned", "running", "awaiting_approval", "awaiting_input"].includes(
+          task.status,
+        )
+      ) {
+        continue;
+      }
+
+      let agentCheckpoint = null;
+      try {
+        agentCheckpoint = await this.ports.checkpoints.loadAgent(
+          this.id,
+          checkpoint.runId,
+          task.id,
+        );
+      } catch (error) {
+        throw new SessionResumeError(
+          error instanceof Error ? error.message : String(error),
+          "INCOMPATIBLE",
+        );
+      }
+
+      if (agentCheckpoint?.pendingTool?.sideEffect === "mutating") {
+        const uncertain: TaskResult = {
+          taskId: task.id,
+          role: task.role,
+          status: "failed",
+          summary: "Resume side effect uncertain",
+          error: {
+            code: "RESUME_SIDE_EFFECT_UNCERTAIN",
+            message:
+              "A mutating tool may have executed before interruption; manual review is required",
+            retryable: false,
+          },
+        };
+        this.state.tasks.setResult(task.id, uncertain);
+        try {
+          this.state.tasks.transition(task.id, "replan_needed");
+        } catch {
+          try {
+            this.state.tasks.transition(task.id, "failed");
+          } catch {
+            // ignore
+          }
+        }
+        await this.persistTask(task.id);
+        results.push(uncertain);
+      }
+    }
+
+    const resumeNode: SessionNode =
+      checkpoint.tasks.length === 0
+        ? "planner"
+        : checkpoint.node === "finalizer"
+          ? "finalizer"
+          : checkpoint.node === "replanner"
+            ? "replanner"
+            : "dispatcher";
+
+    const existingRun = await this.ports.runs.getRun(checkpoint.runId);
+    if (existingRun) {
+      await this.ports.runs.updateRun(checkpoint.runId, {
+        status: "running",
+        node: resumeNode,
+      });
+    } else {
+      await this.ports.runs.createRun({
+        id: checkpoint.runId,
+        sessionId: this.id,
+        status: "running",
+        startedAt: this.ports.clock.now(),
+        node: resumeNode,
+      });
+    }
+
+    const lastUser =
+      [...checkpoint.messages]
+        .reverse()
+        .find((message) => message.role === "user")?.content ?? "";
+    const input: UserTurnInput = { content: lastUser };
+    this.emitEvent({ type: "run.started", input, resumed: true });
+
+    const execution = this.executeOrchestrated(
+      checkpoint.runId,
+      input,
+      controller,
+      {
+        resumeNode,
+        tasks: checkpoint.tasks,
+        results,
+      },
+    );
+    const done = execution.finally(() => {
+      if (this.activeRunId === checkpoint.runId) {
+        this.activeRunId = null;
+        this.activeController = null;
+      }
+    });
+
+    return {
+      runId: checkpoint.runId,
+      events: this.filterRun(
+        checkpoint.runId,
+        this.eventChannel.subscribe(0),
+      ),
+      done,
+      abort: (reason?: string) => {
+        if (this.activeRunId === checkpoint.runId) {
+          controller.abort(reason);
+        }
+      },
+    };
+  }
+
   subscribe(
     options: { afterSeq?: number } = {},
   ): AsyncIterable<EventEnvelope<SessionEvent>> {
@@ -479,11 +681,20 @@ export class AgentSession {
     runId: RunId,
     input: UserTurnInput,
     controller: AbortController,
+    resume?: {
+      resumeNode?: SessionNode;
+      tasks?: TaskRecord[];
+      results?: TaskResult[];
+    },
   ): Promise<RunResult> {
-    let runResults: TaskResult[] = [];
+    let runResults: TaskResult[] = resume?.results ?? [];
     try {
       const memoryText = await this.retrieveMemory(input.content);
-      await this.saveSessionCheckpoint(runId, "running", "planner");
+      await this.saveSessionCheckpoint(
+        runId,
+        "running",
+        resume?.resumeNode ?? "planner",
+      );
 
       const baseScope = this.buildBaseScope(runId, asTaskId(runId));
       const orchestrator = new SessionOrchestrator({
@@ -503,6 +714,9 @@ export class AgentSession {
         userMessage: input.content,
         ...(memoryText ? { memory: memoryText } : {}),
         scope: baseScope,
+        ...(resume?.resumeNode ? { resumeNode: resume.resumeNode } : {}),
+        ...(resume?.tasks ? { tasks: resume.tasks } : {}),
+        ...(resume?.results ? { results: resume.results } : {}),
       });
       runResults = outcome.results;
 
@@ -879,6 +1093,7 @@ export class AgentSession {
       runId,
       status,
       node,
+      workspacePath: this.options.workspacePath,
       ...(this.planState.get() ? { plan: this.planState.get()! } : {}),
       tasks,
       completedTaskIds: tasks
