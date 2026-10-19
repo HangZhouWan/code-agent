@@ -39,7 +39,7 @@ export interface InputBarProps {
  * <InputBar onSend={handleSend} disabled={status !== "connected"} isStreaming={isStreaming} />
  * ```
  */
-export function InputBar({ onSend, disabled, isStreaming }: InputBarProps) {
+export function InputBar({ onSend, disabled }: InputBarProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 

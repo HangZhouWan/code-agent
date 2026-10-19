@@ -18,6 +18,11 @@ import {
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  HooksEngine,
+  createContextBudget,
+  createHeuristicTokenCounter,
+} from "../../index.js";
 import type { ToolDefinition } from "../../tools/base.js";
 import type { AgentCheckpointV1 } from "../../checkpoint/types.js";
 import {
@@ -223,6 +228,36 @@ describe("native tool calling", () => {
 
     expect(result.status).toBe("timeout");
     expect(result.summary).toContain("Max iterations");
+  });
+
+  it("超过预算时触发 context.compact hook", async () => {
+    const hooks = new HooksEngine({ onError: () => {} });
+    const compacted: unknown[] = [];
+    hooks.on("context:compact", async (ctx) => {
+      compacted.push(ctx.data);
+    });
+
+    const model = new ScriptedModel([new AIMessage({ content: "done" })]);
+    const engine = new AgentExecutionEngine(model, {
+      hooks,
+      tokenCounter: createHeuristicTokenCounter(1024),
+      contextBudget: createContextBudget({
+        modelWindow: 1024,
+        reservedOutput: 0,
+        safetyMargin: 0,
+        softThreshold: 0.5,
+        hardThreshold: 0.9,
+      }),
+    });
+    const { scope: runScope } = scope();
+
+    const result = await engine.invoke(
+      { ...input(), description: "x".repeat(2_000) },
+      runScope,
+    );
+
+    expect(result.status).toBe("success");
+    expect(compacted.length).toBeGreaterThan(0);
   });
 
   it("未知工具返回错误但模型仍可完成", async () => {

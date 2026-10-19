@@ -16,9 +16,6 @@ import {
   asRunId,
   asSessionId,
   asTaskId,
-  type RunId,
-  type SessionId,
-  type TaskId,
 } from "@code-agent/protocol";
 import { InMemoryCheckpointStore } from "../memory-store.js";
 import { FileCheckpointStore } from "../file-store.js";

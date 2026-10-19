@@ -57,35 +57,9 @@ export const ToolNames = {
 export const ALL_TOOL_NAMES: readonly string[] = Object.values(ToolNames);
 
 /**
- * 旧权限名单（迁移期兼容 SandboxGuard）。
- * 新工具使用 ToolDefinition.permission + middleware，不再依赖这些名单。
+ * 权限不再由工具名称名单决定：
+ * ToolDefinition.permission + 权限中间件是唯一来源。
  */
-export const SAFE_TOOL_NAMES: readonly string[] = [
-  ToolNames.FILE_READ,
-  ToolNames.FILE_LIST,
-  ToolNames.FILE_GLOB,
-  ToolNames.CODE_SEARCH,
-  ToolNames.GIT_STATUS,
-  ToolNames.GIT_DIFF,
-  ToolNames.GIT_LOG,
-  ToolNames.WEB_FETCH,
-  ToolNames.MEMORY_SEARCH,
-  ToolNames.ASK_USER,
-  ToolNames.PLAN_UPDATE,
-];
-
-/** 旧 confirm 名单（写操作/需用户确认） */
-export const CONFIRM_TOOL_NAMES: readonly string[] = [
-  ToolNames.FILE_WRITE,
-  ToolNames.FILE_EDIT,
-  ToolNames.SHELL_EXEC,
-  ToolNames.RUN_TESTS,
-  ToolNames.GIT_ADD,
-  ToolNames.GIT_COMMIT,
-  ToolNames.GIT_BRANCH,
-  ToolNames.MEMORY_STORE,
-  ToolNames.DELEGATE_TASK,
-];
 
 /** 工具名称联合类型 —— 用于类型安全的 toolName 参数 */
 export type ToolName = (typeof ToolNames)[keyof typeof ToolNames];

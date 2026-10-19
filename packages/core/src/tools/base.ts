@@ -6,7 +6,7 @@
  *
  * 设计要点：
  * - Zod schema 驱动：每个工具用 Zod 定义输入 schema，自动获得类型推断和运行时校验
- * - 权限标签：每个工具声明 permission: 'safe' | 'confirm'，供后续 SandboxGuard 使用
+ * - 权限声明：每个工具声明 allow / confirm / deny 或动态 evaluator，由权限中间件执行
  * - 工具上下文：通过 ToolContext 注入 workspacePath 和 sessionId
  */
 
@@ -74,10 +74,10 @@ export interface ToolContext {
   /**
    * 确认回调（可选）
    *
-   * 当工具需要用户确认时（permission = 'confirm'），SandboxGuard 会调用此回调
+   * 当工具需要用户确认时（permission = 'confirm'），权限中间件会调用此回调
    * 向用户推送确认请求。回调返回 true 表示批准，false 表示拒绝。
    *
-   * 如果未提供此回调，confirm 级别的工具将抛出 ConfirmRequiredError。
+   * 如果未提供审批通道，中间件返回 APPROVAL_REQUIRED 错误结果。
    */
   onConfirmRequired?: (
     toolName: string,

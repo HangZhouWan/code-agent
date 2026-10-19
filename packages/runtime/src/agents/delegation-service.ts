@@ -8,8 +8,6 @@ import {
   asTaskId,
   serializeError,
   type AgentRoleId,
-  type RunId,
-  type TaskId,
   type TaskResult,
 } from "@code-agent/protocol";
 import type { RunScope, SessionStateManager, ToolContext } from "@code-agent/core";

@@ -4,6 +4,8 @@
 
 import type {
   ChatModelLike,
+  ContextBudget,
+  ContextSummarizer,
   HooksEngine,
   MemoryExtractor,
   MemoryService,
@@ -29,6 +31,9 @@ export interface RuntimeHarness {
   memory?: MemoryService;
   memoryExtractor?: MemoryExtractor;
   tokenCounter?: TokenCounterLike;
+  contextBudget?: ContextBudget;
+  contextSummarizer?: ContextSummarizer;
+  inlineToolResultLimit?: number;
   writeLock?: <T>(fn: () => Promise<T>) => Promise<T>;
 }
 
@@ -92,6 +97,15 @@ export function createRuntime(
           : {}),
         ...(harness.tokenCounter
           ? { tokenCounter: harness.tokenCounter }
+          : {}),
+        ...(harness.contextBudget
+          ? { contextBudget: harness.contextBudget }
+          : {}),
+        ...(harness.contextSummarizer
+          ? { contextSummarizer: harness.contextSummarizer }
+          : {}),
+        ...(harness.inlineToolResultLimit
+          ? { inlineToolResultLimit: harness.inlineToolResultLimit }
           : {}),
         ...(harness.writeLock ? { writeLock: harness.writeLock } : {}),
         ...(options.maxIterations

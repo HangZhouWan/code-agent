@@ -10,10 +10,12 @@ import {
   FileCheckpointStore,
   FileMemoryStore,
   HooksEngine,
+  LlmContextSummarizer,
   LlmMemoryExtractor,
   MemoryService,
   createBuiltinTools,
   createChatModel,
+  createContextBudget,
   createTokenCounter,
   type ChatModelLike,
   type ResolvedConfig,
@@ -71,14 +73,28 @@ export function createRuntimeBootstrap(
       })
     : undefined;
 
+  const tokenCounter = createTokenCounter({
+    provider: config.LLM_PROVIDER,
+    model: config.LLM_MODEL,
+  });
+  const contextBudget = createContextBudget({
+    modelWindow: tokenCounter.modelWindow,
+    reservedOutput: config.CONTEXT.RESERVED_OUTPUT_TOKENS,
+    softThreshold: config.CONTEXT.CONTEXT_SOFT_THRESHOLD,
+    hardThreshold: config.CONTEXT.CONTEXT_HARD_THRESHOLD,
+  });
+  const contextSummarizer = new LlmContextSummarizer(model, {
+    maxTokens: config.CONTEXT.SUMMARY_MAX_TOKENS,
+  });
+
   const harness: RuntimeHarness = {
     model,
     tools: createBuiltinTools(),
     hooks,
-    tokenCounter: createTokenCounter({
-      provider: config.LLM_PROVIDER,
-      model: config.LLM_MODEL,
-    }),
+    tokenCounter,
+    contextBudget,
+    contextSummarizer,
+    inlineToolResultLimit: config.CONTEXT.INLINE_TOOL_RESULT_LIMIT,
     ...(memory ? { memory } : {}),
     ...(memoryExtractor ? { memoryExtractor } : {}),
     ...(options.writeLock ? { writeLock: options.writeLock } : {}),

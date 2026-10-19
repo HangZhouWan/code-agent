@@ -88,7 +88,7 @@ const routes: FastifyPluginAsync<RuntimeSessionRoutesOptions> = async (
     return options.sessions.get(sessionId);
   });
 
-  app.delete("/:id", async (request, reply) => {
+  app.delete("/:id", async (request) => {
     const { id } = request.params as { id: string };
     const sessionId = asSessionId(id);
     await options.sessionService.disposeSession(sessionId);

@@ -66,6 +66,12 @@ try {
     },
   });
 
+  // 持久化 metafile 供 bundle guard 检查
+  writeFileSync(
+    resolve(rootDir, "dist/metafile.json"),
+    JSON.stringify(result.metafile),
+  );
+
   // Report bundle size
   const stats = result.metafile.outputs[outFile];
   if (stats) {

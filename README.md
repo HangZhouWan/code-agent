@@ -8,197 +8,61 @@
 
 ## 架构概览
 
-```
-                       User
-                        │
-              ┌─────────┴─────────┐
-              │                   │
-         Web Chat UI         CLI REPL
-              │                   │
-         API Gateway              │
-              │                   │
-┌────────────────────────▼──────────────────────────┐
-│                   Orchestrator                      │
-│                                                     │
-│  Planner ──→ Dispatcher ──→ Replanner              │
-│                                                     │
-│                   Finalizer                         │
-└────────────────────────┬──────────────────────────┘
-                         │
-┌────────────────────────▼──────────────────────────┐
-│                   State Manager                     │
-│  Task State │ Workflow State │ Agent State │ Artifact│
-└────────────────────────┬──────────────────────────┘
-                         │
-┌────────────────────────▼──────────────────────────┐
-│                    Event Bus                        │
-│  Command Topics: agent.command.*                    │
-│  Event Topics:  agent.event.*                       │
-└──────┬────────────────┬──────────────────┬──────────┘
-       │                │                  │
-┌──────▼──────┐  ┌──────▼──────┐  ┌───────▼──────┐
-│  Code Agent │  │ Test Agent  │  │  Doc Agent   │ ...
-│             │  │             │  │              │
-│ Role        │  │ Role        │  │ Role         │
-│ Reasoning   │  │ Reasoning   │  │ Reasoning    │
-│ Runtime     │  │ Runtime     │  │ Runtime      │
-│ Capability  │  │ Capability  │  │ Capability   │
-└─────────────┘  └─────────────┘  └──────────────┘
+> **架构状态（2026-10）**：项目已完成架构重写。完整设计见 [docs/architecture/overview.md](docs/architecture/overview.md)；下文功能说明保留作能力参考，实现细节与协议以架构文档为准。
 
-┌────────────────────────────────────────────────────┐
-│                 Agent Runtime (横向)                 │
-│                                                     │
-│  Execution Engine ──→ Checkpoint Manager            │
-│         │                                           │
-│    Context Mgr ──→ Memory (short/long/working)      │
-│         │                                           │
-│    Tool Runtime ──→ Permission ──→ Hooks            │
-└────────────────────────────────────────────────────┘
+```
+                User
+                  │
+        ┌─────────┴─────────┐
+      Web UI              CLI
+        │                  │
+   Fastify Gateway     Runtime Adapters
+        └─────────┬────────┘
+                  │
+          @code-agent/runtime
+     AgentSession + LangGraph
+                  │
+          @code-agent/core
+  Harness：tools / permissions / hooks /
+  context / memory / checkpoint / engine
+                  │
+          @code-agent/protocol
 ```
 
-### 五层架构
-
-| 层级 | 组件 | 职责 |
-|------|------|------|
-| **第一层** | Orchestrator | Planner 规划 → Dispatcher 双通道派发 → Replanner 修正 → Finalizer 报告 |
-| **第二层** | State Manager | 全局状态：Task / Workflow / Agent / Artifact 的状态流转 |
-| **第三层** | Event Bus | Agent 间通信：Command（指令）+ Event（通知）双通道 |
-| **第四层** | Agent | 分角色 Agent（Code / Test / Doc），Role → Reasoning → Runtime → Capability |
-| **第五层** | Agent Runtime | Execution Engine + Checkpoint + Context + Memory（三层记忆） |
-
-### 核心设计约束
-
-- **Harness 是唯一执行通道**：Agent 不能绕过 Runtime 直接调用工具或 LLM
-- **Event Bus 是唯一通信通道**：Agent 之间不直接调用，通过 Command/Event 通信
-- **State Manager 是所有状态的唯一真相源**：Orchestrator 和 Agent 都通过它读写状态
-- **LLM 抽象层**向上层屏蔽不同模型 API 的差异
-
----
-
-## 技术栈
-
-| 维度 | 技术 | 说明 |
-|------|------|------|
-| 语言 | TypeScript | 全栈类型安全 |
-| 运行时 | Node.js 22+ | LTS，ESM 原生支持 |
-| 包管理 | pnpm + monorepo | 多包隔离，workspace 协议 |
-| LLM 框架 | LangChain.js + LangGraph | LLM 抽象、工具系统、Agent 编排 |
-| 后端框架 | Fastify 5 + @fastify/websocket | 高性能 HTTP + WebSocket |
-| 数据库 | SQLite (better-sqlite3) + Drizzle ORM | 零配置、轻量级 |
-| 前端 | React 19 + Vite 7 | 现代化前端工具链 |
-| 样式 | Tailwind CSS 4 | 原子化 CSS |
-| Markdown | react-markdown + remark-gfm | Agent 回复渲染 |
-
----
+- **单向依赖**：`protocol ← core ← runtime ← {server, cli}`，`web ← protocol`。
+- **统一会话核心**：`AgentSession` 输出域事件流，WebSocket / CLI 只做协议适配。
+- **角色多 Agent**：Code / Test / Doc / Review，支持 direct 与 Event Bus 双通道派发。
+- **可恢复**：会话级 + 任务级 checkpoint，租约、原子写、副作用分类。
+- **统一配置**：全局 / 项目 / .env / 环境变量由同一个 loader 合并。
 
 ## 项目结构
 
 ```
-my-agent/
+code-agent/
 ├── pnpm-workspace.yaml
-├── package.json
-├── tsconfig.base.json
-├── .env.example
+├── package.json / tsconfig.json / tsconfig.base.json
 ├── docs/
-│   ├── 2026-07-02-general-agent-design.md
-│   ├── 2026-07-02-technical-implementation.md
-│   ├── implementation-plan-*.md
-│   └── superpowers/specs/
-│       ├── 2026-07-15-multi-agent-architecture-design.md   # 多 Agent 架构设计
-│       ├── 2026-07-15-step1-event-bus-state-manager.md     # Step 1 详细计划
-│       ├── 2026-07-15-step2-runtime-upgrade.md             # Step 2 详细计划
-│       ├── 2026-07-15-step3-agent-base-class.md            # Step 3 详细计划
-│       ├── 2026-07-15-step4-orchestrator-refactor.md       # Step 4 详细计划
-│       └── 2026-07-15-step5-role-agents-integration.md     # Step 5 详细计划
+│   └── architecture/                # 新架构设计（overview/packages/protocol/…）
 ├── packages/
-│   ├── core/                        # @code-agent/core — 核心引擎
-│   │   └── src/
-│   │       ├── llm/                 # LLM 抽象层（工厂、协议检测、重试）
-│   │       ├── tools/               # 工具层（File、Shell、Search、Git、Web）
-│   │       ├── event-bus/           # Event Bus（Command + Event 双通道）
-│   │       │   ├── bus.ts           #   InMemoryEventBus 实现
-│   │       │   └── types.ts         #   消息类型定义
-│   │       ├── state/               # State Manager（全局状态管理）
-│   │       │   ├── manager.ts       #   InMemoryStateManager 实现
-│   │       │   └── types.ts         #   Task/Workflow/Agent/Artifact 状态
-│   │       ├── harness/             # Agent Runtime
-│   │       │   ├── sandbox/         #   权限沙箱（注册表 + 守卫）
-│   │       │   ├── hooks/           #   Hooks 引擎 + 内置 Hooks
-│   │       │   ├── context/         #   上下文管理 + 压缩
-│   │       │   ├── execution/       #   Execution Engine + Checkpoint Manager
-│   │       │   │   ├── engine.ts    #     ReAct 循环驱动
-│   │       │   │   └── checkpoint.ts #   执行快照持久化
-│   │       │   └── memory/          #   三层记忆（short/long/working）
-│   │       │       ├── short-term.ts
-│   │       │       ├── long-term.ts
-│   │       │       └── working.ts
-│   │       └── agent/               # Agent 层
-│   │           ├── agent.ts         #   Agent 基类
-│   │           ├── worker.ts        #   WorkerAgent（兼容层）
-│   │           ├── registry.ts      #   AgentRegistry 注册中心
-│   │           ├── role.ts          #   角色定义 + system prompt
-│   │           ├── reasoning.ts     #   ReAct 推理循环
-│   │           ├── types.ts         #   Agent 类型定义
-│   │           └── roles/           #   内置角色
-│   │               ├── code.ts      #     Code Agent
-│   │               ├── test.ts      #     Test Agent
-│   │               └── doc.ts       #     Doc Agent
-│   │
-│   ├── server/                      # @code-agent/server — 后端服务
-│   │   └── src/
-│   │       ├── gateway/             # Fastify HTTP + WebSocket 网关
-│   │       │   ├── routes/          #   RESTful 路由（会话、工具审批、Agent 列表）
-│   │       │   ├── ws/              #   WebSocket 聊天端点
-│   │       │   └── middleware/      #   全局错误处理
-│   │       ├── orchestrator/        # LangGraph 编排器
-│   │       │   ├── graph.ts         #   状态图定义
-│   │       │   ├── state.ts         #   注解状态
-│   │       │   ├── types.ts         #   类型定义
-│   │       │   └── nodes/           #   编排节点
-│   │       │       ├── planner.ts   #     规划节点
-│   │       │       ├── dispatcher.ts #    双通道派发节点
-│   │       │       ├── replanner.ts #     重规划节点
-│   │       │       └── finalizer.ts #     最终报告节点
-│   │       └── db/                  # SQLite 数据库
-│   │           ├── schema.ts        #   Drizzle schema
-│   │           ├── connection.ts    #   数据库连接
-│   │           └── repositories/    #   数据访问层
-│   │               ├── sessions.ts
-│   │               ├── messages.ts
-│   │               ├── tasks.ts
-│   │               ├── artifacts.ts
-│   │               └── events.ts
-│   │
-│   └── web/                         # @code-agent/web — React 前端
-│       └── src/
-│           ├── components/          # UI 组件
-│           │   ├── Sidebar.tsx
-│           │   ├── ChatArea.tsx
-│           │   ├── MessageList.tsx
-│           │   ├── TextMessage.tsx
-│           │   ├── ToolCallCard.tsx
-│           │   ├── ConfirmCard.tsx
-│           │   └── InputBar.tsx
-│           ├── hooks/               # 自定义 Hooks
-│           │   ├── useWebSocket.ts
-│           │   └── useSessions.ts
-│           └── stores/              # 状态管理
-│               └── chatStore.ts
-│
-│   └── cli/                          # code-agent — 命令行 REPL（发布为 npm 包）
-│       └── src/
-│           ├── index.ts             #   入口 — Claude Code-style CLI，支持 REPL + 单次查询
-│           ├── args.ts              #   参数解析（工作区路径、查询文本、标志位）
-│           ├── repl.ts              #   REPL 循环 — readline + 命令分发 + 流式输出
-│           ├── config.ts            #   分层配置加载（全局 → 项目 → .env → 环境变量）
-│           ├── config-loader.ts     #   配置加载器 + Zod 校验
-│           ├── format.ts            #   ANSI 终端格式化
-│           ├── approval.ts          #   stdin 交互式工具审批
-│           └── scripts/
-│               └── bundle.js        #   esbuild 打包脚本（内联 core + server）
+│   ├── protocol/                    # @code-agent/protocol — 跨包契约（浏览器安全）
+│   ├── core/                        # @code-agent/core — Harness 原语
+│   │   └── src/{config,llm,tools,permissions,hooks,context,memory,checkpoint,execution,bus,state}
+│   ├── runtime/                     # @code-agent/runtime — AgentSession + LangGraph 编排
+│   ├── server/                      # @code-agent/server — Fastify + SQLite 端口实现
+│   ├── cli/                         # @code-agent/cli — REPL / print / setup（唯一发布包）
+│   ├── web/                         # @code-agent/web — React UI（聊天 + 只读工作区）
+│   └── testkit/                     # @code-agent/testkit — 测试 fakes / fixtures
 ```
 
----
+## 架构文档
+
+- [总览](docs/architecture/overview.md)
+- [包结构](docs/architecture/packages.md)
+- [协议](docs/architecture/protocol.md)
+- [Core / Harness](docs/architecture/harness.md)
+- [Runtime / AgentSession](docs/architecture/runtime.md)
+- [适配器](docs/architecture/adapters.md)
+- [关键决策](docs/architecture/decisions.md)
 
 ## 快速开始
 
@@ -465,13 +329,22 @@ Agent 启动时声明能力范围（`tools` + `paths`），超出范围的调用
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `POST` | `/api/sessions` | 创建新会话 |
-| `GET` | `/api/sessions` | 获取会话列表 |
-| `WS` | `/api/sessions/:id/chat` | WebSocket 聊天（流式推送） |
-| `GET` | `/api/sessions/:id/history` | 获取历史消息 |
+| `GET` | `/api/health` | 健康检查 |
+| `GET` / `POST` | `/api/sessions` | 列出 / 创建会话 |
+| `GET` | `/api/sessions/:id/history` | 会话与消息历史 |
+| `PATCH` | `/api/sessions/:id/title` | 更新标题 |
 | `DELETE` | `/api/sessions/:id` | 删除会话 |
-| `POST` | `/api/tools/:callId/approve` | 工具审批回调 |
-| `GET` | `/api/agents` | 获取可用 Agent 列表及状态 |
+| `WS` | `/api/sessions/:id/chat` | 会话事件流 |
+| `POST` | `/api/tools/:callId/approve` | 审批 fallback（需要 sessionId） |
+| `GET` | `/api/config/status` | 是否已完成配置 |
+| `GET` | `/api/config/providers` | Provider 元数据 |
+| `POST` | `/api/config` | 保存全局配置 |
+| `GET` | `/api/agents` | 角色列表 |
+| `GET` | `/api/workspace/tree` | 目录懒加载 |
+| `GET` | `/api/workspace/file` | 只读文件内容 |
+| `GET` | `/api/workspace/diff` | 文件 diff |
+| `GET` | `/api/workspace/git/status` | Git 状态 |
+| `WS` | `/api/workspace/events` | 工作区变更通知 |
 
 ### WebSocket 消息协议
 
@@ -480,21 +353,21 @@ Agent 启动时声明能力范围（`tools` + `paths`），超出范围的调用
 ```json
 { "type": "message", "content": "帮我重构这段代码" }
 { "type": "approval", "callId": "xxx", "approved": true }
+{ "type": "answer", "questionId": "xxx", "answer": "yes" }
+{ "type": "abort", "runId": "xxx", "reason": "user cancelled" }
+{ "type": "resume", "runId": "xxx" }
 ```
 
 **服务端 → 客户端**：
 
 ```json
-{ "type": "text", "delta": "好的，我来分析..." }
-{ "type": "tool_start", "tool": "code_search", "args": { ... } }
-{ "type": "tool_end", "tool": "code_search", "result": "..." }
-{ "type": "agent_start", "agent": "Code Agent", "task": "重构 auth 模块" }
-{ "type": "agent_end", "agent": "Code Agent", "result": "success" }
-{ "type": "done", "finalResponse": "重构完成..." }
-{ "type": "error", "message": "错误描述" }
+{ "type": "ready", "sessionId": "xxx", "lastSeq": 0 }
+{ "type": "event", "event": { "v": 1, "sessionId": "...", "runId": "...", "seq": 1, "ts": "...", "event": { "type": "message.delta", "delta": "..." } } }
+{ "type": "error", "error": { "code": "INTERNAL", "message": "...", "retryable": false } }
 ```
 
----
+`SessionEvent` 的完整类型见 [protocol.md](docs/architecture/protocol.md)。
+
 
 ## 配置参考
 
@@ -519,10 +392,10 @@ CLI 支持分层配置，优先级从低到高：
 | `LLM_API_KEY` | 是 | - | API 密钥 |
 | `LLM_BASE_URL` | 否 | - | 自定义 API 端点 |
 | `LLM_MAX_RETRIES` | 否 | `3` | 最大重试次数 |
-| `HOST` | 否 | `0.0.0.0` | 服务主机地址 |
+| `HOST` | 否 | `127.0.0.1` | 服务主机地址 |
 | `PORT` | 否 | `3000` | 服务端口 |
-| `WORKSPACE_PATH` | 否 | `./workspace` | Agent 工作目录 |
-| `DB_PATH` | 否 | `./data/my-agent.db` | SQLite 数据库路径 |
+| `WORKSPACE_PATH` | 否 | 当前目录 | Agent 工作目录 |
+| `DB_PATH` | 否 | `<workspace>/.agent/data/code-agent.db` | SQLite 数据库路径 |
 
 ---
 
@@ -530,41 +403,38 @@ CLI 支持分层配置，优先级从低到高：
 
 | 阶段 | 内容 | 状态 |
 |------|------|------|
-| Phase 1 | monorepo 搭建、LLM 抽象层、基础工具、单 Agent 对话循环 | ✅ 完成 |
-| Phase 2 | Harness 核心：权限沙箱 + Hooks 引擎 + 上下文管理 | ✅ 完成 |
-| Phase 3 | LangGraph Orchestrator + WorkerAgent 派发 | ✅ 完成 |
-| Phase 4 | API Gateway (Fastify + WebSocket) + 数据库 | ✅ 完成 |
-| Phase 5 | React 聊天界面 + 流式显示 + 审批卡片 | ✅ 完成 |
-| Step 1 | EventBus + StateManager 基础设施 | ✅ 完成 |
-| Step 2 | ExecutionEngine + Checkpoint + Memory 三层记忆 | ✅ 完成 |
-| Step 3 | Agent 基类 + AgentRegistry + 角色定义 | ✅ 完成 |
-| Step 4 | Orchestrator 改造：双通道 Dispatcher + Replanner + Finalizer | ✅ 完成 |
-| Step 5 | 角色 Agent（Code/Test/Doc）+ Storage 扩展 + 端到端集成 | ✅ 完成 |
-| — | CLI REPL entry point（全局命令 + 分层配置 + 非交互模式） | ✅ 完成 |
-| — | esbuild 单包打包（core + server → code-agent）+ npm publish 就绪 | ✅ 完成 |
+| Phase 0 | 架构设计落盘 + 基线工具链 | ✅ |
+| Phase 1 | `@code-agent/protocol` 契约 | ✅ |
+| Phase 2 | core 统一配置 / 路径 / LLM | ✅ |
+| Phase 3 | core 工具 / 权限 / 上下文 / 记忆 | ✅ |
+| Phase 4 | core bus / state / checkpoint / execution | ✅ |
+| Phase 5 | runtime AgentSession 会话平面 | ✅ |
+| Phase 6 | LangGraph 编排 + direct/bus dispatcher | ✅ |
+| Phase 7 | 显式恢复 / 租约 / 副作用策略 | ✅ |
+| Phase 8 | CLI 切换到 runtime | ✅ |
+| Phase 9 | Server 切换到 runtime + SQLite ports | ✅ |
+| Phase 10 | Web 协议迁移 + 只读工作区 | ✅ |
+| Phase 11 | 清理 legacy + 最终验证 | ✅ |
 
----
 
 ## 文档索引
 
-- [需求设计文档](docs/2026-07-02-general-agent-design.md) — 产品需求与架构设计
-- [技术实现文档](docs/2026-07-02-technical-implementation.md) — 详细技术方案与代码示例
-- [多 Agent 架构改进设计](docs/superpowers/specs/2026-07-15-multi-agent-architecture-design.md) — 五层架构设计总览
-- [Step 1 — EventBus + StateManager](docs/superpowers/specs/2026-07-15-step1-event-bus-state-manager.md)
-- [Step 2 — ExecutionEngine + Checkpoint + Memory](docs/superpowers/specs/2026-07-15-step2-runtime-upgrade.md)
-- [Step 3 — Agent 基类 + AgentRegistry](docs/superpowers/specs/2026-07-15-step3-agent-base-class.md)
-- [Step 4 — Orchestrator 改造](docs/superpowers/specs/2026-07-15-step4-orchestrator-refactor.md)
-- [Step 5 — 角色 Agent + Storage + 集成](docs/superpowers/specs/2026-07-15-step5-role-agents-integration.md)
-- [实现计划 01 — Monorepo](docs/implementation-plan-01-monorepo.md)
-- [实现计划 02 — LLM 抽象层](docs/implementation-plan-02-llm-abstraction.md)
-- [实现计划 03 — 工具层](docs/implementation-plan-03-tools-layer.md)
-- [实现计划 04 — Agent Runtime](docs/implementation-plan-04-agent-runtime.md)
-- [实现计划 05 — Agent 编排](docs/implementation-plan-05-agent-orchestration.md)
-- [实现计划 06 — API Gateway](docs/implementation-plan-06-api-gateway.md)
-- [实现计划 07 — 数据库](docs/implementation-plan-07-database.md)
-- [实现计划 08 — Web 前端](docs/implementation-plan-08-web-frontend.md)
+**新架构（当前）**
 
----
+- [架构总览](docs/architecture/overview.md)
+- [包结构](docs/architecture/packages.md)
+- [协议](docs/architecture/protocol.md)
+- [Core / Harness](docs/architecture/harness.md)
+- [Runtime / AgentSession](docs/architecture/runtime.md)
+- [适配器](docs/architecture/adapters.md)
+- [关键决策](docs/architecture/decisions.md)
+
+**历史设计资料**
+
+- [多 Agent 架构改进设计](docs/superpowers/specs/2026-07-15-multi-agent-architecture-design.md)
+- [技术实现文档](docs/2026-07-02-technical-implementation.md)
+- `docs/implementation-plan-*.md`、`docs/superpowers/plans/*`、`docs/superpowers/specs/*`
+
 
 ## License
 

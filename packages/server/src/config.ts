@@ -1,7 +1,7 @@
 /**
  * Server 配置入口
  *
- * 配置合并逻辑统一在 @code-agent/core 的 loader 中，
+ * 配置合并逻辑统一在 @code-agent/runtime（core loader）中，
  * 这里只保留 server 需要的向后兼容类型/函数。
  */
 
@@ -9,7 +9,7 @@ import {
   loadConfig as loadCoreConfig,
   type LoadConfigOptions,
   type ResolvedConfig,
-} from "@code-agent/core";
+} from "@code-agent/runtime";
 
 export type EnvConfig = ResolvedConfig;
 export type { LoadConfigOptions };

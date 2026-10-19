@@ -4,12 +4,14 @@
   "scripts": {
     "dev": "tsc -b && pnpm --parallel -r dev",
     "cli": "tsc -b && pnpm --filter @code-agent/cli dev",
+    "clean": "node -e \"const fs=require('fs');for(const p of fs.readdirSync('packages'))fs.rmSync('packages/'+p+'/dist',{recursive:true,force:true})\"",
     "build": "pnpm -r build",
     "publish:cli": "pnpm --filter @code-agent/cli publish:npm",
     "lint": "eslint packages",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
-    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+    "test:bundle": "node packages/cli/scripts/check-bundle.js",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm test:bundle"
   },
   "packageManager": "pnpm@10.33.2",
   "pnpm": {

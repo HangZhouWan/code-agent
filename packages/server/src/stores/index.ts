@@ -2,10 +2,10 @@
  * Server 持久化端口组合
  */
 
-import type { CheckpointStore } from "@code-agent/core";
 import {
   SystemClock,
   UuidIdGenerator,
+  type CheckpointStore,
   type RuntimePorts,
 } from "@code-agent/runtime";
 import type { ServerDb } from "../db/server-db.js";

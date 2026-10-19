@@ -20,7 +20,7 @@ import {
 } from "@code-agent/protocol";
 import type { ToolContext } from "../tools/base.js";
 import type { ToolExecutionDependencies } from "../tools/middleware.js";
-import type { HooksEngine } from "../harness/hooks/engine.js";
+import type { HooksEngine } from "../hooks/engine.js";
 import type {
   AgentCheckpointSink,
   AgentCheckpointV1,
@@ -32,7 +32,17 @@ import {
   extractText,
   extractToolCalls,
   serializeMessages,
+  toLangChainMessages,
 } from "./messages.js";
+import {
+  compactContext,
+  renderContextSummary,
+} from "../context/compressor.js";
+import { createHeuristicTokenCounter } from "../context/token-counter.js";
+import type {
+  ContextBudget,
+  ContextSummarizer,
+} from "../context/types.js";
 import { buildInitialMessages, buildSystemPrompt } from "./prompt-builder.js";
 import { parseFallbackThought } from "./thought-parser.js";
 import { ToolExecutor } from "./tool-executor.js";
@@ -51,6 +61,9 @@ export interface AgentExecutionEngineOptions {
   toolDependencies?: ToolExecutionDependencies;
   hooks?: HooksEngine;
   tokenCounter?: TokenCounterLike;
+  contextBudget?: ContextBudget;
+  contextSummarizer?: ContextSummarizer;
+  inlineToolResultLimit?: number;
   onCheckpointError?: (error: unknown) => void;
   now?: () => string;
 }
@@ -69,6 +82,7 @@ function toJsonValue(value: unknown): JsonValue {
 export class AgentExecutionEngine implements AgentInvoker {
   private readonly supportsNative: boolean;
   private readonly now: () => string;
+  private readonly tokenCounter?: TokenCounterLike;
 
   constructor(
     private readonly model: ChatModelLike,
@@ -76,6 +90,11 @@ export class AgentExecutionEngine implements AgentInvoker {
   ) {
     this.supportsNative = options.supportsNativeToolCalling ?? true;
     this.now = options.now ?? (() => new Date().toISOString());
+    this.tokenCounter =
+      options.tokenCounter ??
+      (options.contextBudget
+        ? createHeuristicTokenCounter(options.contextBudget.modelWindow)
+        : undefined);
   }
 
   async invoke(
@@ -134,8 +153,7 @@ export class AgentExecutionEngine implements AgentInvoker {
           step,
           status,
           messages: serialized,
-          tokenCount:
-            this.options.tokenCounter?.countMessages(serialized) ?? 0,
+          tokenCount: this.tokenCounter?.countMessages(serialized) ?? 0,
           toolHistory: [...toolHistory],
           ...(pendingTool ? { pendingTool } : {}),
           startedAt,
@@ -194,6 +212,47 @@ export class AgentExecutionEngine implements AgentInvoker {
     }
   }
 
+  private async compactIfNeeded(messages: BaseMessage[]): Promise<void> {
+    if (!this.options.contextBudget || !this.tokenCounter) return;
+
+    const serialized = serializeMessages(messages);
+    const result = await compactContext({
+      messages: serialized,
+      budget: this.options.contextBudget,
+      counter: this.tokenCounter,
+      ...(this.options.contextSummarizer
+        ? { summarizer: this.options.contextSummarizer }
+        : {}),
+      ...(this.options.inlineToolResultLimit
+        ? { inlineToolResultLimit: this.options.inlineToolResultLimit }
+        : {}),
+    });
+
+    if (result.strategy === "none") return;
+
+    const rebuilt = toLangChainMessages(result.messages);
+    if (result.summary) {
+      rebuilt.splice(
+        rebuilt.length > 0 ? 1 : 0,
+        0,
+        new SystemMessage({
+          content: renderContextSummary(result.summary),
+        }),
+      );
+    }
+    messages.length = 0;
+    messages.push(...rebuilt);
+
+    await this.options.hooks?.trigger("context:compact", {
+      agentId: "engine",
+      data: {
+        beforeTokens: result.beforeTokens,
+        afterTokens: result.afterTokens,
+        strategy: result.strategy,
+      },
+    });
+  }
+
   private async runNative(
     input: AgentTaskInput,
     scope: RunScope,
@@ -224,6 +283,8 @@ export class AgentExecutionEngine implements AgentInvoker {
         agentId: input.role,
         data: { step, messageCount: messages.length },
       });
+
+      await this.compactIfNeeded(messages);
 
       let response: BaseMessage;
       try {
@@ -355,6 +416,8 @@ export class AgentExecutionEngine implements AgentInvoker {
         return this.abortResult(input, isTimedOut());
       }
       await saveCheckpoint(step, "running");
+
+      await this.compactIfNeeded(messages);
 
       let response: BaseMessage;
       try {

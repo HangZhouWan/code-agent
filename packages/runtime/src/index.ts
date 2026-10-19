@@ -83,7 +83,11 @@ export type {
   LoadConfigOptions,
   ResolvedConfig,
 } from "@code-agent/core";
-export type { MemoryService } from "@code-agent/core";
+export type {
+  MemoryService,
+  ChatModelLike,
+  CheckpointStore,
+} from "@code-agent/core";
 export type {
   CreateSessionInput,
   RecoveryReport,

@@ -7,10 +7,10 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AIMessage } from "@langchain/core/messages";
-import type { ChatModelLike } from "@code-agent/core";
 import {
   createInMemoryPorts,
   createRuntime,
+  type ChatModelLike,
   type Runtime,
 } from "@code-agent/runtime";
 import { SessionService } from "../../session/session-service.js";

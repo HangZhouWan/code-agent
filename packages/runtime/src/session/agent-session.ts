@@ -13,6 +13,8 @@ import {
   createMemoryTools,
   type ChatModelLike,
   type CollaborationToolService,
+  type ContextBudget,
+  type ContextSummarizer,
   type HooksEngine,
   type MemoryExtractor,
   type MemoryService,
@@ -94,6 +96,9 @@ export interface AgentSessionOptions {
   memory?: MemoryService;
   memoryExtractor?: MemoryExtractor;
   tokenCounter?: TokenCounterLike;
+  contextBudget?: ContextBudget;
+  contextSummarizer?: ContextSummarizer;
+  inlineToolResultLimit?: number;
   writeLock?: <T>(fn: () => Promise<T>) => Promise<T>;
   maxIterations?: number;
   approvalTimeoutMs?: number;
@@ -187,6 +192,15 @@ export class AgentSession {
       },
       ...(options.hooks ? { hooks: options.hooks } : {}),
       ...(options.tokenCounter ? { tokenCounter: options.tokenCounter } : {}),
+      ...(options.contextBudget
+        ? { contextBudget: options.contextBudget }
+        : {}),
+      ...(options.contextSummarizer
+        ? { contextSummarizer: options.contextSummarizer }
+        : {}),
+      ...(options.inlineToolResultLimit
+        ? { inlineToolResultLimit: options.inlineToolResultLimit }
+        : {}),
       onCheckpointError: (error) => {
         console.error("[agent-session] checkpoint save failed", error);
       },

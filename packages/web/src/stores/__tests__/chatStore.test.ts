@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { chatReducer, dbMessagesToMessages, type ChatState, type Message, type DBMessageRow } from "../chatStore.js";
+import { chatReducer, dbMessagesToMessages, type ChatState, type Message } from "../chatStore.js";
 
 // ---------------------------------------------------------------------------
 // 辅助
