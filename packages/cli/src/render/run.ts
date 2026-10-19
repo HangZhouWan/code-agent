@@ -23,16 +23,27 @@ export async function consumeRun(
 ): Promise<RunResult> {
   const toolNames = new Map<string, string>();
   let printedAssistant = false;
+  let streamedText = false;
 
   const streamed = (async () => {
     for await (const envelope of handle.events) {
       const event = envelope.event;
 
       switch (event.type) {
+        case "message.delta":
+          streamedText = true;
+          process.stdout.write(event.delta);
+          break;
+
         case "message.completed":
           if (event.message.role === "assistant") {
             printedAssistant = true;
-            process.stdout.write(`\n${event.message.content}\n`);
+            if (streamedText) {
+              streamedText = false;
+              process.stdout.write("\n");
+            } else {
+              process.stdout.write(`\n${event.message.content}\n`);
+            }
           }
           break;
 

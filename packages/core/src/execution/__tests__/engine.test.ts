@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import {
   AIMessage,
+  AIMessageChunk,
   ToolMessage,
   type BaseMessage,
 } from "@langchain/core/messages";
@@ -71,6 +72,21 @@ class ScriptedModel implements ChatModelLike {
     const next = this.responses.shift();
     if (!next) throw new Error("no scripted response left");
     return next;
+  }
+}
+
+class StreamingModel implements ChatModelLike {
+  bindTools(): ChatModelLike {
+    return this;
+  }
+
+  async invoke(): Promise<BaseMessage> {
+    throw new Error("invoke should not be used");
+  }
+
+  async *stream(): AsyncIterable<BaseMessage> {
+    yield new AIMessageChunk({ content: "he" });
+    yield new AIMessageChunk({ content: "llo" });
   }
 }
 
@@ -258,6 +274,24 @@ describe("native tool calling", () => {
 
     expect(result.status).toBe("success");
     expect(compacted.length).toBeGreaterThan(0);
+  });
+
+  it("流式输出 message.delta 并聚合最终内容", async () => {
+    const events: SessionEvent[] = [];
+    const engine = new AgentExecutionEngine(new StreamingModel());
+    const { scope: runScope } = scope({
+      emit: (event) => events.push(event),
+    });
+
+    const result = await engine.invoke(input(), runScope);
+
+    expect(result.status).toBe("success");
+    expect(result.summary).toBe("hello");
+    expect(
+      events
+        .filter((event) => event.type === "message.delta")
+        .map((event) => (event.type === "message.delta" ? event.delta : "")),
+    ).toEqual(["he", "llo"]);
   });
 
   it("未知工具返回错误但模型仍可完成", async () => {

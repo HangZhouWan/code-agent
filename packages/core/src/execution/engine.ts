@@ -5,9 +5,11 @@
  */
 
 import {
+  AIMessage,
   HumanMessage,
   SystemMessage,
   ToolMessage,
+  type AIMessageChunk,
   type BaseMessage,
 } from "@langchain/core/messages";
 import type { StructuredTool } from "@langchain/core/tools";
@@ -52,6 +54,10 @@ export interface ChatModelLike {
     messages: BaseMessage[],
     options?: { signal?: AbortSignal },
   ): Promise<BaseMessage>;
+  stream?(
+    messages: BaseMessage[],
+    options?: { signal?: AbortSignal },
+  ): AsyncIterable<BaseMessage>;
   bindTools?(tools: StructuredTool[]): ChatModelLike;
 }
 
@@ -70,6 +76,19 @@ export interface AgentExecutionEngineOptions {
 
 const DEFAULT_MAX_ITERATIONS = 15;
 const DEFAULT_TIMEOUT_MS = 300_000;
+
+function concatMessages(
+  left: BaseMessage,
+  right: BaseMessage,
+): BaseMessage {
+  const candidate = left as unknown as {
+    concat?: (other: AIMessageChunk) => BaseMessage;
+  };
+  if (typeof candidate.concat === "function") {
+    return candidate.concat(right as AIMessageChunk);
+  }
+  return right;
+}
 
 function toJsonValue(value: unknown): JsonValue {
   try {
@@ -288,9 +307,29 @@ export class AgentExecutionEngine implements AgentInvoker {
 
       let response: BaseMessage;
       try {
-        response = await bound.invoke(messages, {
-          signal: controller.signal,
-        });
+        if (typeof bound.stream === "function") {
+          let aggregate: BaseMessage | undefined;
+          for await (const chunk of bound.stream(messages, {
+            signal: controller.signal,
+          })) {
+            const delta = extractText(chunk);
+            if (delta) {
+              scope.emit?.({
+                type: "message.delta",
+                messageId: `assistant_${step}`,
+                delta,
+              });
+            }
+            aggregate = aggregate
+              ? concatMessages(aggregate, chunk)
+              : chunk;
+          }
+          response = aggregate ?? new AIMessage({ content: "" });
+        } else {
+          response = await bound.invoke(messages, {
+            signal: controller.signal,
+          });
+        }
       } catch (error) {
         if (controller.signal.aborted) {
           return this.abortResult(input, isTimedOut());

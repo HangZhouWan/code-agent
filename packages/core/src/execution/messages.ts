@@ -54,6 +54,51 @@ export function extractToolCalls(message: BaseMessage): ExtractedToolCall[] {
       }));
   }
 
+  // 流式 AIMessageChunk 的 tool_call_chunks（args 是增量 JSON 字符串）
+  const chunks = (message as unknown as {
+    tool_call_chunks?: Array<{
+      id?: string;
+      name?: string;
+      args?: string;
+      index?: number;
+    }>;
+  }).tool_call_chunks;
+
+  if (Array.isArray(chunks) && chunks.length > 0) {
+    const merged = new Map<
+      number,
+      { id: string; name: string; args: string }
+    >();
+
+    for (const chunk of chunks) {
+      const index = chunk.index ?? 0;
+      const current = merged.get(index) ?? {
+        id: chunk.id ?? `call-${index}`,
+        name: "",
+        args: "",
+      };
+      if (chunk.id) current.id = chunk.id;
+      if (chunk.name) current.name = chunk.name;
+      if (chunk.args) current.args += chunk.args;
+      merged.set(index, current);
+    }
+
+    return [...merged.values()]
+      .filter((call) => call.name.length > 0)
+      .map((call) => {
+        let args: Record<string, unknown> = {};
+        try {
+          const parsed: unknown = JSON.parse(call.args || "{}");
+          if (typeof parsed === "object" && parsed !== null) {
+            args = parsed as Record<string, unknown>;
+          }
+        } catch {
+          // 增量 JSON 不完整时保留空 args
+        }
+        return { id: call.id, name: call.name, args };
+      });
+  }
+
   // OpenAI 风格的 additional_kwargs.tool_calls
   const additional = (message as unknown as {
     additional_kwargs?: {
