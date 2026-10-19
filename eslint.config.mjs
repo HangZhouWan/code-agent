@@ -4,7 +4,7 @@
  * 目标：
  * - 统一 TypeScript 解析
  * - 强制包依赖方向（protocol ← core ← runtime ← {server, cli}，web ← protocol）
- * - 现有 legacy 代码先用 warn，迁移完成后在后续阶段收紧为 error
+ * - legacy 已删除，所有边界规则均为 error
  */
 
 import tseslint from "typescript-eslint";
@@ -51,7 +51,7 @@ export default tseslint.config(
     files: ["packages/core/**/*.ts"],
     rules: {
       "no-restricted-imports": [
-        "warn",
+        "error",
         {
           patterns: [
             "@code-agent/runtime",
@@ -81,11 +81,79 @@ export default tseslint.config(
     },
   },
 
-  // 适配器不能相互依赖（web 只能依赖 protocol）
+  // runtime.orchestrator 只能依赖 protocol/core 契约与注入的类型契约，
+  // 不能反向依赖会话平面（type-only 导入不产生运行时耦合，允许）
   {
-    files: ["packages/server/**/*.ts", "packages/cli/**/*.ts"],
+    files: ["packages/runtime/src/orchestrator/**/*.ts"],
     rules: {
-      "no-restricted-imports": ["warn", { patterns: ["@code-agent/web"] }],
+      "@typescript-eslint/no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "../ports/types.js",
+              allowTypeImports: true,
+              message: "orchestrator 只能把端口当作注入的类型契约使用",
+            },
+            {
+              name: "../../ports/types.js",
+              allowTypeImports: true,
+              message: "orchestrator 只能把端口当作注入的类型契约使用",
+            },
+            {
+              name: "../dispatch/task-dispatcher.js",
+              allowTypeImports: true,
+              message: "orchestrator 只能把 dispatcher 当作注入的类型契约使用",
+            },
+            {
+              name: "../../dispatch/task-dispatcher.js",
+              allowTypeImports: true,
+              message: "orchestrator 只能把 dispatcher 当作注入的类型契约使用",
+            },
+          ],
+          patterns: ["**/session/*", "**/approval/*"],
+        },
+      ],
+    },
+  },
+
+  // server 不能依赖 cli
+  {
+    files: ["packages/server/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { patterns: ["@code-agent/cli", "@code-agent/web"] },
+      ],
+    },
+  },
+
+  // cli 不能依赖 server（唯一发布包必须自包含）
+  {
+    files: ["packages/cli/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { patterns: ["@code-agent/server", "@code-agent/web"] },
+      ],
+    },
+  },
+
+  // web 只依赖 protocol
+  {
+    files: ["packages/web/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            "@code-agent/core",
+            "@code-agent/runtime",
+            "@code-agent/server",
+            "@code-agent/cli",
+          ],
+        },
+      ],
     },
   },
 );

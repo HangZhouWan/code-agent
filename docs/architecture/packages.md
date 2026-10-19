@@ -16,7 +16,7 @@ protocol ← web
 testkit ← 所有包的 devDependencies
 ```
 
-禁止反向依赖。ESLint `no-restricted-imports` 强制执行；迁移期间 legacy 代码允许 `warn`，新包必须 `error`。
+禁止反向依赖。ESLint `no-restricted-imports` 以 `error` 强制执行；`runtime/orchestrator` 内部额外禁止对 `session/**`、`approval/**` 的导入，`ports`/`dispatch` 只允许 type-only 导入（注入契约，不产生运行时耦合）。
 
 ## 2. 包职责与发布
 
@@ -26,7 +26,7 @@ testkit ← 所有包的 devDependencies
 | `@code-agent/core` | 是 | 否 | 可被 Node 使用，不依赖上层 |
 | `@code-agent/runtime` | 是 | 否 | 依赖 core + protocol |
 | `@code-agent/server` | 是 | 否 | 依赖 runtime + protocol |
-| `@code-agent/cli` | 否 | 是 | 唯一发布包；core/runtime 被打进 bundle |
+| `@code-agent/cli` | 是（`publish/` 清单可发布） | 是 | 唯一发布包；core/runtime 被打进 bundle，`publish-prep` 生成独立的发布清单 |
 | `@code-agent/web` | 是 | 否 | 只依赖 protocol |
 | `@code-agent/testkit` | 是 | 否 | 仅开发使用 |
 
