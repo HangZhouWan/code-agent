@@ -1,0 +1,33 @@
+{
+  "name": "@code-agent/runtime",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Application runtime for code-agent — AgentSession, orchestration, approvals, recovery",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@code-agent/core": "workspace:^",
+    "@code-agent/protocol": "workspace:^",
+    "@langchain/core": "^1.0.0",
+    "@langchain/langgraph": "^1.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.9"
+  }
+}

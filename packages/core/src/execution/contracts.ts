@@ -22,6 +22,7 @@ export interface RunScope {
   emit?: (event: SessionEvent) => void;
   requestApproval?: ToolContext["requestApproval"];
   withWriteLock?: ToolContext["withWriteLock"];
+  delegation?: ToolContext["delegation"];
 }
 
 export interface AgentTaskInput {

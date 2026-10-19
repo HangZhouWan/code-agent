@@ -5,7 +5,7 @@
  */
 
 import { z } from "zod";
-import type { ToolDefinition, ToolResult } from "../base.js";
+import type { ToolContext, ToolDefinition, ToolResult } from "../base.js";
 import { toolOk } from "../middleware.js";
 import { ToolNames } from "../tool-names.js";
 
@@ -18,21 +18,27 @@ export interface PlanTaskInput {
 }
 
 export interface CollaborationToolService {
-  delegate(input: {
-    role: string;
-    description: string;
-    context?: string;
-    files?: string[];
-    dependsOn?: string[];
-  }): Promise<unknown>;
+  delegate(
+    input: {
+      role: string;
+      description: string;
+      context?: string;
+      files?: string[];
+      dependsOn?: string[];
+    },
+    ctx?: ToolContext,
+  ): Promise<unknown>;
 
   updatePlan(tasks: PlanTaskInput[]): Promise<void>;
 
-  askUser(input: {
-    question: string;
-    options?: string[];
-    allowFreeText?: boolean;
-  }): Promise<string>;
+  askUser(
+    input: {
+      question: string;
+      options?: string[];
+      allowFreeText?: boolean;
+    },
+    ctx?: ToolContext,
+  ): Promise<string>;
 }
 
 export function createCollaborationTools(
@@ -51,14 +57,17 @@ export function createCollaborationTools(
     }),
     permission: "allow",
     sideEffect: "idempotent",
-    async execute(args, _ctx): Promise<ToolResult> {
-      const result = await service.delegate({
-        role: args.role,
-        description: args.description,
-        ...(args.context ? { context: args.context } : {}),
-        ...(args.files ? { files: args.files } : {}),
-        ...(args.dependsOn ? { dependsOn: args.dependsOn } : {}),
-      });
+    async execute(args, ctx): Promise<ToolResult> {
+      const result = await service.delegate(
+        {
+          role: args.role,
+          description: args.description,
+          ...(args.context ? { context: args.context } : {}),
+          ...(args.files ? { files: args.files } : {}),
+          ...(args.dependsOn ? { dependsOn: args.dependsOn } : {}),
+        },
+        ctx,
+      );
       return toolOk(
         typeof result === "string" ? result : JSON.stringify(result, null, 2),
       );
@@ -104,12 +113,15 @@ export function createCollaborationTools(
     }),
     permission: "allow",
     sideEffect: "none",
-    async execute(args, _ctx): Promise<ToolResult> {
-      const answer = await service.askUser({
-        question: args.question,
-        ...(args.options ? { options: args.options } : {}),
-        allowFreeText: args.allowFreeText,
-      });
+    async execute(args, ctx): Promise<ToolResult> {
+      const answer = await service.askUser(
+        {
+          question: args.question,
+          ...(args.options ? { options: args.options } : {}),
+          allowFreeText: args.allowFreeText,
+        },
+        ctx,
+      );
       return toolOk(`用户回答: ${answer}`);
     },
   };

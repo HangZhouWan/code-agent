@@ -13,6 +13,7 @@
 import { z } from 'zod';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import type { StructuredTool } from '@langchain/core/tools';
+import type { SessionEvent } from '@code-agent/protocol';
 
 /**
  * 权限级别
@@ -100,6 +101,17 @@ export interface ToolContext {
 
   /** 写操作互斥锁（跨会话共享） */
   withWriteLock?: <T>(fn: () => Promise<T>) => Promise<T>;
+
+  /** 委派上下文（delegate_task 使用） */
+  delegation?: {
+    depth: number;
+    maxDepth: number;
+    parentTaskId?: string;
+    allowedRoles?: string[];
+  };
+
+  /** 会话事件出口（工具内部触发交互时使用） */
+  emit?: (event: SessionEvent) => void;
 }
 
 /**

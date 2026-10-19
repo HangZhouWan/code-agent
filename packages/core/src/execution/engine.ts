@@ -18,7 +18,7 @@ import {
   type JsonValue,
   type TaskResult,
 } from "@code-agent/protocol";
-import type { ToolContext, ToolDefinition } from "../tools/base.js";
+import type { ToolContext } from "../tools/base.js";
 import type { ToolExecutionDependencies } from "../tools/middleware.js";
 import type { HooksEngine } from "../harness/hooks/engine.js";
 import type {
@@ -105,6 +105,8 @@ export class AgentExecutionEngine implements AgentInvoker {
         ? { requestApproval: scope.requestApproval }
         : {}),
       ...(scope.withWriteLock ? { withWriteLock: scope.withWriteLock } : {}),
+      ...(scope.delegation ? { delegation: scope.delegation } : {}),
+      ...(scope.emit ? { emit: scope.emit } : {}),
     };
 
     const toolExecutor = new ToolExecutor(
