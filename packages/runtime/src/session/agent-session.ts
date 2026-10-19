@@ -319,6 +319,10 @@ export class AgentSession {
     return this.activeRunId !== null;
   }
 
+  get lastSeq(): number {
+    return this.eventChannel.lastSeq;
+  }
+
   static async create(options: AgentSessionOptions): Promise<AgentSession> {
     const eventChannel = await EventChannel.create({
       sessionId: options.sessionId,

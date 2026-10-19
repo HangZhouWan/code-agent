@@ -73,6 +73,9 @@ export {
   loadConfig,
   maskApiKey,
   resolvePaths,
+  resolveWorkspacePath,
+  isPathWithin,
+  PathEscapeError,
 } from "@code-agent/core";
 export type {
   GlobalConfig,
@@ -99,7 +102,7 @@ export {
 export type {
   Clock,
   CreateRunInput,
-  CreateSessionInput as PortCreateSessionInput,
+  CreateSessionRecordInput,
   EventLog,
   IdGenerator,
   RunPatch,

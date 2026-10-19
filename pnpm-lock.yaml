@@ -141,6 +141,9 @@ importers:
       '@code-agent/protocol':
         specifier: workspace:^
         version: link:../protocol
+      '@code-agent/runtime':
+        specifier: workspace:^
+        version: link:../runtime
       '@fastify/cors':
         specifier: ^11.0.0
         version: 11.2.0

@@ -25,14 +25,14 @@ export interface IdGenerator {
   next(prefix: string): string;
 }
 
-export interface CreateSessionInput {
+export interface CreateSessionRecordInput {
   id: SessionId;
   title?: string;
   createdAt: string;
 }
 
 export interface SessionStore {
-  create(input: CreateSessionInput): Promise<SessionSummary>;
+  create(input: CreateSessionRecordInput): Promise<SessionSummary>;
   get(id: SessionId): Promise<SessionSummary | null>;
   list(): Promise<SessionSummary[]>;
   updateTitle(id: SessionId, title: string, updatedAt: string): Promise<void>;

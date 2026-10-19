@@ -32,6 +32,7 @@
   "dependencies": {
     "@code-agent/core": "workspace:^",
     "@code-agent/protocol": "workspace:^",
+    "@code-agent/runtime": "workspace:^",
     "fastify": "^5.3.0",
     "@fastify/websocket": "^11.0.0",
     "@fastify/cors": "^11.0.0",

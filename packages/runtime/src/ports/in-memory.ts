@@ -17,7 +17,7 @@ import type {
 import type {
   Clock,
   CreateRunInput,
-  CreateSessionInput,
+  CreateSessionRecordInput,
   EventLog,
   IdGenerator,
   RunPatch,
@@ -49,7 +49,7 @@ export class InMemorySessionStore implements SessionStore {
   private readonly sessions = new Map<SessionId, SessionSummary>();
   private readonly messages = new Map<SessionId, ChatMessage[]>();
 
-  async create(input: CreateSessionInput): Promise<SessionSummary> {
+  async create(input: CreateSessionRecordInput): Promise<SessionSummary> {
     const existing = this.sessions.get(input.id);
     if (existing) return clone(existing);
 
