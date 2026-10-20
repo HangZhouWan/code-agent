@@ -86,6 +86,43 @@ describe("InputBar", () => {
     expect(screen.getByPlaceholderText(/Agent is thinking/)).toBeInTheDocument();
   });
 
+  it("输入法组合期间按 Enter 不发送，组合结束后才发送", () => {
+    const onSend = vi.fn();
+    render(<InputBar onSend={onSend} />);
+    const textarea = screen.getByPlaceholderText(/Type a message/);
+    fireEvent.change(textarea, { target: { value: "你好" } });
+
+    fireEvent.compositionStart(textarea);
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(onSend).not.toHaveBeenCalled();
+
+    fireEvent.compositionEnd(textarea);
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(onSend).toHaveBeenCalledWith("你好");
+  });
+
+  it("isComposing 的 Enter 不触发发送", () => {
+    const onSend = vi.fn();
+    render(<InputBar onSend={onSend} />);
+    const textarea = screen.getByPlaceholderText(/Type a message/);
+    fireEvent.change(textarea, { target: { value: "你好" } });
+
+    fireEvent.keyDown(textarea, { key: "Enter", isComposing: true });
+
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("IME keyCode 229 的 Enter 不触发发送", () => {
+    const onSend = vi.fn();
+    render(<InputBar onSend={onSend} />);
+    const textarea = screen.getByPlaceholderText(/Type a message/);
+    fireEvent.change(textarea, { target: { value: "你好" } });
+
+    fireEvent.keyDown(textarea, { key: "Enter", keyCode: 229 });
+
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
   it("流式中应显示 Stop 而不是 Send", () => {
     render(<InputBar onSend={vi.fn()} onStop={vi.fn()} isStreaming />);
 

@@ -4,6 +4,7 @@
  * 支持：
  * - Enter 发送（无 Shift）
  * - Shift+Enter 换行
+ * - 输入法组合（选词）期间按 Enter 不触发发送
  * - 发送后自动清空并聚焦
  * - 内容为空、WebSocket 断开或 Agent 思考中时禁用发送按钮
  * - Agent 思考中时 Send 按钮切换为 Stop，可中断当前 run
@@ -54,6 +55,8 @@ export function InputBar({
 }: InputBarProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // 输入法是否处于组合状态（用 ref 避免异步 state 造成的时序问题）
+  const composingRef = useRef(false);
 
   // 流式期间禁止编辑/发送，但仍允许点击 Stop
   const inputDisabled = disabled || isStreaming;
@@ -77,12 +80,23 @@ export function InputBar({
   // ── 键盘事件处理 ──
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      // Enter 发送（不按 Shift）
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        handleSend();
+      // Shift+Enter 交给浏览器换行
+      if (e.key !== "Enter" || e.shiftKey) return;
+
+      // 中文/日文等输入法选词阶段按 Enter 只是确认候选词：
+      // - composingRef：compositionstart ~ compositionend 之间
+      // - isComposing：Chrome/Firefox 的键盘事件标记
+      // - keyCode 229：Safari 等浏览器在 IME 处理期间的标记
+      if (
+        composingRef.current ||
+        e.nativeEvent.isComposing ||
+        e.nativeEvent.keyCode === 229
+      ) {
+        return;
       }
-      // Shift+Enter 换行：使用默认行为，不处理
+
+      e.preventDefault();
+      handleSend();
     },
     [handleSend],
   );
@@ -101,6 +115,12 @@ export function InputBar({
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
+          onCompositionStart={() => {
+            composingRef.current = true;
+          }}
+          onCompositionEnd={() => {
+            composingRef.current = false;
+          }}
           disabled={inputDisabled}
           rows={2}
           placeholder={placeholder}
