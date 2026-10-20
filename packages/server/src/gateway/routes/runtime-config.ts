@@ -7,17 +7,28 @@
  * POST /            —— 保存配置；支持在首次配置之后修改
  */
 
+import { statSync } from "node:fs";
+import { resolve } from "node:path";
 import type { FastifyPluginAsync } from "fastify";
 import {
   PROVIDER_DEFINITIONS,
   PROVIDER_IDS,
-  llmConfigSchema,
+  globalConfigSchema,
 } from "@code-agent/protocol";
-import { GlobalConfigManager } from "@code-agent/runtime";
+import { GlobalConfigManager, expandHomePath } from "@code-agent/runtime";
 
 export interface RuntimeConfigRoutesOptions {
   /** 配置管理器；测试时可注入临时文件，默认 ~/.code-agent/config.json */
   manager?: GlobalConfigManager;
+}
+
+/** 判断路径是否存在且为目录 */
+function isDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 const routes: FastifyPluginAsync<RuntimeConfigRoutesOptions> = async (
@@ -72,7 +83,27 @@ const routes: FastifyPluginAsync<RuntimeConfigRoutesOptions> = async (
       delete merged.LLM_BASE_URL;
     }
 
-    const parsed = llmConfigSchema.safeParse(merged);
+    // 工作目录：空值表示回退到服务启动目录；否则必须是已存在的目录，
+    // 并规范化为绝对路径（支持 ~ 展开）。
+    if (merged.WORKSPACE_PATH === "" || merged.WORKSPACE_PATH === null) {
+      delete merged.WORKSPACE_PATH;
+    } else if (typeof merged.WORKSPACE_PATH === "string") {
+      const raw = merged.WORKSPACE_PATH.trim();
+      if (!raw) {
+        delete merged.WORKSPACE_PATH;
+      } else {
+        const resolved = resolve(process.cwd(), expandHomePath(raw));
+        if (!isDirectory(resolved)) {
+          return reply.status(400).send({
+            success: false,
+            error: `工作目录不存在或不是目录: ${resolved}`,
+          });
+        }
+        merged.WORKSPACE_PATH = resolved;
+      }
+    }
+
+    const parsed = globalConfigSchema.safeParse(merged);
     if (!parsed.success) {
       return reply.status(400).send({
         success: false,

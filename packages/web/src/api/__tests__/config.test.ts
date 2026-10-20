@@ -34,6 +34,7 @@ describe("fetchModelConfig", () => {
         LLM_MODEL: "claude-sonnet-4-5",
         LLM_API_KEY: "sk-a...1234",
         LLM_BASE_URL: "https://example.com/v1",
+        WORKSPACE_PATH: "/Users/me/projects/app",
       }),
     );
 
@@ -42,6 +43,7 @@ describe("fetchModelConfig", () => {
       model: "claude-sonnet-4-5",
       maskedApiKey: "sk-a...1234",
       baseUrl: "https://example.com/v1",
+      workspacePath: "/Users/me/projects/app",
     });
   });
 
@@ -83,6 +85,7 @@ describe("saveModelConfig", () => {
       model: " gpt-4o ",
       apiKey: " sk-test ",
       baseUrl: " https://example.com/v1 ",
+      workspacePath: " /Users/me/projects/app ",
     });
 
     expect(fetchMock).toHaveBeenCalledWith("/api/config", {
@@ -95,6 +98,7 @@ describe("saveModelConfig", () => {
       LLM_MODEL: "gpt-4o",
       LLM_API_KEY: "sk-test",
       LLM_BASE_URL: "https://example.com/v1",
+      WORKSPACE_PATH: "/Users/me/projects/app",
     });
   });
 
@@ -109,7 +113,22 @@ describe("saveModelConfig", () => {
       LLM_PROVIDER: "openai",
       LLM_MODEL: "gpt-4o",
       LLM_BASE_URL: null,
+      WORKSPACE_PATH: null,
     });
+  });
+
+  it("工作目录留空时提交 null 以清除默认工作目录", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(response({ success: true }));
+
+    await saveModelConfig({
+      provider: "openai",
+      model: "gpt-4o",
+      workspacePath: "   ",
+    });
+
+    expect(requestBody(fetchMock)).toMatchObject({ WORKSPACE_PATH: null });
   });
 
   it("端点为空白时提交 null 以清除自定义端点", async () => {

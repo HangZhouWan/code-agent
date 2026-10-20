@@ -1,5 +1,5 @@
 /**
- * ModelConfigForm —— 模型配置表单
+ * ModelConfigForm —— 模型与工作目录配置表单
  *
  * 首次配置页（SetupPage）与设置弹窗（SettingsModal）共用。
  *
@@ -31,7 +31,7 @@ const FIELD_CLASS =
   "w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2.5 text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500";
 
 /**
- * 渲染 Provider / 模型 / API Key / 自定义端点表单。
+ * 渲染 Provider / 模型 / API Key / 自定义端点 / 工作目录表单。
  *
  * @returns 可直接嵌入页面或弹窗的表单元素
  */
@@ -47,6 +47,9 @@ export function ModelConfigForm({
   );
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState(initial?.baseUrl ?? "");
+  const [workspacePath, setWorkspacePath] = useState(
+    initial?.workspacePath ?? "",
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,7 +74,13 @@ export function ModelConfigForm({
     setSubmitting(true);
 
     try {
-      await saveModelConfig({ provider, model, apiKey, baseUrl });
+      await saveModelConfig({
+        provider,
+        model,
+        apiKey,
+        baseUrl,
+        workspacePath,
+      });
       setApiKey("");
       onSaved?.();
     } catch (err) {
@@ -152,6 +161,22 @@ export function ModelConfigForm({
           placeholder={definition.defaultBaseUrl ?? "https://api.openai.com/v1"}
           className={FIELD_CLASS}
         />
+      </div>
+
+      <div>
+        <label className="mb-1.5 block text-sm font-medium text-gray-300">
+          工作目录 <span className="text-gray-500">(可选)</span>
+        </label>
+        <input
+          type="text"
+          value={workspacePath}
+          onChange={(e) => setWorkspacePath(e.target.value)}
+          placeholder="/path/to/your/project"
+          className={FIELD_CLASS}
+        />
+        <p className="mt-1.5 text-xs text-gray-500">
+          作为 Code Agent 的默认工作目录；留空使用服务启动目录，需为已存在的目录。
+        </p>
       </div>
 
       {error && (

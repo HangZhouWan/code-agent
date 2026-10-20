@@ -18,7 +18,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { GlobalConfigManager, maskApiKey } from "../global-config.js";
 import { findMonorepoRoot, loadConfig } from "../loader.js";
-import { resolvePaths, workspaceToSlug } from "../paths.js";
+import {
+  expandHomePath,
+  resolvePaths,
+  workspaceToSlug,
+} from "../paths.js";
 
 const tempDirs: string[] = [];
 
@@ -56,7 +60,16 @@ afterEach(() => {
   }
 });
 
-describe("workspaceToSlug / resolvePaths", () => {
+describe("workspaceToSlug / expandHomePath / resolvePaths", () => {
+  it("expandHomePath 只展开开头的 ~", () => {
+    expect(expandHomePath("~/projects/app", "/home/me")).toBe(
+      "/home/me/projects/app",
+    );
+    expect(expandHomePath("~", "/home/me")).toBe("/home/me");
+    expect(expandHomePath("/abs/path", "/home/me")).toBe("/abs/path");
+    expect(expandHomePath("relative/path", "/home/me")).toBe("relative/path");
+  });
+
   it("将绝对路径转换为 slug", () => {
     expect(workspaceToSlug("/Users/qichen/projects/my-app")).toBe(
       "-Users-qichen-projects-my-app",
@@ -187,6 +200,57 @@ describe("loadConfig 分层优先级", () => {
     expect(fromProcess.LLM_API_KEY).toBe("process-key");
   });
 
+  it("全局配置的 WORKSPACE_PATH 作为默认工作目录", () => {
+    const { workspace } = makeWorkspace();
+    const home = makeTempDir("home");
+    writeJson(join(home, ".code-agent", "config.json"), {
+      LLM_PROVIDER: "openai",
+      LLM_MODEL: "global-model",
+      LLM_API_KEY: "global-key",
+      WORKSPACE_PATH: workspace,
+    });
+
+    const config = loadConfig({
+      homeDir: home,
+      cwd: makeTempDir("other-cwd"),
+      env: {},
+      logger: () => {},
+    });
+
+    expect(config.WORKSPACE_PATH).toBe(workspace);
+    expect(config.paths.workspacePath).toBe(workspace);
+  });
+
+  it("显式 workspacePath / 环境变量优先于全局配置工作目录", () => {
+    const { workspace } = makeWorkspace();
+    const explicit = makeTempDir("explicit");
+    const fromEnv = makeTempDir("from-env");
+    const home = makeTempDir("home");
+    writeJson(join(home, ".code-agent", "config.json"), {
+      LLM_PROVIDER: "openai",
+      LLM_MODEL: "global-model",
+      LLM_API_KEY: "global-key",
+      WORKSPACE_PATH: workspace,
+    });
+
+    const envConfig = loadConfig({
+      homeDir: home,
+      cwd: makeTempDir("other-cwd"),
+      env: { WORKSPACE_PATH: fromEnv },
+      logger: () => {},
+    });
+    expect(envConfig.WORKSPACE_PATH).toBe(fromEnv);
+
+    const explicitConfig = loadConfig({
+      workspacePath: explicit,
+      homeDir: home,
+      cwd: makeTempDir("other-cwd"),
+      env: { WORKSPACE_PATH: fromEnv },
+      logger: () => {},
+    });
+    expect(explicitConfig.WORKSPACE_PATH).toBe(explicit);
+  });
+
   it("overrides 与 cliModel 具有最高优先级", () => {
     const { workspace } = makeWorkspace();
     const home = makeTempDir("home");
@@ -283,6 +347,20 @@ describe("GlobalConfigManager", () => {
     const loaded = manager.load();
     expect(loaded?.LLM_MAX_RETRIES).toBe(3);
     expect(statSync(manager.getConfigPath()).mode & 0o777).toBe(0o600);
+  });
+
+  it("保存并读取 WORKSPACE_PATH，masked 中保留该值", () => {
+    const home = makeTempDir("home");
+    const manager = new GlobalConfigManager({ homeDir: home });
+    manager.save({
+      LLM_PROVIDER: "openai",
+      LLM_MODEL: "gpt-4o",
+      LLM_API_KEY: "sk-123456789",
+      WORKSPACE_PATH: "/Users/me/projects/app",
+    });
+
+    expect(manager.load()?.WORKSPACE_PATH).toBe("/Users/me/projects/app");
+    expect(manager.masked()?.WORKSPACE_PATH).toBe("/Users/me/projects/app");
   });
 
   it("masked 不泄露完整 API Key", () => {

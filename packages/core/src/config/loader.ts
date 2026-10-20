@@ -26,7 +26,11 @@ import {
   type ContextConfig,
   type LlmConfig,
 } from "@code-agent/protocol";
-import { resolvePaths } from "./paths.js";
+import {
+  expandHomePath,
+  resolveCodeAgentHome,
+  resolvePaths,
+} from "./paths.js";
 import type { LoadConfigOptions, ResolvedConfig } from "./types.js";
 
 const LLM_KEYS = [
@@ -165,10 +169,25 @@ export function loadConfig(options: LoadConfigOptions = {}): ResolvedConfig {
   const cwd = options.cwd ?? process.cwd();
   const env = options.env ?? process.env;
   const logger = options.logger ?? (() => {});
-  const workspacePath = resolve(
+
+  // 先读取全局配置：其中的 WORKSPACE_PATH 作为默认工作目录，
+  // 优先级低于显式 options / 环境变量，高于 cwd。
+  const homeDir = resolveCodeAgentHome({
+    homeDir: options.homeDir,
+    env,
     cwd,
-    options.workspacePath ?? env.WORKSPACE_PATH ?? ".",
-  );
+  });
+  const globalConfig = readJsonConfig(join(homeDir, "config.json"), logger);
+  const configuredWorkspace =
+    typeof globalConfig?.WORKSPACE_PATH === "string"
+      ? globalConfig.WORKSPACE_PATH
+      : undefined;
+  const workspaceInput =
+    options.workspacePath ??
+    env.WORKSPACE_PATH ??
+    configuredWorkspace ??
+    ".";
+  const workspacePath = resolve(cwd, expandHomePath(workspaceInput));
 
   const paths = resolvePaths({
     workspacePath,
@@ -190,7 +209,7 @@ export function loadConfig(options: LoadConfigOptions = {}): ResolvedConfig {
     ...defaultContext,
   };
 
-  mergeInto(merged, readJsonConfig(paths.globalConfigPath, logger));
+  mergeInto(merged, globalConfig);
   mergeInto(merged, readJsonConfig(paths.workspaceConfigPath, logger));
 
   if (options.loadDotEnv !== false) {
@@ -210,7 +229,8 @@ export function loadConfig(options: LoadConfigOptions = {}): ResolvedConfig {
   mergeInto(merged, restOverrides as Record<string, unknown>);
   if (options.cliModel) merged.LLM_MODEL = options.cliModel;
 
-  // 路径与工作区由本次调用决定，不允许被配置文件反向覆盖
+  // 工作区最终由本次调用决定（全局配置仅提供默认值），
+  // 项目级 config.json 不能反向覆盖工作区。
   merged.WORKSPACE_PATH = workspacePath;
   merged.CODE_AGENT_HOME = paths.homeDir;
   const configuredDbPath =

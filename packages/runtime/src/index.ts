@@ -74,6 +74,7 @@ export {
   maskApiKey,
   resolvePaths,
   resolveWorkspacePath,
+  expandHomePath,
   isPathWithin,
   PathEscapeError,
 } from "@code-agent/core";

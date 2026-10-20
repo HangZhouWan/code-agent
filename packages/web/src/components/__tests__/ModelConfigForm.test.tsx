@@ -33,6 +33,7 @@ function existingConfig(
     model: "gpt-4o-mini",
     maskedApiKey: "sk-a...1234",
     baseUrl: "https://example.com/v1",
+    workspacePath: "/Users/me/projects/app",
     ...overrides,
   };
 }
@@ -89,6 +90,7 @@ describe("ModelConfigForm", () => {
       LLM_MODEL: "gpt-4o",
       LLM_API_KEY: "sk-test",
       LLM_BASE_URL: null,
+      WORKSPACE_PATH: null,
     });
   });
 
@@ -107,6 +109,9 @@ describe("ModelConfigForm", () => {
       screen.getByDisplayValue("https://example.com/v1"),
     ).toBeInTheDocument();
     expect(
+      screen.getByDisplayValue("/Users/me/projects/app"),
+    ).toBeInTheDocument();
+    expect(
       screen.getByPlaceholderText("已保存 sk-a...1234，留空保持不变"),
     ).toBeInTheDocument();
     expect(screen.getByText("留空表示继续使用当前 Key")).toBeInTheDocument();
@@ -119,6 +124,26 @@ describe("ModelConfigForm", () => {
       LLM_PROVIDER: "openai",
       LLM_MODEL: "gpt-4o-mini",
       LLM_BASE_URL: "https://example.com/v1",
+      WORKSPACE_PATH: "/Users/me/projects/app",
+    });
+  });
+
+  it("修改工作目录后随配置一起提交", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(okResponse());
+
+    render(<ModelConfigForm initial={existingConfig()} onSaved={vi.fn()} />);
+
+    fireEvent.change(
+      screen.getByDisplayValue("/Users/me/projects/app"),
+      { target: { value: "/Users/me/projects/other" } },
+    );
+    fireEvent.click(screen.getByText("保存配置"));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(lastRequestBody(fetchMock)).toMatchObject({
+      WORKSPACE_PATH: "/Users/me/projects/other",
     });
   });
 

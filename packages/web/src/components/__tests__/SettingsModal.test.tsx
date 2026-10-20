@@ -36,6 +36,7 @@ function mockConfigApi(): ReturnType<typeof vi.fn> {
             LLM_PROVIDER: "anthropic",
             LLM_MODEL: "claude-sonnet-4-5",
             LLM_API_KEY: "sk-a...1234",
+            WORKSPACE_PATH: "/Users/me/projects/app",
           }),
         } as unknown as Response;
       }
@@ -60,8 +61,11 @@ describe("SettingsModal", () => {
 
     render(<SettingsModal onClose={vi.fn()} />);
 
-    expect(screen.getByText("模型配置")).toBeInTheDocument();
+    expect(screen.getByText("模型与工作目录")).toBeInTheDocument();
     expect(await screen.findByDisplayValue("claude-sonnet-4-5")).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue("/Users/me/projects/app"),
+    ).toBeInTheDocument();
     expect(
       screen.getByPlaceholderText("已保存 sk-a...1234，留空保持不变"),
     ).toBeInTheDocument();

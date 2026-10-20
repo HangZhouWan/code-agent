@@ -12,6 +12,7 @@ export type {
 export {
   workspaceToSlug,
   resolveCodeAgentHome,
+  expandHomePath,
   resolvePaths,
 } from "./paths.js";
 export { loadConfig, findMonorepoRoot } from "./loader.js";

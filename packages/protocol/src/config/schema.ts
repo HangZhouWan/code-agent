@@ -19,7 +19,11 @@ const llmConfigObjectSchema = z.object({
   LLM_MAX_RETRIES: z.number().int().min(0).max(10).default(3),
 });
 
-export const llmConfigSchema = llmConfigObjectSchema.superRefine((value, ctx) => {
+/** Provider 需要 API Key 时校验其非空 */
+function requireApiKeyIfNeeded(
+  value: z.infer<typeof llmConfigObjectSchema>,
+  ctx: z.RefinementCtx,
+): void {
   const definition = PROVIDER_DEFINITIONS[value.LLM_PROVIDER];
   if (definition.requiresApiKey && value.LLM_API_KEY.trim().length === 0) {
     ctx.addIssue({
@@ -28,7 +32,28 @@ export const llmConfigSchema = llmConfigObjectSchema.superRefine((value, ctx) =>
       message: `${definition.label} 需要 LLM_API_KEY`,
     });
   }
-});
+}
+
+export const llmConfigSchema =
+  llmConfigObjectSchema.superRefine(requireApiKeyIfNeeded);
+
+/**
+ * 全局配置文件（~/.code-agent/config.json）schema。
+ *
+ * 在 LLM 配置之外记录应用级默认值：
+ * - WORKSPACE_PATH：Agent 默认工作目录，留空时使用服务启动目录
+ */
+export const globalConfigSchema = llmConfigObjectSchema
+  .extend({
+    WORKSPACE_PATH: z
+      .string()
+      .trim()
+      .min(1, "WORKSPACE_PATH 不能为空")
+      .optional(),
+  })
+  .superRefine(requireApiKeyIfNeeded);
+
+export type GlobalConfig = z.infer<typeof globalConfigSchema>;
 
 export const llmOverridesSchema = llmConfigObjectSchema.partial();
 

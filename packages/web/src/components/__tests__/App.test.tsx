@@ -89,6 +89,6 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    expect(screen.getByText("模型配置")).toBeInTheDocument();
+    expect(screen.getByText("模型与工作目录")).toBeInTheDocument();
   });
 });

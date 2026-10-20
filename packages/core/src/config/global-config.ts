@@ -18,13 +18,16 @@ import {
   writeSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { llmConfigSchema, type LlmConfig } from "@code-agent/protocol";
+import {
+  globalConfigSchema,
+  type GlobalConfig,
+  type LlmConfig,
+} from "@code-agent/protocol";
 import { resolveCodeAgentHome } from "./paths.js";
 
-/** 全局配置文件 schema（与完整 LLM 配置一致） */
-export const globalConfigSchema = llmConfigSchema;
-
-export type GlobalConfig = LlmConfig;
+/** 全局配置文件 schema：LLM 配置 + 应用级默认值 */
+export { globalConfigSchema };
+export type { GlobalConfig };
 
 export type GlobalConfigInput = {
   LLM_PROVIDER: LlmConfig["LLM_PROVIDER"];
@@ -32,6 +35,8 @@ export type GlobalConfigInput = {
   LLM_API_KEY?: string;
   LLM_BASE_URL?: string;
   LLM_MAX_RETRIES?: number;
+  /** Agent 默认工作目录；留空使用服务启动目录 */
+  WORKSPACE_PATH?: string;
 };
 
 export interface GlobalConfigManagerOptions {
@@ -88,7 +93,7 @@ export class GlobalConfigManager {
     try {
       if (!existsSync(this.filePath)) return null;
       const raw = readFileSync(this.filePath, "utf-8");
-      const parsed = llmConfigSchema.safeParse(JSON.parse(raw));
+      const parsed = globalConfigSchema.safeParse(JSON.parse(raw));
       return parsed.success ? parsed.data : null;
     } catch {
       return null;
@@ -102,7 +107,7 @@ export class GlobalConfigManager {
 
   /** 写入全局配置（校验后原子写） */
   save(config: GlobalConfigInput): GlobalConfig {
-    const parsed = llmConfigSchema.parse(config);
+    const parsed = globalConfigSchema.parse(config);
     atomicWriteFileSync(
       this.filePath,
       `${JSON.stringify(parsed, null, 2)}\n`,

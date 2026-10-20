@@ -63,10 +63,12 @@ export type {
   LlmOverrides,
   ContextConfig,
   AppConfig,
+  GlobalConfig,
 } from "./config/schema.js";
 export {
   providerIdSchema,
   llmConfigSchema,
+  globalConfigSchema,
   llmOverridesSchema,
   contextConfigSchema,
   appConfigSchema,

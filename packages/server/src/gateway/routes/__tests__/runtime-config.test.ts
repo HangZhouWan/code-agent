@@ -152,6 +152,78 @@ describe("runtime config routes", () => {
     expect(manager.load()?.LLM_BASE_URL).toBeUndefined();
   });
 
+  it("保存并返回默认工作目录（规范化为绝对路径）", async () => {
+    const { app, manager } = await createApp();
+    const workspace = mkdtempSync(join(tmpdir(), "code-agent-workspace-"));
+    tempDirs.push(workspace);
+
+    const save = await app.inject({
+      method: "POST",
+      url: "/api/config",
+      payload: {
+        LLM_PROVIDER: "openai",
+        LLM_MODEL: "gpt-4o",
+        LLM_API_KEY: "sk-secret-123456",
+        WORKSPACE_PATH: ` ${workspace} `,
+      },
+    });
+
+    expect(save.statusCode).toBe(200);
+    expect(manager.load()?.WORKSPACE_PATH).toBe(workspace);
+
+    const current = await app.inject({
+      method: "GET",
+      url: "/api/config",
+    });
+    expect(current.json().WORKSPACE_PATH).toBe(workspace);
+  });
+
+  it("不存在的工作目录返回 400", async () => {
+    const { app, manager } = await createApp();
+
+    const save = await app.inject({
+      method: "POST",
+      url: "/api/config",
+      payload: {
+        LLM_PROVIDER: "openai",
+        LLM_MODEL: "gpt-4o",
+        LLM_API_KEY: "sk-secret-123456",
+        WORKSPACE_PATH: "/definitely/not/a/real/directory-xyz",
+      },
+    });
+
+    expect(save.statusCode).toBe(400);
+    expect(save.json().error).toContain("工作目录不存在");
+    expect(manager.load()).toBeNull();
+  });
+
+  it("工作目录传 null 时清除已保存值", async () => {
+    const { app, manager } = await createApp();
+    const workspace = mkdtempSync(join(tmpdir(), "code-agent-workspace-"));
+    tempDirs.push(workspace);
+
+    await app.inject({
+      method: "POST",
+      url: "/api/config",
+      payload: {
+        LLM_PROVIDER: "openai",
+        LLM_MODEL: "gpt-4o",
+        LLM_API_KEY: "sk-secret-123456",
+        WORKSPACE_PATH: workspace,
+      },
+    });
+    expect(manager.load()?.WORKSPACE_PATH).toBe(workspace);
+
+    const update = await app.inject({
+      method: "POST",
+      url: "/api/config",
+      payload: { WORKSPACE_PATH: null },
+    });
+
+    expect(update.statusCode).toBe(200);
+    expect(manager.load()?.WORKSPACE_PATH).toBeUndefined();
+  });
+
   it("非法配置返回 400 且不覆盖已有配置", async () => {
     const { app, manager } = await createApp();
 

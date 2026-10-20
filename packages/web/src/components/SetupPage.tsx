@@ -37,7 +37,9 @@ export function SetupPage() {
         <div className="mb-8 text-center">
           <div className="mb-3 text-4xl">⚡</div>
           <h1 className="text-2xl font-bold text-white">欢迎使用 code-agent</h1>
-          <p className="mt-2 text-sm text-gray-400">请配置您的 LLM 模型以开始使用</p>
+          <p className="mt-2 text-sm text-gray-400">
+            请配置您的 LLM 模型与工作目录以开始使用
+          </p>
         </div>
 
         <ModelConfigForm onSaved={() => setSuccess(true)} />

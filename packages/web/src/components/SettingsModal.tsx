@@ -1,7 +1,7 @@
 /**
- * SettingsModal —— 模型配置弹窗
+ * SettingsModal —— 模型与工作目录配置弹窗
  *
- * 用于在首次配置完成后再次修改模型配置。
+ * 用于在首次配置完成后再次修改模型和默认工作目录配置。
  *
  * 输入：onClose —— 关闭弹窗回调
  * 行为：
@@ -70,7 +70,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
               id="model-config-title"
               className="text-lg font-semibold text-white"
             >
-              模型配置
+              模型与工作目录
             </h2>
             <p className="mt-1 text-xs text-gray-500">修改后需重启服务生效</p>
           </div>

@@ -18,6 +18,21 @@ export function workspaceToSlug(
   return resolve(cwd, workspacePath).replace(/[\\/]/g, "-");
 }
 
+/**
+ * 展开路径开头的 ~ 为当前用户主目录。
+ *
+ * 输入：`~/projects/app`、`~` 或普通路径
+ * 输出：展开后的路径（非 ~ 开头时原样返回）
+ */
+export function expandHomePath(
+  input: string,
+  homeDir: string = homedir(),
+): string {
+  if (input === "~") return homeDir;
+  if (input.startsWith("~/")) return join(homeDir, input.slice(2));
+  return input;
+}
+
 /** 解析 ~/.code-agent（支持 CODE_AGENT_HOME 覆盖） */
 export function resolveCodeAgentHome(options: {
   homeDir?: string;
