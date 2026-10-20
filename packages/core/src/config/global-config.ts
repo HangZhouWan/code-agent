@@ -35,6 +35,8 @@ export type GlobalConfigInput = {
   LLM_API_KEY?: string;
   LLM_BASE_URL?: string;
   LLM_MAX_RETRIES?: number;
+  /** 单次模型输出的最大 token 数 */
+  LLM_MAX_TOKENS?: number;
   /** Agent 默认工作目录；留空使用服务启动目录 */
   WORKSPACE_PATH?: string;
   /** Auto mode：工作区内写入/命令执行免审批 */

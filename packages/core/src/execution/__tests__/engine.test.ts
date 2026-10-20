@@ -217,6 +217,26 @@ describe("native tool calling", () => {
     expect(String(model.calls[1].at(-1)?.content)).toContain("file_write");
   });
 
+  it("输出被 max_tokens 截断时返回可诊断的失败", async () => {
+    const model = new ScriptedModel([
+      new AIMessage({
+        content: "",
+        response_metadata: { stop_reason: "max_tokens" },
+      }),
+    ]);
+    const engine = new AgentExecutionEngine(model);
+
+    const result = await engine.invoke(
+      input([writeTool()], { description: "创建一个 index.html 文件" }),
+      scope().scope,
+    );
+
+    expect(result.status).toBe("failed");
+    expect(result.summary).toContain("max_tokens");
+    // 截断时不应再发提醒，避免重复浪费一次调用
+    expect(model.calls).toHaveLength(1);
+  });
+
   it("提醒后执行 file_write 则任务成功", async () => {
     const model = new ScriptedModel([
       new AIMessage({ content: "done" }),

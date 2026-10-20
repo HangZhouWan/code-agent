@@ -28,6 +28,14 @@ const DEFAULT_TEMPERATURE = 0.7;
 /** 默认最大重试次数 */
 const DEFAULT_MAX_RETRIES = 3;
 
+/**
+ * anthropic 默认输出上限。
+ *
+ * LangChain 对未知模型名（如 deepseek-flash 这类兼容端点模型）会回退到
+ * 4096，生成完整文件时工具调用容易被截断，因此显式提高默认值。
+ */
+const DEFAULT_ANTHROPIC_MAX_TOKENS = 8_192;
+
 // ─────────────────────────────────────────────
 // 核心函数
 // ─────────────────────────────────────────────
@@ -57,6 +65,7 @@ export function createModel(config: LlmConfig): BaseChatModel {
     apiKey: config.LLM_API_KEY,
     baseURL: config.LLM_BASE_URL,
     maxRetries: config.LLM_MAX_RETRIES,
+    ...(config.LLM_MAX_TOKENS ? { maxTokens: config.LLM_MAX_TOKENS } : {}),
   });
 }
 
@@ -68,13 +77,21 @@ export function createChatModel(config: ModelConfig): BaseChatModel {
     baseURL,
     maxRetries = DEFAULT_MAX_RETRIES,
     temperature = DEFAULT_TEMPERATURE,
+    maxTokens,
   } = config;
+
+  // anthropic 兼容端点下的未知模型名会被 LangChain 回退到 4096，
+  // 这里给一个更高的默认值，避免大文件写入的工具调用被截断。
+  const effectiveMaxTokens =
+    maxTokens ??
+    (provider === "anthropic" ? DEFAULT_ANTHROPIC_MAX_TOKENS : undefined);
 
   // 通用的基础参数
   const baseParams = {
     model,
     temperature,
     maxRetries,
+    ...(effectiveMaxTokens ? { maxTokens: effectiveMaxTokens } : {}),
   };
 
   switch (provider) {

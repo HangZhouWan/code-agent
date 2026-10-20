@@ -49,6 +49,7 @@ export function createRuntimeBootstrap(
     apiKey: config.LLM_API_KEY,
     baseURL: config.LLM_BASE_URL,
     maxRetries: config.LLM_MAX_RETRIES,
+    ...(config.LLM_MAX_TOKENS ? { maxTokens: config.LLM_MAX_TOKENS } : {}),
   }) as unknown as ChatModelLike;
 
   const hooks = options.hooks ?? new HooksEngine();

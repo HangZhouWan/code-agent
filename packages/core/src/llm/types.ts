@@ -30,4 +30,7 @@ export interface ModelConfig {
 
   /** 采样温度，默认 0.7 */
   temperature?: number;
+
+  /** 单次输出最大 token 数；未设置时 anthropic 使用 8192，其他交给 provider */
+  maxTokens?: number;
 }

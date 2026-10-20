@@ -63,6 +63,15 @@ function expectsFileWrite(input: AgentTaskInput): boolean {
   return input.role === "code" && FILE_WRITE_INTENT.test(input.description);
 }
 
+/** 模型输出是否因 max_tokens 上限被截断 */
+function outputWasTruncated(message: BaseMessage): boolean {
+  const metadata = (
+    message as { response_metadata?: Record<string, unknown> }
+  ).response_metadata;
+  const stopReason = metadata?.stop_reason ?? metadata?.finish_reason;
+  return stopReason === "max_tokens" || stopReason === "length";
+}
+
 /** 从工具历史中提取成功写入/修改过的文件（去重） */
 function collectFilesChanged(
   history: SerializedToolCall[],
@@ -408,6 +417,21 @@ export class AgentExecutionEngine implements AgentInvoker {
 
       if (calls.length === 0) {
         const text = extractText(response);
+
+        // 输出被 max_tokens 截断时，工具调用往往直接丢失，
+        // 再提醒也只会重复截断，直接给出可诊断的失败。
+        if (outputWasTruncated(response)) {
+          return this.failure(
+            input,
+            "failed",
+            serializeError(
+              new Error(
+                "模型输出达到 max_tokens 上限，工具调用被截断；请增大 LLM_MAX_TOKENS 或拆分文件写入",
+              ),
+              "VALIDATION",
+            ),
+          );
+        }
 
         // 创建类任务必须有成功的文件写入；否则先提醒模型一次，
         // 仍不写则判定失败，避免“未落盘却报告完成”。

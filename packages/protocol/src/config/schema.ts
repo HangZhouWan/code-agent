@@ -17,6 +17,13 @@ const llmConfigObjectSchema = z.object({
   LLM_API_KEY: z.string().default(""),
   LLM_BASE_URL: z.string().url().optional(),
   LLM_MAX_RETRIES: z.number().int().min(0).max(10).default(3),
+  /** 单次模型输出的最大 token 数；未设置时由 provider 决定 */
+  LLM_MAX_TOKENS: z.coerce
+    .number()
+    .int()
+    .min(256)
+    .max(65_536)
+    .optional(),
 });
 
 /** Provider 需要 API Key 时校验其非空 */

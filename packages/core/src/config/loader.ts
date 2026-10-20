@@ -39,6 +39,7 @@ const LLM_KEYS = [
   "LLM_API_KEY",
   "LLM_BASE_URL",
   "LLM_MAX_RETRIES",
+  "LLM_MAX_TOKENS",
 ] as const;
 
 const APP_KEYS = [
@@ -256,6 +257,7 @@ export function loadConfig(options: LoadConfigOptions = {}): ResolvedConfig {
     LLM_API_KEY: merged.LLM_API_KEY,
     LLM_BASE_URL: merged.LLM_BASE_URL,
     LLM_MAX_RETRIES: normalizeNumber(merged.LLM_MAX_RETRIES),
+    LLM_MAX_TOKENS: normalizeNumber(merged.LLM_MAX_TOKENS),
   }) satisfies LlmConfig;
 
   const context = contextConfigSchema.parse(

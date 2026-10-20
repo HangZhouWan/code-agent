@@ -251,6 +251,25 @@ describe("loadConfig 分层优先级", () => {
     expect(explicitConfig.WORKSPACE_PATH).toBe(explicit);
   });
 
+  it("LLM_MAX_TOKENS 可从全局配置读取", () => {
+    const { workspace } = makeWorkspace();
+    const home = makeTempDir("home");
+    writeJson(join(home, ".code-agent", "config.json"), {
+      LLM_PROVIDER: "openai",
+      LLM_MODEL: "gpt-4o",
+      LLM_API_KEY: "global-key",
+      LLM_MAX_TOKENS: 8192,
+    });
+
+    const config = loadConfig({
+      workspacePath: workspace,
+      homeDir: home,
+      env: {},
+      logger: () => {},
+    });
+    expect(config.LLM_MAX_TOKENS).toBe(8192);
+  });
+
   it("AUTO_MODE 从全局配置读取，环境变量可覆盖", () => {
     const { workspace } = makeWorkspace();
     const home = makeTempDir("home");

@@ -404,6 +404,7 @@ shell 命令执行不再弹出人工审批。路径逃逸与高危命令（`sudo
 | `LLM_API_KEY` | 是 | - | API 密钥 |
 | `LLM_BASE_URL` | 否 | - | 自定义 API 端点 |
 | `LLM_MAX_RETRIES` | 否 | `3` | 最大重试次数 |
+| `LLM_MAX_TOKENS` | 否 | anthropic 为 `8192` | 单次模型输出最大 token 数 |
 | `HOST` | 否 | `127.0.0.1` | 服务主机地址 |
 | `PORT` | 否 | `3000` | 服务端口 |
 | `WORKSPACE_PATH` | 否 | 当前目录 | Agent 工作目录 |
