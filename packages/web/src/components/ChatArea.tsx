@@ -131,7 +131,7 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
     [dispatch, onTitleUpdated],
   );
 
-  const { status, send, approve, answer } = useWebSocket({
+  const { status, send, approve, answer, abort } = useWebSocket({
     sessionId: sessionId ?? null,
     onMessage,
   });
@@ -158,6 +158,11 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
     },
     [approve],
   );
+
+  // ── 停止当前 run ──
+  const handleStop = useCallback(() => {
+    abort("用户停止");
+  }, [abort]);
 
   const handleAnswer = useCallback(
     (value: string) => {
@@ -276,11 +281,8 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
 
       <InputBar
         onSend={handleSend}
-        disabled={
-          status !== "connected" ||
-          isStreaming ||
-          state.pendingQuestion !== undefined
-        }
+        onStop={handleStop}
+        disabled={status !== "connected" || state.pendingQuestion !== undefined}
         isStreaming={isStreaming}
       />
     </div>

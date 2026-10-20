@@ -85,4 +85,32 @@ describe("InputBar", () => {
     render(<InputBar onSend={vi.fn()} disabled />);
     expect(screen.getByPlaceholderText(/Agent is thinking/)).toBeInTheDocument();
   });
+
+  it("流式中应显示 Stop 而不是 Send", () => {
+    render(<InputBar onSend={vi.fn()} onStop={vi.fn()} isStreaming />);
+
+    expect(screen.getByText("Stop")).toBeInTheDocument();
+    expect(screen.queryByText("Send")).not.toBeInTheDocument();
+  });
+
+  it("流式中 textarea 应禁用", () => {
+    render(<InputBar onSend={vi.fn()} onStop={vi.fn()} isStreaming />);
+
+    expect(screen.getByPlaceholderText(/Agent is thinking/)).toBeDisabled();
+  });
+
+  it("点击 Stop 应触发 onStop", () => {
+    const onStop = vi.fn();
+    render(<InputBar onSend={vi.fn()} onStop={onStop} isStreaming />);
+
+    fireEvent.click(screen.getByText("Stop"));
+
+    expect(onStop).toHaveBeenCalledTimes(1);
+  });
+
+  it("未提供 onStop 时 Stop 按钮禁用", () => {
+    render(<InputBar onSend={vi.fn()} isStreaming />);
+
+    expect(screen.getByText("Stop")).toBeDisabled();
+  });
 });

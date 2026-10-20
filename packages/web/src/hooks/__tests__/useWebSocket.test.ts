@@ -158,6 +158,30 @@ describe("useWebSocket", () => {
     expect(parsed.approved).toBe(false);
   });
 
+  // ── abort ──
+
+  it("abort 应发送中断请求", async () => {
+    const onMessage = vi.fn();
+    const { result } = renderHook(() =>
+      useWebSocket({ sessionId: "s1", onMessage }),
+    );
+
+    await act(async () => {
+      mockInstance!.readyState = MockWebSocket.OPEN;
+      mockInstance!.onopen?.();
+    });
+
+    act(() => {
+      result.current.abort("用户停止");
+    });
+
+    expect(sentMessages).toHaveLength(1);
+    expect(JSON.parse(sentMessages[0])).toEqual({
+      type: "abort",
+      reason: "用户停止",
+    });
+  });
+
   // ── onMessage ──
 
   it("收到消息时应触发 onMessage 回调", async () => {

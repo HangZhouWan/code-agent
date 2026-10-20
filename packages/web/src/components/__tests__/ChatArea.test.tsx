@@ -219,6 +219,47 @@ describe("ChatArea", () => {
     expect(screen.getAllByText("Previous answer")).toHaveLength(1);
   });
 
+  it("运行中 Send 按钮应变为 Stop，点击后发送 abort", async () => {
+    render(<ChatArea sessionId="s1" />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Send a message to start the conversation/),
+      ).toBeInTheDocument();
+    });
+
+    const socket = latestSocket();
+    act(() => {
+      socket.readyState = MockWebSocket.OPEN;
+      socket.onopen?.();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText(/Type a message/), {
+      target: { value: "hello" },
+    });
+    fireEvent.click(screen.getByText("Send"));
+
+    expect(screen.getByText("Stop")).toBeInTheDocument();
+    expect(screen.queryByText("Send")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Stop"));
+
+    expect(socket.sent.map((data) => JSON.parse(data))).toContainEqual({
+      type: "abort",
+      reason: "用户停止",
+    });
+
+    // 服务端确认中断后恢复 Send 按钮
+    act(() => {
+      socket.receive(
+        eventMessage(1, { type: "run.aborted", reason: "用户停止" }),
+      );
+    });
+
+    expect(screen.queryByText("Stop")).not.toBeInTheDocument();
+    expect(screen.getByText("Send")).toBeInTheDocument();
+  });
+
   it("点击 Approve 应提交审批 ID，approval.resolved 后移除确认卡片", async () => {
     render(<ChatArea sessionId="s1" />);
 

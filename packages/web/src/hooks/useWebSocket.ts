@@ -21,6 +21,8 @@ export interface UseWebSocketReturn {
   send: (content: string) => void;
   approve: (callId: string, approved: boolean) => void;
   answer: (questionId: string, answer: string) => void;
+  /** 中断当前 run */
+  abort: (reason?: string) => void;
 }
 
 function parseJson(data: unknown): unknown {
@@ -150,5 +152,11 @@ export function useWebSocket({
     [sendClient],
   );
 
-  return { status, send, approve, answer };
+  const abort = useCallback(
+    (reason?: string) =>
+      sendClient({ type: "abort", ...(reason ? { reason } : {}) }),
+    [sendClient],
+  );
+
+  return { status, send, approve, answer, abort };
 }
