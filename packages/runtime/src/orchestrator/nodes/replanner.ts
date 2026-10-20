@@ -106,12 +106,18 @@ export function createReplannerNode(deps: ReplannerNodeDeps) {
       output = { ...output, tasks: [{ ...primary, dependsOn: [] }] };
     }
 
-    const used = new Set<string>(state.tasks.map((task) => task.id));
+    // ID 需避开会话内所有历史任务；依赖只允许指向当前 run 的任务
+    const reserved = new Set<string>([
+      ...deps.state.tasks.list().map((task) => task.id),
+      ...state.tasks.map((task) => task.id),
+    ]);
+    const validDeps = new Set<string>(state.tasks.map((task) => task.id));
     const records: TaskRecord[] = [];
     for (const item of output.tasks) {
-      let id = item.id && !used.has(item.id) ? item.id : deps.ids.next("task");
-      while (used.has(id)) id = deps.ids.next("task");
-      used.add(id);
+      let id =
+        item.id && !reserved.has(item.id) ? item.id : deps.ids.next("task");
+      while (reserved.has(id)) id = deps.ids.next("task");
+      reserved.add(id);
 
       const role = deps.roles.has(item.role) ? item.role : "code";
       const task = deps.state.tasks.create({
@@ -121,9 +127,10 @@ export function createReplannerNode(deps: ReplannerNodeDeps) {
         description: item.description,
         routing: item.routing,
         dependsOn: item.dependsOn
-          .filter((dependency) => used.has(dependency))
+          .filter((dependency) => validDeps.has(dependency))
           .map(asTaskId),
       });
+      validDeps.add(id);
       records.push(task);
       await deps.persistTask(task.id);
     }

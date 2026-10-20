@@ -89,14 +89,19 @@ export function createPlannerNode(deps: PlannerNodeDeps) {
       };
     }
 
-    // 先为所有任务分配最终 ID，才能解析 dependsOn 引用
-    const used = new Set<string>();
+    // 任务 ID 在会话内唯一：新 run 必须避开历史 run 已使用的 ID，
+    // 否则 Planner 复用的 "t1" 会触发 Task already exists。
+    const reserved = new Set<string>(
+      deps.state.tasks.list().map((task) => task.id),
+    );
     const planned = output.tasks.map((item) => {
-      let id = item.id && !used.has(item.id) ? item.id : deps.ids.next("task");
-      while (used.has(id)) id = deps.ids.next("task");
-      used.add(id);
+      let id =
+        item.id && !reserved.has(item.id) ? item.id : deps.ids.next("task");
+      while (reserved.has(id)) id = deps.ids.next("task");
+      reserved.add(id);
       return { item, id };
     });
+    const planIds = new Set(planned.map((entry) => entry.id));
 
     // Planner 常把 dependsOn 写成角色名（如 "code"）或不存在的 ID。
     // 解析顺序：planner 提供的任务 ID → 同角色的首个任务 → 丢弃无法满足的依赖。
@@ -118,7 +123,7 @@ export function createPlannerNode(deps: PlannerNodeDeps) {
             dependency,
         )
         .filter(
-          (dependency) => dependency !== id && used.has(dependency),
+          (dependency) => dependency !== id && planIds.has(dependency),
         )
         .map(asTaskId);
 

@@ -283,6 +283,27 @@ describe("orchestrated session", () => {
     );
   });
 
+  it("同一会话多次 run 复用 planner 的 t1 id 也不会冲突", async () => {
+    const { session } = await setup([
+      simplePlan([
+        { id: "t1", role: "code", description: "first", routing: "direct" },
+      ]),
+      text("first done"),
+      text("first final"),
+      simplePlan([
+        { id: "t1", role: "code", description: "second", routing: "direct" },
+      ]),
+      text("second done"),
+      text("second final"),
+    ]);
+
+    const first = await session.run({ content: "first request" });
+    expect((await first.done).status).toBe("completed");
+
+    const second = await session.run({ content: "second request" });
+    expect((await second.done).status).toBe("completed");
+  });
+
   it("多轮 run 会把历史传入 planner", async () => {
     const { session, model } = await setup([
       plan([{ role: "code", description: "first", routing: "direct" }]),
