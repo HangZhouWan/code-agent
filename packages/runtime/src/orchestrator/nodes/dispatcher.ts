@@ -68,9 +68,45 @@ export function createDispatcherNode(deps: DispatcherNodeDeps) {
 
     const batch = ready.slice(0, maxConcurrency);
     const newResults: TaskResult[] = [];
+    // 因依赖失败而跳过的任务不算失败，避免触发无意义的 replan
+    const skippedIds = new Set<string>();
 
     await Promise.all(
       batch.map(async (task) => {
+        // 依赖未成功（失败/超时/取消）时跳过，避免 review/test 在产物
+        // 不存在的情况下继续执行、浪费迭代次数。
+        const failedDependency = task.dependsOn.find((dependency) => {
+          const result = state.results.find(
+            (item) => item.taskId === dependency,
+          );
+          return result !== undefined && result.status !== "success";
+        });
+
+        if (failedDependency) {
+          const skipped: TaskResult = {
+            taskId: task.id,
+            role: task.role,
+            status: "cancelled",
+            summary: `依赖任务未成功，已跳过（${failedDependency}）`,
+          };
+          deps.state.tasks.setResult(task.id, skipped);
+          try {
+            deps.state.tasks.transition(task.id, "cancelled");
+          } catch {
+            // 状态可能已推进
+          }
+          await deps.persistTask(task.id);
+          deps.emit({
+            type: "task.status",
+            taskId: task.id,
+            roleId: task.role,
+            status: "cancelled",
+          });
+          skippedIds.add(task.id);
+          newResults.push(skipped);
+          return;
+        }
+
         const taskScope: RunScope = {
           ...deps.baseScope,
           taskId: task.id,
@@ -160,7 +196,8 @@ export function createDispatcherNode(deps: DispatcherNodeDeps) {
       allResults.some((result) => result.taskId === task.id),
     );
     const needsReplan = newResults.some(
-      (result) => result.status !== "success",
+      (result) =>
+        result.status !== "success" && !skippedIds.has(result.taskId),
     );
 
     const nextAction = needsReplan

@@ -56,10 +56,15 @@ export interface Message {
   toolCalls: ToolCallState[];
 }
 
+/** 当前 run 的生命周期状态 */
+export type RunStatus = "idle" | "running" | "completed" | "failed";
+
 /** 整个聊天状态 */
 export interface ChatState {
   messages: Message[];
   pendingQuestion?: QuestionPrompt;
+  /** 当前 run 状态；用于可靠地切换 Send/Stop 并提示任务结束 */
+  runStatus?: RunStatus;
 }
 
 // ---------------------------------------------------------------------------
@@ -116,6 +121,7 @@ export function dbMessagesToMessages(rows: DBMessageRow[]): Message[] {
 // ---------------------------------------------------------------------------
 
 export type ChatAction =
+  | { type: "RUN_STARTED" }
   | { type: "ADD_USER_MESSAGE"; id: string; content: string }
   | { type: "ADD_ASSISTANT_MESSAGE"; id: string }
   | { type: "APPEND_TEXT"; delta: string }
@@ -174,6 +180,10 @@ function uid(): string {
  */
 export function chatReducer(state: ChatState, action: ChatAction): ChatState {
   switch (action.type) {
+    // ── 服务端 run 开始（含重放） ──
+    case "RUN_STARTED":
+      return { ...state, runStatus: "running" };
+
     // ── 追加用户消息 ──
     case "ADD_USER_MESSAGE": {
       const userMsg: Message = {
@@ -195,7 +205,11 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         isStreaming: true,
         toolCalls: [],
       };
-      return { ...state, messages: [...state.messages, assistantMsg] };
+      return {
+        ...state,
+        messages: [...state.messages, assistantMsg],
+        runStatus: "running",
+      };
     }
 
     // ── 追加文本增量到最新 assistant 消息 ──
@@ -397,7 +411,12 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
           toolCalls: [],
         });
       }
-      return { ...state, messages: msgs, pendingQuestion: undefined };
+      return {
+        ...state,
+        messages: msgs,
+        pendingQuestion: undefined,
+        runStatus: "completed",
+      };
     }
 
     // ── 错误 ──
@@ -420,12 +439,18 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...state,
         messages: [...msgs, errMsg],
         pendingQuestion: undefined,
+        runStatus: "failed",
       };
     }
 
     // ── 清空消息（切换会话时使用） ──
     case "RESET_MESSAGES": {
-      return { ...state, messages: [], pendingQuestion: undefined };
+      return {
+        ...state,
+        messages: [],
+        pendingQuestion: undefined,
+        runStatus: "idle",
+      };
     }
 
     // ── 加载历史消息 ──

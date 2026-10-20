@@ -21,10 +21,15 @@ export function createFinalizerNode(deps: FinalizerNodeDeps) {
     }
 
     const summaries = state.results
-      .map(
-        (result) =>
-          `- [${result.role}] ${result.status}: ${result.summary}`,
-      )
+      .map((result) => {
+        const files = result.artifacts?.filesChanged
+          ?.map((file) => file.path)
+          .join(", ");
+        return (
+          `- [${result.role}] ${result.status}: ${result.summary}` +
+          (files ? ` (files: ${files})` : "")
+        );
+      })
       .join("\n");
 
     let finalResponse: string | undefined;
@@ -34,7 +39,8 @@ export function createFinalizerNode(deps: FinalizerNodeDeps) {
           new SystemMessage({
             content:
               "You are the Finalizer. Summarize the completed work for the user in Chinese. " +
-              "Be concise and include failures or risks.",
+              "Be concise and include failures or risks. " +
+              "If a task lists written files, do not claim the artifact is missing.",
           }),
           new HumanMessage({
             content: `User request: ${state.userMessage}\n\nTask results:\n${summaries}`,

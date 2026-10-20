@@ -35,6 +35,17 @@ function assistantMsg(
 }
 
 // ---------------------------------------------------------------------------
+// RUN_STARTED
+// ---------------------------------------------------------------------------
+
+describe("RUN_STARTED", () => {
+  it("标记 run 为 running（用于重放/多端场景）", () => {
+    const state = chatReducer(empty, { type: "RUN_STARTED" });
+    expect(state.runStatus).toBe("running");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // ADD_USER_MESSAGE
 // ---------------------------------------------------------------------------
 
@@ -80,6 +91,7 @@ describe("ADD_ASSISTANT_MESSAGE", () => {
     expect(state.messages[0].role).toBe("assistant");
     expect(state.messages[0].content).toBe("");
     expect(state.messages[0].isStreaming).toBe(true);
+    expect(state.runStatus).toBe("running");
   });
 });
 
@@ -377,6 +389,7 @@ describe("DONE", () => {
     });
     expect(state.messages[0].isStreaming).toBe(false);
     expect(state.messages[0].content).toBe("Done!");
+    expect(state.runStatus).toBe("completed");
   });
 
   it("finalResponse 为空时保留已流式累积的 content", () => {
@@ -438,6 +451,7 @@ describe("ERROR", () => {
     // 新错误消息
     expect(state.messages).toHaveLength(2);
     expect(state.messages[1].content).toContain("Something went wrong");
+    expect(state.runStatus).toBe("failed");
   });
 
   it("空 messages 时也应追加错误消息", () => {
@@ -504,6 +518,7 @@ describe("RESET_MESSAGES", () => {
     const state = chatReducer(initial, { type: "RESET_MESSAGES" });
     expect(state.messages).toHaveLength(0);
     expect(state.pendingQuestion).toBeUndefined();
+    expect(state.runStatus).toBe("idle");
   });
 });
 

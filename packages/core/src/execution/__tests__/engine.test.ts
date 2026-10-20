@@ -350,7 +350,7 @@ describe("native tool calling", () => {
     );
 
     expect(result.status).toBe("timeout");
-    expect(result.summary).toContain("Max iterations");
+    expect(result.summary).toContain("最大迭代次数");
   });
 
   it("超过预算时触发 context.compact hook", async () => {

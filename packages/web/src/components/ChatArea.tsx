@@ -2,7 +2,7 @@
  * ChatArea —— 聊天区控制器（新 SessionEvent 协议）
  */
 
-import { useRef, useEffect, useCallback, useMemo, useState } from "react";
+import { useRef, useEffect, useCallback, useState } from "react";
 import type { ServerWsMessage } from "@code-agent/protocol";
 import {
   useChatStore,
@@ -34,6 +34,10 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
 
       const event = message.event.event;
       switch (event.type) {
+        case "run.started":
+          dispatch({ type: "RUN_STARTED" });
+          break;
+
         case "message.delta":
           if (event.delta) {
             dispatch({ type: "APPEND_TEXT", delta: event.delta });
@@ -181,11 +185,8 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [state.messages]);
 
-  const isStreaming = useMemo(() => {
-    if (state.messages.length === 0) return false;
-    const last = state.messages[state.messages.length - 1];
-    return last.role === "assistant" && last.isStreaming;
-  }, [state.messages]);
+  // 以 run 生命周期为准切换 Send/Stop，避免个别消息状态异常时按钮卡住
+  const isStreaming = state.runStatus === "running";
 
   useEffect(() => {
     if (!sessionId) {
@@ -280,6 +281,18 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
           allowFreeText={state.pendingQuestion.allowFreeText}
           onSubmit={handleAnswer}
         />
+      )}
+
+      {/* 任务结束提示：明确告知本轮 run 已结束 */}
+      {state.runStatus === "completed" && (
+        <p className="px-4 pt-2 text-center text-xs text-green-400">
+          ✓ 本轮任务已结束
+        </p>
+      )}
+      {state.runStatus === "failed" && (
+        <p className="px-4 pt-2 text-center text-xs text-red-400">
+          ✕ 本轮任务失败
+        </p>
       )}
 
       <InputBar

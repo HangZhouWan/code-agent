@@ -279,6 +279,7 @@ describe("ChatArea", () => {
 
     expect(await screen.findByText("Final answer")).toBeInTheDocument();
     expect(screen.getByText("hello")).toBeInTheDocument();
+    expect(screen.getByText("✓ 本轮任务已结束")).toBeInTheDocument();
   });
 
   it("运行中 Send 按钮应变为 Stop，点击后发送 abort", async () => {
@@ -320,6 +321,7 @@ describe("ChatArea", () => {
 
     expect(screen.queryByText("Stop")).not.toBeInTheDocument();
     expect(screen.getByText("Send")).toBeInTheDocument();
+    expect(screen.getByText("✕ 本轮任务失败")).toBeInTheDocument();
   });
 
   it("点击 Approve 应提交审批 ID，approval.resolved 后移除确认卡片", async () => {

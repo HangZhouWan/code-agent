@@ -51,5 +51,6 @@ export function plannerPrompt(roleIds: string[]): string {
     "Every task must have a unique id. dependsOn must reference those ids (never role names).",
     "Use direct routing unless the task genuinely benefits from event-bus collaboration.",
     "Keep tasks independent when possible; use dependsOn only for real ordering.",
+    "For a single self-contained deliverable (e.g. generate one HTML file), set complexity=simple and return exactly one code task; do not add test/review tasks unless the user explicitly asks for verification.",
   ].join("\n");
 }

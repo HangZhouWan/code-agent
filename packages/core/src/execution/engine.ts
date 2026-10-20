@@ -63,6 +63,28 @@ function expectsFileWrite(input: AgentTaskInput): boolean {
   return input.role === "code" && FILE_WRITE_INTENT.test(input.description);
 }
 
+/** 从工具历史中提取成功写入/修改过的文件（去重） */
+function collectFilesChanged(
+  history: SerializedToolCall[],
+): Array<{ path: string; changeType: "modified" }> {
+  const paths = new Set<string>();
+  for (const call of history) {
+    if (!call.ok) continue;
+    if (
+      call.name !== ToolNames.FILE_WRITE &&
+      call.name !== ToolNames.FILE_EDIT
+    ) {
+      continue;
+    }
+    const path = (call.args as { path?: unknown }).path;
+    if (typeof path === "string") paths.add(path);
+  }
+  return [...paths].map((path) => ({
+    path,
+    changeType: "modified" as const,
+  }));
+}
+
 /**
  * 是否尝试过写文件。
  *
@@ -467,14 +489,7 @@ export class AgentExecutionEngine implements AgentInvoker {
       }
     }
 
-    return this.failure(
-      input,
-      "timeout",
-      serializeError(
-        new Error(`Max iterations (${maxIterations}) reached`),
-        "TIMEOUT",
-      ),
-    );
+    return this.timeoutResult(input, toolHistory, maxIterations);
   }
 
   private async runFallback(
@@ -602,14 +617,7 @@ export class AgentExecutionEngine implements AgentInvoker {
       );
     }
 
-    return this.failure(
-      input,
-      "timeout",
-      serializeError(
-        new Error(`Max iterations (${maxIterations}) reached`),
-        "TIMEOUT",
-      ),
-    );
+    return this.timeoutResult(input, toolHistory, maxIterations);
   }
 
   private success(
@@ -617,22 +625,39 @@ export class AgentExecutionEngine implements AgentInvoker {
     summary: string,
     toolHistory: SerializedToolCall[],
   ): TaskResult {
-    const filesChanged = toolHistory
-      .filter(
-        (call) =>
-          (call.name === "file_write" || call.name === "file_edit") &&
-          typeof (call.args as { path?: unknown }).path === "string",
-      )
-      .map((call) => ({
-        path: (call.args as { path: string }).path,
-        changeType: "modified" as const,
-      }));
+    const filesChanged = collectFilesChanged(toolHistory);
 
     return {
       taskId: input.taskId,
       role: input.role,
       status: "success",
       summary,
+      ...(filesChanged.length > 0
+        ? { artifacts: { filesChanged } }
+        : {}),
+    };
+  }
+
+  /** 达到迭代上限时返回 timeout，并保留已写入的文件信息 */
+  private timeoutResult(
+    input: AgentTaskInput,
+    toolHistory: SerializedToolCall[],
+    maxIterations: number,
+  ): TaskResult {
+    const filesChanged = collectFilesChanged(toolHistory);
+    const fileNote = filesChanged.length
+      ? `；已写入文件: ${filesChanged.map((file) => file.path).join(", ")}`
+      : "";
+
+    return {
+      taskId: input.taskId,
+      role: input.role,
+      status: "timeout",
+      summary: `达到最大迭代次数 (${maxIterations})${fileNote}`,
+      error: serializeError(
+        new Error(`Max iterations (${maxIterations}) reached`),
+        "TIMEOUT",
+      ),
       ...(filesChanged.length > 0
         ? { artifacts: { filesChanged } }
         : {}),

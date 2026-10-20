@@ -78,6 +78,17 @@ export function createPlannerNode(deps: PlannerNodeDeps) {
       };
     }
 
+    // 简单任务只保留一个主任务（优先 code），避免为单文件交付额外派发
+    // test/review 子任务，把简单需求放大成多 Agent 流水线。
+    if (output.complexity === "simple" && output.tasks.length > 1) {
+      const primary =
+        output.tasks.find((task) => task.role === "code") ?? output.tasks[0];
+      output = {
+        complexity: "simple",
+        tasks: [{ ...primary, dependsOn: [] }],
+      };
+    }
+
     // 先为所有任务分配最终 ID，才能解析 dependsOn 引用
     const used = new Set<string>();
     const planned = output.tasks.map((item) => {

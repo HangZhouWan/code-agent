@@ -78,7 +78,11 @@ export function createReplannerNode(deps: ReplannerNodeDeps) {
               `Failures:\n${failureText || "(none)"}\n\n` +
               `Unfinished tasks:\n${unfinishedText || "(none)"}\n\n` +
               "Create repair subtasks needed to reach the user's goal. " +
-              "Do not duplicate tasks that already completed. Return JSON only.",
+              "Do not duplicate tasks that already completed. " +
+              (state.plan?.complexity === "simple"
+                ? "This is a simple single-deliverable request: return exactly one code repair task. "
+                : "") +
+              "Return JSON only.",
           }),
         ],
         deps.signal ? { signal: deps.signal } : {},
@@ -93,6 +97,13 @@ export function createReplannerNode(deps: ReplannerNodeDeps) {
         nextAction: "finalize" as const,
         replanCount: state.replanCount + 1,
       };
+    }
+
+    // 简单任务只补一个 code 修复任务，避免每轮 replan 都追加完整流水线
+    if (state.plan?.complexity === "simple" && output.tasks.length > 1) {
+      const primary =
+        output.tasks.find((task) => task.role === "code") ?? output.tasks[0];
+      output = { ...output, tasks: [{ ...primary, dependsOn: [] }] };
     }
 
     const used = new Set<string>(state.tasks.map((task) => task.id));

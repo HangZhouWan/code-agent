@@ -55,6 +55,12 @@ function plan(tasks: Array<Record<string, unknown>>): AIMessage {
   });
 }
 
+function simplePlan(tasks: Array<Record<string, unknown>>): AIMessage {
+  return new AIMessage({
+    content: JSON.stringify({ complexity: "simple", tasks }),
+  });
+}
+
 function text(content: string): AIMessage {
   return new AIMessage({ content });
 }
@@ -140,6 +146,62 @@ describe("orchestrated session", () => {
     expect(snapshot.tasks.every((task) => task.status === "completed")).toBe(
       true,
     );
+  });
+
+  it("simple 计划只保留一个 code 任务，不额外派发 review", async () => {
+    const { session } = await setup([
+      simplePlan([
+        { role: "code", description: "build one html", routing: "direct" },
+        {
+          role: "review",
+          description: "review it",
+          dependsOn: ["code"],
+          routing: "direct",
+        },
+      ]),
+      text("built"),
+      text("final"),
+    ]);
+
+    const handle = await session.run({ content: "generate one html file" });
+    const result = await handle.done;
+
+    expect(result.status).toBe("completed");
+    const snapshot = await session.snapshot();
+    expect(snapshot.tasks).toHaveLength(1);
+    expect(snapshot.tasks[0].role).toBe("code");
+    expect(snapshot.tasks[0].status).toBe("completed");
+  });
+
+  it("依赖任务失败时跳过下游任务且不触发额外 replan", async () => {
+    const { session } = await setup([
+      plan([
+        { id: "t1", role: "code", description: "implement", routing: "direct" },
+        {
+          id: "t2",
+          role: "review",
+          description: "review implementation",
+          dependsOn: ["t1"],
+          routing: "direct",
+        },
+      ]),
+      new Error("llm down"),
+      plan([
+        { id: "r1", role: "code", description: "retry implement", routing: "direct" },
+      ]),
+      text("fixed"),
+      text("final"),
+    ]);
+
+    const handle = await session.run({ content: "implement and review" });
+    const result = await handle.done;
+
+    expect(result.status).toBe("completed");
+    const snapshot = await session.snapshot();
+    const reviewTask = snapshot.tasks.find((task) => task.role === "review");
+    const retryTask = snapshot.tasks.find((task) => task.id === "r1");
+    expect(reviewTask?.status).toBe("cancelled");
+    expect(retryTask?.status).toBe("completed");
   });
 
   it("dependsOn 使用角色名时也能正确解析", async () => {
