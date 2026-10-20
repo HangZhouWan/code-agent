@@ -53,6 +53,18 @@ export function createReplannerNode(deps: ReplannerNodeDeps) {
       )
       .join("\n");
 
+    // 没有结果的任务通常是依赖无法满足（不会被调度），也要告诉 replanner
+    const completedIds = new Set(state.results.map((result) => result.taskId));
+    const unfinished = state.tasks.filter(
+      (task) => !completedIds.has(task.id),
+    );
+    const unfinishedText = unfinished
+      .map(
+        (task) =>
+          `- [${task.role}] ${task.id} (${task.status}) dependsOn=[${task.dependsOn.join(", ")}]: ${task.description}`,
+      )
+      .join("\n");
+
     let output = null;
     try {
       const response = await deps.model.invoke(
@@ -63,8 +75,10 @@ export function createReplannerNode(deps: ReplannerNodeDeps) {
           new HumanMessage({
             content:
               `Original request: ${state.userMessage}\n\n` +
-              `Failures:\n${failureText}\n\n` +
-              "Create repair subtasks. Return JSON only.",
+              `Failures:\n${failureText || "(none)"}\n\n` +
+              `Unfinished tasks:\n${unfinishedText || "(none)"}\n\n` +
+              "Create repair subtasks needed to reach the user's goal. " +
+              "Do not duplicate tasks that already completed. Return JSON only.",
           }),
         ],
         deps.signal ? { signal: deps.signal } : {},

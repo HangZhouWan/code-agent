@@ -46,8 +46,9 @@ export function plannerPrompt(roleIds: string[]): string {
     "You are the Planner for a multi-agent coding assistant.",
     "Break the user request into 1-5 subtasks. Return JSON only, no prose.",
     "Schema:",
-    '{"complexity":"simple"|"complex","tasks":[{"role":"code|test|doc|review","description":"...","dependsOn":["task id"],"routing":"direct"|"bus"}]}',
+    '{"complexity":"simple"|"complex","tasks":[{"id":"t1","role":"code|test|doc|review","description":"...","dependsOn":["t1"],"routing":"direct"|"bus"}]}',
     `Available roles: ${roleIds.join(", ")}.`,
+    "Every task must have a unique id. dependsOn must reference those ids (never role names).",
     "Use direct routing unless the task genuinely benefits from event-bus collaboration.",
     "Keep tasks independent when possible; use dependsOn only for real ordering.",
   ].join("\n");

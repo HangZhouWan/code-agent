@@ -121,7 +121,10 @@ function echoTool(permission: "allow" | "confirm" = "allow"): ToolDefinition {
   };
 }
 
-function input(tools: ToolDefinition[] = [echoTool()]): AgentTaskInput {
+function input(
+  tools: ToolDefinition[] = [echoTool()],
+  overrides: Partial<AgentTaskInput> = {},
+): AgentTaskInput {
   return {
     taskId,
     role: "code",
@@ -130,6 +133,19 @@ function input(tools: ToolDefinition[] = [echoTool()]): AgentTaskInput {
     workspacePath: tempDir(),
     systemPrompt: "test agent",
     maxIterations: 5,
+    ...overrides,
+  };
+}
+
+/** 用于验证落盘检查的 file_write 工具 */
+function writeTool(permission: "allow" | "confirm" = "allow"): ToolDefinition {
+  return {
+    name: "file_write",
+    description: "write file",
+    schema: z.object({ path: z.string(), content: z.string() }),
+    permission,
+    sideEffect: "mutating",
+    execute: async (args) => `wrote:${args.path}`,
   };
 }
 
@@ -181,6 +197,77 @@ describe("native tool calling", () => {
     expect(result.summary).toBe("done");
     expect(model.bound).toBe(true);
     assertHasToolMessage(model.calls[1], "echo:hi");
+  });
+
+  it("创建类任务未写入文件时先提醒，仍不写则失败", async () => {
+    const model = new ScriptedModel([
+      new AIMessage({ content: "done" }),
+      new AIMessage({ content: "still done" }),
+    ]);
+    const engine = new AgentExecutionEngine(model);
+
+    const result = await engine.invoke(
+      input([writeTool()], { description: "创建一个 index.html 文件" }),
+      scope().scope,
+    );
+
+    expect(result.status).toBe("failed");
+    expect(result.summary).toContain("file_write");
+    expect(model.calls).toHaveLength(2);
+    expect(String(model.calls[1].at(-1)?.content)).toContain("file_write");
+  });
+
+  it("提醒后执行 file_write 则任务成功", async () => {
+    const model = new ScriptedModel([
+      new AIMessage({ content: "done" }),
+      new AIMessage({
+        content: "",
+        tool_calls: [
+          {
+            id: "w1",
+            name: "file_write",
+            args: { path: "index.html", content: "<html></html>" },
+          },
+        ],
+      }),
+      new AIMessage({ content: "created" }),
+    ]);
+    const engine = new AgentExecutionEngine(model);
+
+    const result = await engine.invoke(
+      input([writeTool()], { description: "创建一个 index.html 文件" }),
+      scope().scope,
+    );
+
+    expect(result.status).toBe("success");
+    expect(result.artifacts?.filesChanged?.[0]?.path).toBe("index.html");
+  });
+
+  it("用户拒绝 file_write 后仍可完成（不算未尝试写入）", async () => {
+    const requestApproval = vi.fn(async () => false);
+    const model = new ScriptedModel([
+      new AIMessage({
+        content: "",
+        tool_calls: [
+          {
+            id: "w1",
+            name: "file_write",
+            args: { path: "index.html", content: "<html></html>" },
+          },
+        ],
+      }),
+      new AIMessage({ content: "write was denied" }),
+    ]);
+    const engine = new AgentExecutionEngine(model);
+
+    const result = await engine.invoke(
+      input([writeTool("confirm")], { description: "write a file" }),
+      scope({ requestApproval }).scope,
+    );
+
+    expect(result.status).toBe("success");
+    expect(result.summary).toBe("write was denied");
+    expect(requestApproval).toHaveBeenCalledTimes(1);
   });
 
   it("confirm 工具经过审批，拒绝时把错误反馈给模型", async () => {

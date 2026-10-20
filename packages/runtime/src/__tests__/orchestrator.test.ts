@@ -142,6 +142,63 @@ describe("orchestrated session", () => {
     );
   });
 
+  it("dependsOn 使用角色名时也能正确解析", async () => {
+    const { session } = await setup([
+      plan([
+        { role: "code", description: "implement", routing: "direct" },
+        {
+          role: "test",
+          description: "test",
+          dependsOn: ["code"],
+          routing: "direct",
+        },
+      ]),
+      text("code done"),
+      text("test done"),
+      text("all done"),
+    ]);
+
+    const handle = await session.run({ content: "implement and test" });
+    const result = await handle.done;
+
+    expect(result.status).toBe("completed");
+    const snapshot = await session.snapshot();
+    expect(snapshot.tasks).toHaveLength(2);
+    expect(
+      snapshot.tasks.every((task) => task.status === "completed"),
+    ).toBe(true);
+    // test 任务应依赖 code 任务的实际 ID
+    const testTask = snapshot.tasks.find((task) => task.role === "test");
+    const codeTask = snapshot.tasks.find((task) => task.role === "code");
+    expect(testTask?.dependsOn).toEqual([codeTask?.id]);
+  });
+
+  it("无效 dependsOn 不应导致任务永远无法调度", async () => {
+    const { session } = await setup([
+      plan([
+        { role: "code", description: "implement", routing: "direct" },
+        {
+          role: "test",
+          description: "test with dangling dependency",
+          dependsOn: ["missing-task"],
+          routing: "direct",
+        },
+      ]),
+      text("code done"),
+      text("test done"),
+      text("all done"),
+    ]);
+
+    const handle = await session.run({ content: "implement and test" });
+    const result = await handle.done;
+
+    expect(result.status).toBe("completed");
+    const snapshot = await session.snapshot();
+    expect(
+      snapshot.tasks.every((task) => task.status === "completed"),
+    ).toBe(true);
+  });
+
   it("失败任务触发 replanner 并生成新任务", async () => {
     const { session } = await setup([
       plan([{ id: "t1", role: "code", description: "implement", routing: "direct" }]),

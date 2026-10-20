@@ -48,6 +48,35 @@ import type {
 import { buildInitialMessages, buildSystemPrompt } from "./prompt-builder.js";
 import { parseFallbackThought } from "./thought-parser.js";
 import { ToolExecutor } from "./tool-executor.js";
+import { ToolNames } from "../tools/tool-names.js";
+
+/** 代码任务描述中出现这些词时，视为需要落盘文件变更 */
+const FILE_WRITE_INTENT =
+  /创建|新建|生成|写入|保存|create|write|generate|save/i;
+
+/** 提示模型补一次文件写入 */
+const FILE_WRITE_NUDGE =
+  "You have not created or modified any file. This task requires a file change. " +
+  "Use file_write (or file_edit) now, then summarize the result.";
+
+function expectsFileWrite(input: AgentTaskInput): boolean {
+  return input.role === "code" && FILE_WRITE_INTENT.test(input.description);
+}
+
+/**
+ * 是否尝试过写文件。
+ *
+ * 只要模型发起过 file_write/file_edit 就算（即使被用户拒绝或执行失败），
+ * 用于区分“从未尝试写入”和“写入被拒/失败后如实汇报”。
+ */
+function attemptedFileWrite(history: SerializedToolCall[]): boolean {
+  return history.some(
+    (call) =>
+      call.name === ToolNames.FILE_WRITE ||
+      call.name === ToolNames.FILE_EDIT,
+  );
+}
+
 
 export interface ChatModelLike {
   invoke(
@@ -293,6 +322,7 @@ export class AgentExecutionEngine implements AgentInvoker {
     const bound = this.model.bindTools!(
       toolExecutor.toLangChainTools(toolContext),
     ) as ChatModelLike;
+    let nudgedForFileWrite = false;
 
     for (let step = 0; step < maxIterations; step++) {
       if (controller.signal.aborted) {
@@ -356,6 +386,27 @@ export class AgentExecutionEngine implements AgentInvoker {
 
       if (calls.length === 0) {
         const text = extractText(response);
+
+        // 创建类任务必须有成功的文件写入；否则先提醒模型一次，
+        // 仍不写则判定失败，避免“未落盘却报告完成”。
+        if (expectsFileWrite(input) && !attemptedFileWrite(toolHistory)) {
+          if (!nudgedForFileWrite) {
+            nudgedForFileWrite = true;
+            messages.push(new HumanMessage({ content: FILE_WRITE_NUDGE }));
+            continue;
+          }
+          return this.failure(
+            input,
+            "failed",
+            serializeError(
+              new Error(
+                "任务要求创建或修改文件，但未执行任何成功的 file_write/file_edit",
+              ),
+              "VALIDATION",
+            ),
+          );
+        }
+
         return this.success(input, text || "Completed", toolHistory);
       }
 
@@ -454,6 +505,7 @@ export class AgentExecutionEngine implements AgentInvoker {
     ].join("\n");
 
     messages[0] = new SystemMessage({ content: fallbackSystem });
+    let nudgedForFileWrite = false;
 
     for (let step = 0; step < maxIterations; step++) {
       if (controller.signal.aborted) {
@@ -483,6 +535,30 @@ export class AgentExecutionEngine implements AgentInvoker {
       const thought = parseFallbackThought(text);
 
       if (thought.decision === "done") {
+        if (expectsFileWrite(input) && !attemptedFileWrite(toolHistory)) {
+          if (!nudgedForFileWrite) {
+            nudgedForFileWrite = true;
+            messages.push(response);
+            messages.push(
+              new HumanMessage({
+                content:
+                  FILE_WRITE_NUDGE +
+                  ' Respond with decision="use_tool" and a file_write toolCall.',
+              }),
+            );
+            continue;
+          }
+          return this.failure(
+            input,
+            "failed",
+            serializeError(
+              new Error(
+                "任务要求创建或修改文件，但未执行任何成功的 file_write/file_edit",
+              ),
+              "VALIDATION",
+            ),
+          );
+        }
         return this.success(
           input,
           thought.summary ?? text ?? "Completed",

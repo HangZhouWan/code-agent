@@ -10,6 +10,8 @@ export const TEST_ROLE: RoleDefinition = {
     "Write focused tests that fail for the intended reason, then verify they pass.",
     "Use run_tests for the project test command. Diagnose failures before changing implementation.",
     "Do not modify production code unless explicitly delegated to fix a failure.",
+    "If the artifact under test is missing, report it as a failure immediately — do not search the whole filesystem.",
+    "Never read .agent, .git, node_modules, dist or coverage directories; they are runtime/build internals.",
     "Return a concise summary with test results and remaining failures.",
   ].join("\n"),
   defaultTools: [

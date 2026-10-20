@@ -78,22 +78,46 @@ export function createPlannerNode(deps: PlannerNodeDeps) {
       };
     }
 
+    // 先为所有任务分配最终 ID，才能解析 dependsOn 引用
     const used = new Set<string>();
-    const records: TaskRecord[] = [];
-    for (const item of output.tasks) {
-      let id =
-        item.id && !used.has(item.id) ? item.id : deps.ids.next("task");
+    const planned = output.tasks.map((item) => {
+      let id = item.id && !used.has(item.id) ? item.id : deps.ids.next("task");
       while (used.has(id)) id = deps.ids.next("task");
       used.add(id);
+      return { item, id };
+    });
 
+    // Planner 常把 dependsOn 写成角色名（如 "code"）或不存在的 ID。
+    // 解析顺序：planner 提供的任务 ID → 同角色的首个任务 → 丢弃无法满足的依赖。
+    const idByPlannerId = new Map<string, string>();
+    const idByRole = new Map<string, string>();
+    for (const { item, id } of planned) {
+      if (item.id) idByPlannerId.set(item.id, id);
+      if (!idByRole.has(item.role)) idByRole.set(item.role, id);
+    }
+
+    const records: TaskRecord[] = [];
+    for (const { item, id } of planned) {
       const role = deps.roles.has(item.role) ? item.role : "code";
+      const dependsOn = [...new Set(item.dependsOn)]
+        .map(
+          (dependency) =>
+            idByPlannerId.get(dependency) ??
+            idByRole.get(dependency) ??
+            dependency,
+        )
+        .filter(
+          (dependency) => dependency !== id && used.has(dependency),
+        )
+        .map(asTaskId);
+
       const task = deps.state.tasks.create({
         id: asTaskId(id),
         runId: state.runId,
         role,
         description: item.description,
         routing: item.routing,
-        dependsOn: item.dependsOn.map(asTaskId),
+        dependsOn,
       });
       records.push(task);
       await deps.persistTask(task.id);

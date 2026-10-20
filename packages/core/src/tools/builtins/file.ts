@@ -21,6 +21,24 @@ const MAX_READ_BYTES = 2 * 1024 * 1024;
 const MAX_UNRANGED_READ_BYTES = 100 * 1024;
 const IGNORED_DIRS = new Set([".git", "node_modules", "dist", ".agent", "coverage"]);
 
+/**
+ * 返回路径命中的顶层忽略目录名。
+ *
+ * 输入：工作区根目录、已解析的绝对路径
+ * 输出：命中的目录名（如 .agent），未命中返回 undefined
+ */
+function ignoredTopLevelDir(
+  workspacePath: string,
+  fullPath: string,
+): string | undefined {
+  const relative = path.relative(workspacePath, fullPath);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    return undefined;
+  }
+  const first = relative.split(path.sep)[0];
+  return IGNORED_DIRS.has(first) ? first : undefined;
+}
+
 function isBinary(buffer: Buffer): boolean {
   return buffer.includes(0);
 }
@@ -42,6 +60,10 @@ export const fileReadTool: ToolDefinition<z.ZodObject<{
   sideEffect: "none",
   async execute(args, ctx): Promise<ToolResult> {
     const fullPath = resolveWorkspacePath(ctx.workspacePath, args.path);
+    const ignored = ignoredTopLevelDir(ctx.workspacePath, fullPath);
+    if (ignored) {
+      return toolError(`禁止访问运行时/构建目录: ${ignored}`, "VALIDATION");
+    }
     const stat = await fs.stat(fullPath);
 
     if (
@@ -113,6 +135,10 @@ export const fileWriteTool: ToolDefinition<z.ZodObject<{
   sideEffect: "mutating",
   async execute(args, ctx): Promise<ToolResult> {
     const fullPath = resolveWorkspacePath(ctx.workspacePath, args.path);
+    const ignored = ignoredTopLevelDir(ctx.workspacePath, fullPath);
+    if (ignored) {
+      return toolError(`禁止写入运行时/构建目录: ${ignored}`, "VALIDATION");
+    }
     await fs.mkdir(path.dirname(fullPath), { recursive: true });
     await fs.writeFile(fullPath, args.content, "utf-8");
     return toolOk(`文件已写入: ${args.path}`, {
@@ -141,6 +167,10 @@ export const fileEditTool: ToolDefinition<z.ZodObject<{
   sideEffect: "mutating",
   async execute(args, ctx): Promise<ToolResult> {
     const fullPath = resolveWorkspacePath(ctx.workspacePath, args.path);
+    const ignored = ignoredTopLevelDir(ctx.workspacePath, fullPath);
+    if (ignored) {
+      return toolError(`禁止修改运行时/构建目录: ${ignored}`, "VALIDATION");
+    }
     const content = await fs.readFile(fullPath, "utf-8");
 
     if (!content.includes(args.old_string)) {
@@ -184,6 +214,10 @@ export const fileListTool: ToolDefinition<z.ZodObject<{
   sideEffect: "none",
   async execute(args, ctx): Promise<ToolResult> {
     const root = resolveWorkspacePath(ctx.workspacePath, args.path);
+    const ignored = ignoredTopLevelDir(ctx.workspacePath, root);
+    if (ignored) {
+      return toolError(`禁止访问运行时/构建目录: ${ignored}`, "VALIDATION");
+    }
     const lines: string[] = [];
 
     async function walk(dir: string, relative: string, remaining: number) {
@@ -254,6 +288,10 @@ export const fileGlobTool: ToolDefinition<z.ZodObject<{
   sideEffect: "none",
   async execute(args, ctx): Promise<ToolResult> {
     const root = resolveWorkspacePath(ctx.workspacePath, args.path);
+    const ignored = ignoredTopLevelDir(ctx.workspacePath, root);
+    if (ignored) {
+      return toolError(`禁止访问运行时/构建目录: ${ignored}`, "VALIDATION");
+    }
     const effectivePattern = args.pattern.includes("/")
       ? args.pattern
       : `**/${args.pattern}`;
@@ -312,6 +350,10 @@ export const codeSearchTool: ToolDefinition<z.ZodObject<{
   sideEffect: "none",
   async execute(args, ctx): Promise<ToolResult> {
     const fullPath = resolveWorkspacePath(ctx.workspacePath, args.path);
+    const ignored = ignoredTopLevelDir(ctx.workspacePath, fullPath);
+    if (ignored) {
+      return toolError(`禁止搜索运行时/构建目录: ${ignored}`, "VALIDATION");
+    }
     const relativePath = path.relative(ctx.workspacePath, fullPath) || ".";
     const grepArgs = ["-rn", "--color=never", "-m", String(args.maxResults)];
     if (args.glob) grepArgs.push(`--include=${args.glob}`);

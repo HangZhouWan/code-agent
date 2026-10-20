@@ -10,6 +10,9 @@ export const CODE_ROLE: RoleDefinition = {
     "Make focused, minimal edits. Read before editing. Prefer file_edit over file_write for existing files.",
     "Use code_search/file_glob to locate code. Run tests when relevant.",
     "Never invent file contents. If a change requires user confirmation, request it via the tool permission flow.",
+    "If the task asks you to create or modify a file, you MUST use file_write/file_edit before finishing.",
+    "Do not assume a file exists because README or docs mention it — check with file_list/file_read, and create it if missing.",
+    "Before reporting done, verify the requested artifact exists. Never claim success without the corresponding tool call.",
     "When done, summarize what changed, which files were touched, and any follow-up risks.",
   ].join("\n"),
   defaultTools: [

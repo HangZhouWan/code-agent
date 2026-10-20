@@ -133,6 +133,38 @@ describe("file tools", () => {
     expect(result.ok).toBe(false);
   });
 
+  it("拒绝显式访问 .agent 等运行时目录", async () => {
+    const workspace = makeWorkspace();
+    mkdirSync(join(workspace, ".agent"), { recursive: true });
+    writeFileSync(join(workspace, ".agent", "state.json"), "{}\n", "utf-8");
+
+    const read = await runTool(
+      fileReadTool,
+      { path: ".agent/state.json" },
+      ctx(workspace),
+    );
+    const list = await runTool(
+      fileListTool,
+      { path: ".agent", depth: 2 },
+      ctx(workspace),
+    );
+    const search = await runTool(
+      codeSearchTool,
+      { pattern: "{", path: ".agent" },
+      ctx(workspace),
+    );
+    const write = await runTool(
+      fileWriteTool,
+      { path: ".agent/state.json", content: "x" },
+      ctx(workspace),
+    );
+
+    for (const result of [read, list, search, write]) {
+      expect(result.ok).toBe(false);
+      expect(result.content).toContain("禁止");
+    }
+  });
+
   it("file_glob 按模式查找文件", async () => {
     const workspace = makeWorkspace();
     const result = await runTool(
