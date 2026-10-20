@@ -142,7 +142,11 @@ function writeTool(permission: "allow" | "confirm" = "allow"): ToolDefinition {
   return {
     name: "file_write",
     description: "write file",
-    schema: z.object({ path: z.string(), content: z.string() }),
+    schema: z.object({
+      path: z.string(),
+      content: z.string(),
+      append: z.boolean().optional(),
+    }),
     permission,
     sideEffect: "mutating",
     execute: async (args) => `wrote:${args.path}`,
@@ -217,13 +221,13 @@ describe("native tool calling", () => {
     expect(String(model.calls[1].at(-1)?.content)).toContain("file_write");
   });
 
-  it("输出被 max_tokens 截断时返回可诊断的失败", async () => {
-    const model = new ScriptedModel([
+  it("输出连续被 max_tokens 截断时返回可诊断的失败", async () => {
+    const truncated = () =>
       new AIMessage({
         content: "",
         response_metadata: { stop_reason: "max_tokens" },
-      }),
-    ]);
+      });
+    const model = new ScriptedModel([truncated(), truncated()]);
     const engine = new AgentExecutionEngine(model);
 
     const result = await engine.invoke(
@@ -233,8 +237,38 @@ describe("native tool calling", () => {
 
     expect(result.status).toBe("failed");
     expect(result.summary).toContain("max_tokens");
-    // 截断时不应再发提醒，避免重复浪费一次调用
-    expect(model.calls).toHaveLength(1);
+    // 第一次截断会引导分块写入，第二次才失败
+    expect(model.calls).toHaveLength(2);
+    expect(String(model.calls[1].at(-1)?.content)).toContain("append");
+  });
+
+  it("截断后按提示分块写入可恢复", async () => {
+    const model = new ScriptedModel([
+      new AIMessage({
+        content: "",
+        response_metadata: { stop_reason: "max_tokens" },
+      }),
+      new AIMessage({
+        content: "",
+        tool_calls: [
+          {
+            id: "w1",
+            name: "file_write",
+            args: { path: "index.html", content: "<html>", append: false },
+          },
+        ],
+      }),
+      new AIMessage({ content: "created" }),
+    ]);
+    const engine = new AgentExecutionEngine(model);
+
+    const result = await engine.invoke(
+      input([writeTool()], { description: "创建一个 index.html 文件" }),
+      scope().scope,
+    );
+
+    expect(result.status).toBe("success");
+    expect(result.artifacts?.filesChanged?.[0]?.path).toBe("index.html");
   });
 
   it("提醒后执行 file_write 则任务成功", async () => {

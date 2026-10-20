@@ -111,6 +111,29 @@ describe("file tools", () => {
     expect(read.content).toBe("new\n");
   });
 
+  it("file_write 支持 append 追加", async () => {
+    const workspace = makeWorkspace();
+    await runTool(
+      fileWriteTool,
+      { path: "chunk.html", content: "part1\n" },
+      ctx(workspace),
+    );
+    const appended = await runTool(
+      fileWriteTool,
+      { path: "chunk.html", content: "part2\n", append: true },
+      ctx(workspace),
+    );
+    expect(appended.ok).toBe(true);
+    expect(appended.content).toContain("追加");
+
+    const read = await runTool(
+      fileReadTool,
+      { path: "chunk.html" },
+      ctx(workspace),
+    );
+    expect(read.content).toBe("part1\npart2\n");
+  });
+
   it("file_edit 在多次匹配时拒绝", async () => {
     const workspace = makeWorkspace();
     writeFileSync(join(workspace, "dup.txt"), "x\nx\n", "utf-8");

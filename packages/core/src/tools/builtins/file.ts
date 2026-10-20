@@ -123,13 +123,20 @@ export const fileReadTool: ToolDefinition<z.ZodObject<{
 export const fileWriteTool: ToolDefinition<z.ZodObject<{
   path: z.ZodString;
   content: z.ZodString;
+  append: z.ZodOptional<z.ZodBoolean>;
 }>> = {
   name: ToolNames.FILE_WRITE,
   description:
-    "将文本内容写入工作区文件；父目录不存在时自动创建。会覆盖已有内容。",
+    "将文本内容写入工作区文件；父目录不存在时自动创建。默认覆盖已有内容。" +
+    "内容较大时请分多次调用：首次 append=false 写入开头，后续 append=true 逐段追加；" +
+    "每次 content 建议不超过 6000 字符，且必须提供 path。",
   schema: z.object({
-    path: z.string().describe("相对于工作区的文件路径"),
+    path: z.string().describe("相对于工作区的文件路径（必填）"),
     content: z.string().describe("要写入的文本内容"),
+    append: z
+      .boolean()
+      .optional()
+      .describe("true 时追加到文件末尾；默认 false（覆盖）"),
   }),
   permission: "confirm",
   sideEffect: "mutating",
@@ -140,11 +147,19 @@ export const fileWriteTool: ToolDefinition<z.ZodObject<{
       return toolError(`禁止写入运行时/构建目录: ${ignored}`, "VALIDATION");
     }
     await fs.mkdir(path.dirname(fullPath), { recursive: true });
-    await fs.writeFile(fullPath, args.content, "utf-8");
-    return toolOk(`文件已写入: ${args.path}`, {
-      path: args.path,
-      bytes: Buffer.byteLength(args.content, "utf-8"),
-    });
+    if (args.append) {
+      await fs.appendFile(fullPath, args.content, "utf-8");
+    } else {
+      await fs.writeFile(fullPath, args.content, "utf-8");
+    }
+    return toolOk(
+      `文件已${args.append ? "追加" : "写入"}: ${args.path}`,
+      {
+        path: args.path,
+        bytes: Buffer.byteLength(args.content, "utf-8"),
+        append: args.append === true,
+      },
+    );
   },
 };
 

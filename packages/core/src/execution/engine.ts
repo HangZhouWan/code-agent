@@ -59,6 +59,13 @@ const FILE_WRITE_NUDGE =
   "You have not created or modified any file. This task requires a file change. " +
   "Use file_write (or file_edit) now, then summarize the result.";
 
+/** 输出被截断后，引导模型改用分块写入 */
+const TRUNCATION_NUDGE =
+  "Your previous response was truncated by the max_tokens output limit, so the tool call was lost. " +
+  "Do not write the whole file in one call. Split it into chunks: call file_write with append=false " +
+  "for the first ~3000 characters, then call file_write with append=true and the same path for each " +
+  "remaining chunk. Every call MUST include path.";
+
 function expectsFileWrite(input: AgentTaskInput): boolean {
   return input.role === "code" && FILE_WRITE_INTENT.test(input.description);
 }
@@ -354,6 +361,7 @@ export class AgentExecutionEngine implements AgentInvoker {
       toolExecutor.toLangChainTools(toolContext),
     ) as ChatModelLike;
     let nudgedForFileWrite = false;
+    let nudgedForTruncation = false;
 
     for (let step = 0; step < maxIterations; step++) {
       if (controller.signal.aborted) {
@@ -418,9 +426,14 @@ export class AgentExecutionEngine implements AgentInvoker {
       if (calls.length === 0) {
         const text = extractText(response);
 
-        // 输出被 max_tokens 截断时，工具调用往往直接丢失，
-        // 再提醒也只会重复截断，直接给出可诊断的失败。
+        // 输出被 max_tokens 截断时，工具调用往往直接丢失。
+        // 先引导一次分块写入；仍截断才判定失败。
         if (outputWasTruncated(response)) {
+          if (!nudgedForTruncation) {
+            nudgedForTruncation = true;
+            messages.push(new HumanMessage({ content: TRUNCATION_NUDGE }));
+            continue;
+          }
           return this.failure(
             input,
             "failed",
@@ -545,6 +558,7 @@ export class AgentExecutionEngine implements AgentInvoker {
 
     messages[0] = new SystemMessage({ content: fallbackSystem });
     let nudgedForFileWrite = false;
+    let nudgedForTruncation = false;
 
     for (let step = 0; step < maxIterations; step++) {
       if (controller.signal.aborted) {
@@ -567,6 +581,29 @@ export class AgentExecutionEngine implements AgentInvoker {
           input,
           "failed",
           serializeError(error, "LLM_FATAL"),
+        );
+      }
+
+      if (outputWasTruncated(response)) {
+        if (!nudgedForTruncation) {
+          nudgedForTruncation = true;
+          messages.push(response);
+          messages.push(
+            new HumanMessage({
+              content: TRUNCATION_NUDGE + " Respond with a JSON use_tool decision.",
+            }),
+          );
+          continue;
+        }
+        return this.failure(
+          input,
+          "failed",
+          serializeError(
+            new Error(
+              "模型输出达到 max_tokens 上限，工具调用被截断；请增大 LLM_MAX_TOKENS 或拆分文件写入",
+            ),
+            "VALIDATION",
+          ),
         );
       }
 
