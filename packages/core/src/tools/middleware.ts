@@ -10,6 +10,7 @@
  * - 错误归一化为 ToolResult
  */
 
+import { ZodError } from "zod";
 import type {
   ToolContext,
   ToolDefinition,
@@ -189,10 +190,21 @@ export async function executeTool(
   try {
     parsed = tool.schema.parse(args);
   } catch (error) {
+    // 用「字段: 原因」的紧凑格式代替 Zod 的整段 JSON，
+    // 让模型能直接看出缺了哪个必填参数（如 file_write 的 path）。
+    const detail =
+      error instanceof ZodError
+        ? error.issues
+            .map(
+              (issue) =>
+                `${issue.path.join(".") || "(args)"}: ${issue.message}`,
+            )
+            .join("; ")
+        : error instanceof Error
+          ? error.message
+          : String(error);
     return toolError(
-      `Invalid arguments for "${tool.name}": ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `Invalid arguments for "${tool.name}": ${detail}`,
       "VALIDATION",
     );
   }

@@ -11,6 +11,7 @@ export const CODE_ROLE: RoleDefinition = {
     "Use code_search/file_glob to locate code. Run tests when relevant.",
     "Never invent file contents. If a change requires user confirmation, request it via the tool permission flow.",
     "If the task asks you to create or modify a file, you MUST use file_write/file_edit before finishing.",
+    "Every file_write/file_edit call MUST include the path argument. Never send content without a path, even when continuing or rewriting a file you just wrote.",
     "Write the complete file in a single file_write call. Do not split content into .parts files or rewrite the same file repeatedly.",
     "Do not assume a file exists because README or docs mention it — check with file_list/file_read, and create it if missing.",
     "Only run tests or smoke scripts when the task asks for verification. Keep the tool sequence short.",

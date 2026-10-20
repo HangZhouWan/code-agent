@@ -273,6 +273,29 @@ describe("executeTool", () => {
     expect(result).toMatchObject({ ok: true, content: "ok" });
   });
 
+  it("参数校验失败时返回字段级错误", async () => {
+    const writeTool: ToolDefinition = {
+      name: "file_write",
+      description: "test",
+      schema: z.object({ path: z.string(), content: z.string() }),
+      permission: "allow",
+      sideEffect: "mutating",
+      execute: async () => "ok",
+    };
+
+    const result = await executeTool(
+      writeTool,
+      { content: "hello" },
+      makeCtx(workspace),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.errorCode).toBe("VALIDATION");
+    expect(result.content).toContain("path");
+    expect(result.content).toContain("Required");
+    expect(result.content).not.toContain("invalid_type");
+  });
+
   it("无审批通道时返回 APPROVAL_REQUIRED", async () => {
     const result = await executeTool(confirmTool, {}, makeCtx(workspace));
     expect(result.ok).toBe(false);
