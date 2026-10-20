@@ -50,6 +50,8 @@ export const globalConfigSchema = llmConfigObjectSchema
       .trim()
       .min(1, "WORKSPACE_PATH 不能为空")
       .optional(),
+    /** Auto mode：工作区内写文件/改文件/执行命令无需人工审批 */
+    AUTO_MODE: z.boolean().default(false),
   })
   .superRefine(requireApiKeyIfNeeded);
 
@@ -80,6 +82,7 @@ export const appConfigSchema = z.object({
   DB_PATH: z.string().optional(),
   CODE_AGENT_HOME: z.string().optional(),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
+  AUTO_MODE: z.boolean().default(false),
 });
 
 export type LlmConfig = z.infer<typeof llmConfigObjectSchema>;

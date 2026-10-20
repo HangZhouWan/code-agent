@@ -37,6 +37,8 @@ export type GlobalConfigInput = {
   LLM_MAX_RETRIES?: number;
   /** Agent 默认工作目录；留空使用服务启动目录 */
   WORKSPACE_PATH?: string;
+  /** Auto mode：工作区内写入/命令执行免审批 */
+  AUTO_MODE?: boolean;
 };
 
 export interface GlobalConfigManagerOptions {

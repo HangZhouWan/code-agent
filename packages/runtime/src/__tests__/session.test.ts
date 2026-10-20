@@ -100,6 +100,7 @@ async function setup(
     memory?: MemoryService;
     extractor?: import("@code-agent/core").MemoryExtractor;
     title?: string;
+    autoApprove?: boolean;
   } = {},
 ): Promise<{
   ports: ReturnType<typeof createInMemoryPorts>;
@@ -116,6 +117,7 @@ async function setup(
       ...(options.extractor
         ? { memoryExtractor: options.extractor }
         : {}),
+      ...(options.autoApprove ? { autoApprove: true } : {}),
     },
     { ports, approvalTimeoutMs: 1_000, questionTimeoutMs: 1_000 },
   );
@@ -241,6 +243,20 @@ describe("AgentSession direct slice", () => {
 });
 
 describe("approval", () => {
+  it("autoApprove 下 file_write 免审批直接执行", async () => {
+    const model = new ScriptedModel([
+      toolCall("file_write", { path: "auto.txt", content: "hello" }),
+      text("done"),
+    ]);
+    const { session, workspace } = await setup(model, { autoApprove: true });
+
+    const handle = await session.run({ content: "write a file" });
+    const result = await handle.done;
+
+    expect(result.status).toBe("completed");
+    expect(existsSync(join(workspace, "auto.txt"))).toBe(true);
+  });
+
   it("批准后执行 confirm 工具", async () => {
     const model = new ScriptedModel([
       toolCall("file_write", { path: "a.txt", content: "hello" }),

@@ -29,6 +29,8 @@ export interface ResolvedConfig extends LlmConfig {
   DB_PATH: string;
   CODE_AGENT_HOME: string;
   LOG_LEVEL: NonNullable<AppConfig["LOG_LEVEL"]>;
+  /** Auto mode：工作区内写入/命令执行免审批 */
+  AUTO_MODE: boolean;
   CONTEXT: ContextConfig;
   paths: WorkspacePaths;
 }

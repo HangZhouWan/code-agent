@@ -251,6 +251,33 @@ describe("loadConfig 分层优先级", () => {
     expect(explicitConfig.WORKSPACE_PATH).toBe(explicit);
   });
 
+  it("AUTO_MODE 从全局配置读取，环境变量可覆盖", () => {
+    const { workspace } = makeWorkspace();
+    const home = makeTempDir("home");
+    writeJson(join(home, ".code-agent", "config.json"), {
+      LLM_PROVIDER: "openai",
+      LLM_MODEL: "global-model",
+      LLM_API_KEY: "global-key",
+      AUTO_MODE: true,
+    });
+
+    const fromGlobal = loadConfig({
+      workspacePath: workspace,
+      homeDir: home,
+      env: {},
+      logger: () => {},
+    });
+    expect(fromGlobal.AUTO_MODE).toBe(true);
+
+    const fromEnv = loadConfig({
+      workspacePath: workspace,
+      homeDir: home,
+      env: { AUTO_MODE: "false" },
+      logger: () => {},
+    });
+    expect(fromEnv.AUTO_MODE).toBe(false);
+  });
+
   it("overrides 与 cliModel 具有最高优先级", () => {
     const { workspace } = makeWorkspace();
     const home = makeTempDir("home");
@@ -361,6 +388,20 @@ describe("GlobalConfigManager", () => {
 
     expect(manager.load()?.WORKSPACE_PATH).toBe("/Users/me/projects/app");
     expect(manager.masked()?.WORKSPACE_PATH).toBe("/Users/me/projects/app");
+  });
+
+  it("保存并读取 AUTO_MODE", () => {
+    const home = makeTempDir("home");
+    const manager = new GlobalConfigManager({ homeDir: home });
+    manager.save({
+      LLM_PROVIDER: "openai",
+      LLM_MODEL: "gpt-4o",
+      LLM_API_KEY: "sk-123456789",
+      AUTO_MODE: true,
+    });
+
+    expect(manager.load()?.AUTO_MODE).toBe(true);
+    expect(manager.masked()?.AUTO_MODE).toBe(true);
   });
 
   it("masked 不泄露完整 API Key", () => {

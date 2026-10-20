@@ -50,6 +50,7 @@ export function ModelConfigForm({
   const [workspacePath, setWorkspacePath] = useState(
     initial?.workspacePath ?? "",
   );
+  const [autoMode, setAutoMode] = useState(initial?.autoMode ?? false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,6 +81,7 @@ export function ModelConfigForm({
         apiKey,
         baseUrl,
         workspacePath,
+        autoMode,
       });
       setApiKey("");
       onSaved?.();
@@ -177,6 +179,30 @@ export function ModelConfigForm({
         <p className="mt-1.5 text-xs text-gray-500">
           作为 Code Agent 的默认工作目录；留空使用服务启动目录，需为已存在的目录。
         </p>
+      </div>
+
+      <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-3">
+        <label className="flex cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            checked={autoMode}
+            onChange={(e) => setAutoMode(e.target.checked)}
+            className="mt-0.5 h-4 w-4 cursor-pointer accent-blue-500"
+          />
+          <span>
+            <span className="block text-sm font-medium text-gray-200">
+              Auto mode
+            </span>
+            <span className="mt-0.5 block text-xs text-gray-500">
+              开启后，工作区内的文件写入/修改和命令执行无需人工审批。
+            </span>
+          </span>
+        </label>
+        {autoMode && (
+          <p className="mt-2 text-xs text-amber-400">
+            ⚠ Agent 将直接修改文件并执行 shell 命令，请仅在可信的工作区开启。
+          </p>
+        )}
       </div>
 
       {error && (

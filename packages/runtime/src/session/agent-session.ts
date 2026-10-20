@@ -8,6 +8,7 @@ import {
   AgentExecutionEngine,
   SessionEventBus,
   SessionStateManager,
+  createAutoApprovePermissionPolicy,
   createBuiltinTools,
   createCollaborationTools,
   createMemoryTools,
@@ -107,6 +108,8 @@ export interface AgentSessionOptions {
   title?: string;
   /** 使用 LangGraph 编排；false 时使用单 Code 任务纵向切片 */
   orchestration?: boolean;
+  /** Auto mode：工作区内 confirm 级工具免审批 */
+  autoApprove?: boolean;
 }
 
 export interface RunOptions {
@@ -201,6 +204,13 @@ export class AgentSession {
         : {}),
       ...(options.inlineToolResultLimit
         ? { inlineToolResultLimit: options.inlineToolResultLimit }
+        : {}),
+      ...(options.autoApprove
+        ? {
+            toolDependencies: {
+              policy: createAutoApprovePermissionPolicy(),
+            },
+          }
         : {}),
       onCheckpointError: (error) => {
         console.error("[agent-session] checkpoint save failed", error);

@@ -389,6 +389,10 @@ CLI 支持分层配置，优先级从低到高：
 Web 首次配置页和设置页（Settings）均可修改该值；未配置时使用服务启动目录，
 环境变量 / 启动参数仍具有更高优先级。
 
+设置页还可开启 **Auto mode**（`AUTO_MODE=true`）：工作区内的文件写入/修改和
+shell 命令执行不再弹出人工审批。路径逃逸与高危命令（`sudo`、`rm -rf /` 等）
+仍会被拒绝。
+
 ### 环境变量
 
 完整环境变量列表见 `.env.example`：
@@ -403,6 +407,7 @@ Web 首次配置页和设置页（Settings）均可修改该值；未配置时�
 | `HOST` | 否 | `127.0.0.1` | 服务主机地址 |
 | `PORT` | 否 | `3000` | 服务端口 |
 | `WORKSPACE_PATH` | 否 | 当前目录 | Agent 工作目录 |
+| `AUTO_MODE` | 否 | `false` | Auto mode：工作区内写入/命令执行免人工审批 |
 | `DB_PATH` | 否 | `<workspace>/.agent/data/code-agent.db` | SQLite 数据库路径 |
 
 ---

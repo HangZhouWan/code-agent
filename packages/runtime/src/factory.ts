@@ -35,6 +35,8 @@ export interface RuntimeHarness {
   contextSummarizer?: ContextSummarizer;
   inlineToolResultLimit?: number;
   writeLock?: <T>(fn: () => Promise<T>) => Promise<T>;
+  /** Auto mode：工作区内 confirm 级工具免审批 */
+  autoApprove?: boolean;
 }
 
 export interface RuntimeOptions {
@@ -108,6 +110,7 @@ export function createRuntime(
           ? { inlineToolResultLimit: harness.inlineToolResultLimit }
           : {}),
         ...(harness.writeLock ? { writeLock: harness.writeLock } : {}),
+        ...(harness.autoApprove ? { autoApprove: true } : {}),
         ...(options.maxIterations
           ? { maxIterations: options.maxIterations }
           : {}),

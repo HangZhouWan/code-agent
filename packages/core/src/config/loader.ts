@@ -48,6 +48,7 @@ const APP_KEYS = [
   "DB_PATH",
   "CODE_AGENT_HOME",
   "LOG_LEVEL",
+  "AUTO_MODE",
 ] as const;
 
 const CONTEXT_NUMERIC_KEYS = [
@@ -145,6 +146,15 @@ function normalizeNumber(value: unknown): unknown {
   return Number.isFinite(parsed) ? parsed : value;
 }
 
+/** 环境变量中的布尔字符串转为 boolean */
+function normalizeBoolean(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const normalized = value.trim().toLowerCase();
+  if (["true", "1", "yes", "on"].includes(normalized)) return true;
+  if (["false", "0", "no", "off", ""].includes(normalized)) return false;
+  return value;
+}
+
 function buildContextInput(
   merged: Record<string, unknown>,
   overrides?: Partial<ContextConfig>,
@@ -206,6 +216,7 @@ export function loadConfig(options: LoadConfigOptions = {}): ResolvedConfig {
     HOST: "127.0.0.1",
     PORT: 3000,
     LOG_LEVEL: "info",
+    AUTO_MODE: false,
     ...defaultContext,
   };
 
@@ -258,6 +269,7 @@ export function loadConfig(options: LoadConfigOptions = {}): ResolvedConfig {
     DB_PATH: configuredDbPath,
     CODE_AGENT_HOME: paths.homeDir,
     LOG_LEVEL: merged.LOG_LEVEL,
+    AUTO_MODE: normalizeBoolean(merged.AUTO_MODE),
   });
 
   return {
@@ -268,6 +280,7 @@ export function loadConfig(options: LoadConfigOptions = {}): ResolvedConfig {
     DB_PATH: configuredDbPath,
     CODE_AGENT_HOME: paths.homeDir,
     LOG_LEVEL: app.LOG_LEVEL,
+    AUTO_MODE: app.AUTO_MODE,
     CONTEXT: context,
     paths,
   };

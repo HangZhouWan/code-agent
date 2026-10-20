@@ -35,6 +35,7 @@ describe("fetchModelConfig", () => {
         LLM_API_KEY: "sk-a...1234",
         LLM_BASE_URL: "https://example.com/v1",
         WORKSPACE_PATH: "/Users/me/projects/app",
+        AUTO_MODE: true,
       }),
     );
 
@@ -44,6 +45,7 @@ describe("fetchModelConfig", () => {
       maskedApiKey: "sk-a...1234",
       baseUrl: "https://example.com/v1",
       workspacePath: "/Users/me/projects/app",
+      autoMode: true,
     });
   });
 
@@ -86,6 +88,7 @@ describe("saveModelConfig", () => {
       apiKey: " sk-test ",
       baseUrl: " https://example.com/v1 ",
       workspacePath: " /Users/me/projects/app ",
+      autoMode: true,
     });
 
     expect(fetchMock).toHaveBeenCalledWith("/api/config", {
@@ -99,6 +102,7 @@ describe("saveModelConfig", () => {
       LLM_API_KEY: "sk-test",
       LLM_BASE_URL: "https://example.com/v1",
       WORKSPACE_PATH: "/Users/me/projects/app",
+      AUTO_MODE: true,
     });
   });
 
@@ -114,6 +118,7 @@ describe("saveModelConfig", () => {
       LLM_MODEL: "gpt-4o",
       LLM_BASE_URL: null,
       WORKSPACE_PATH: null,
+      AUTO_MODE: false,
     });
   });
 

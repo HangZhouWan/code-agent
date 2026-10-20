@@ -197,6 +197,30 @@ describe("runtime config routes", () => {
     expect(manager.load()).toBeNull();
   });
 
+  it("保存并读取 AUTO_MODE", async () => {
+    const { app, manager } = await createApp();
+
+    const save = await app.inject({
+      method: "POST",
+      url: "/api/config",
+      payload: {
+        LLM_PROVIDER: "openai",
+        LLM_MODEL: "gpt-4o",
+        LLM_API_KEY: "sk-secret-123456",
+        AUTO_MODE: true,
+      },
+    });
+
+    expect(save.statusCode).toBe(200);
+    expect(manager.load()?.AUTO_MODE).toBe(true);
+
+    const current = await app.inject({
+      method: "GET",
+      url: "/api/config",
+    });
+    expect(current.json().AUTO_MODE).toBe(true);
+  });
+
   it("工作目录传 null 时清除已保存值", async () => {
     const { app, manager } = await createApp();
     const workspace = mkdtempSync(join(tmpdir(), "code-agent-workspace-"));

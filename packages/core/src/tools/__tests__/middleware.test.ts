@@ -14,7 +14,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ToolContext, ToolDefinition } from "../base.js";
 import { executeTool } from "../middleware.js";
-import { createDefaultPermissionPolicy } from "../../permissions/policy.js";
+import {
+  createAutoApprovePermissionPolicy,
+  createDefaultPermissionPolicy,
+} from "../../permissions/policy.js";
 import {
   PathEscapeError,
   resolveWorkspacePath,
@@ -93,6 +96,75 @@ describe("evaluateShellCommand", () => {
       "deny",
     );
     expect(evaluateShellCommand("git push origin main").level).toBe("deny");
+  });
+});
+
+describe("AutoApprovePermissionPolicy", () => {
+  const policy = createAutoApprovePermissionPolicy();
+
+  function pathTool(
+    name: string,
+    permission: ToolDefinition["permission"],
+  ): ToolDefinition {
+    return {
+      name,
+      description: "test",
+      schema: z.object({ path: z.string() }),
+      permission,
+      execute: async (args) => args.path,
+    };
+  }
+
+  it("把 confirm 升级为 allow", async () => {
+    const workspace = makeTempDir("ws");
+    const decision = await policy.evaluate(
+      pathTool("confirm_tool", "confirm"),
+      { path: "a.ts" },
+      makeCtx(workspace),
+    );
+    expect(decision.level).toBe("allow");
+  });
+
+  it("deny 保持不变（路径逃逸 / 危险命令）", async () => {
+    const workspace = makeTempDir("ws");
+    const escape = await policy.evaluate(
+      pathTool("escape_tool", "confirm"),
+      { path: "../outside.ts" },
+      makeCtx(workspace),
+    );
+    expect(escape.level).toBe("deny");
+
+    const shellTool: ToolDefinition = {
+      name: "shell_exec",
+      description: "test",
+      schema: z.object({ command: z.string() }),
+      permission: "confirm",
+      execute: async (args) => args.command,
+    };
+    const dangerous = await policy.evaluate(
+      shellTool,
+      { command: "sudo ls" },
+      makeCtx(workspace),
+    );
+    expect(dangerous.level).toBe("deny");
+  });
+
+  it("普通 shell 命令在 auto mode 下免审批", async () => {
+    const workspace = makeTempDir("ws");
+    const shellTool: ToolDefinition = {
+      name: "shell_exec",
+      description: "test",
+      schema: z.object({ command: z.string() }),
+      permission: "confirm",
+      execute: async (args) => args.command,
+    };
+
+    const decision = await policy.evaluate(
+      shellTool,
+      { command: "pwd" },
+      makeCtx(workspace),
+    );
+    expect(decision.level).toBe("allow");
   });
 });
 

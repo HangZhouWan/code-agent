@@ -34,6 +34,7 @@ function existingConfig(
     maskedApiKey: "sk-a...1234",
     baseUrl: "https://example.com/v1",
     workspacePath: "/Users/me/projects/app",
+    autoMode: false,
     ...overrides,
   };
 }
@@ -91,6 +92,7 @@ describe("ModelConfigForm", () => {
       LLM_API_KEY: "sk-test",
       LLM_BASE_URL: null,
       WORKSPACE_PATH: null,
+      AUTO_MODE: false,
     });
   });
 
@@ -111,6 +113,7 @@ describe("ModelConfigForm", () => {
     expect(
       screen.getByDisplayValue("/Users/me/projects/app"),
     ).toBeInTheDocument();
+    expect(screen.getByRole("checkbox")).not.toBeChecked();
     expect(
       screen.getByPlaceholderText("已保存 sk-a...1234，留空保持不变"),
     ).toBeInTheDocument();
@@ -125,7 +128,26 @@ describe("ModelConfigForm", () => {
       LLM_MODEL: "gpt-4o-mini",
       LLM_BASE_URL: "https://example.com/v1",
       WORKSPACE_PATH: "/Users/me/projects/app",
+      AUTO_MODE: false,
     });
+  });
+
+  it("开启 Auto mode 后随配置一起提交", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(okResponse());
+
+    render(<ModelConfigForm initial={existingConfig()} onSaved={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(
+      screen.getByText(/Agent 将直接修改文件并执行 shell 命令/),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("保存配置"));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(lastRequestBody(fetchMock)).toMatchObject({ AUTO_MODE: true });
   });
 
   it("修改工作目录后随配置一起提交", async () => {

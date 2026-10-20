@@ -17,6 +17,8 @@ export interface ModelConfigView {
   baseUrl: string;
   /** Agent 默认工作目录；空串表示使用服务启动目录 */
   workspacePath: string;
+  /** Auto mode：工作区内写入/命令执行免审批 */
+  autoMode: boolean;
 }
 
 /** 保存配置的输入；空 apiKey 表示沿用服务端已保存的 Key */
@@ -28,6 +30,8 @@ export interface SaveModelConfigInput {
   baseUrl?: string;
   /** 空串表示清除默认工作目录 */
   workspacePath?: string;
+  /** Auto mode 开关；缺省为关闭 */
+  autoMode?: boolean;
 }
 
 /** 将未知值收窄为普通对象 */
@@ -80,6 +84,7 @@ export async function fetchModelConfig(): Promise<ModelConfigView | null> {
     baseUrl: typeof raw.LLM_BASE_URL === "string" ? raw.LLM_BASE_URL : "",
     workspacePath:
       typeof raw.WORKSPACE_PATH === "string" ? raw.WORKSPACE_PATH : "",
+    autoMode: raw.AUTO_MODE === true,
   };
 }
 
@@ -104,6 +109,7 @@ export async function saveModelConfig(
       ...(apiKey ? { LLM_API_KEY: apiKey } : {}),
       LLM_BASE_URL: input.baseUrl?.trim() || null,
       WORKSPACE_PATH: input.workspacePath?.trim() || null,
+      AUTO_MODE: input.autoMode === true,
     }),
   });
 
