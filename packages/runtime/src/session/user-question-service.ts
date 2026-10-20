@@ -66,6 +66,12 @@ export class UserQuestionService {
     return new Promise<string>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(questionId);
+        // 通知前端收起已超时的确认卡片；事件日志也会记录，避免重放后残留
+        this.options.emit({
+          type: "user.question.resolved",
+          questionId,
+          answer: "",
+        });
         reject(new Error("User question timed out"));
       }, this.timeoutMs);
 
@@ -94,6 +100,12 @@ export class UserQuestionService {
       if (pending.question.runId !== runId) continue;
       clearTimeout(pending.timer);
       this.pending.delete(questionId);
+      // 同步通知前端，避免 run 结束后确认卡片仍然残留
+      this.options.emit({
+        type: "user.question.resolved",
+        questionId,
+        answer: "",
+      });
       pending.reject(new Error(reason));
       cancelled++;
     }

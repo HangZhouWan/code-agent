@@ -219,6 +219,68 @@ describe("ChatArea", () => {
     expect(screen.getAllByText("Previous answer")).toHaveLength(1);
   });
 
+  it("历史快照晚于最终消息返回时不应丢失最终回复", async () => {
+    // 控制历史请求的返回时机，模拟“最终消息已由 WS 送达，历史才返回旧快照”
+    let resolveHistory!: (value: unknown) => void;
+    const historyPromise = new Promise((resolve) => {
+      resolveHistory = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => historyPromise,
+      }),
+    );
+
+    render(<ChatArea sessionId="s1" />);
+
+    const socket = latestSocket();
+    act(() => {
+      socket.readyState = MockWebSocket.OPEN;
+      socket.onopen?.();
+    });
+
+    act(() => {
+      socket.receive(
+        eventMessage(1, {
+          type: "message.completed",
+          message: {
+            id: "msg-final",
+            sessionId: "s1",
+            role: "assistant",
+            content: "Final answer",
+            createdAt: "2024-01-01T00:00:02.000Z",
+          },
+        }),
+      );
+      socket.receive(
+        eventMessage(2, {
+          type: "run.completed",
+          result: { finalResponse: "Final answer" },
+        }),
+      );
+    });
+
+    // 历史快照不包含刚完成的最终消息
+    await act(async () => {
+      resolveHistory({
+        messages: [
+          {
+            id: "msg-user",
+            sessionId: "s1",
+            role: "human",
+            content: "hello",
+            createdAt: "2024-01-01T00:00:00.000Z",
+          },
+        ],
+      });
+    });
+
+    expect(await screen.findByText("Final answer")).toBeInTheDocument();
+    expect(screen.getByText("hello")).toBeInTheDocument();
+  });
+
   it("运行中 Send 按钮应变为 Stop，点击后发送 abort", async () => {
     render(<ChatArea sessionId="s1" />);
 

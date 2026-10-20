@@ -403,6 +403,21 @@ describe("DONE", () => {
       isStreaming: false,
     });
   });
+
+  it("已完成的 assistant 消息不应被 finalResponse 覆盖", () => {
+    const initial: ChatState = {
+      messages: [
+        userMsg("u1", "hello"),
+        assistantMsg("a1", "previous answer", false),
+      ],
+    };
+    const state = chatReducer(initial, {
+      type: "DONE",
+      finalResponse: "another run's answer",
+    });
+    expect(state.messages).toHaveLength(2);
+    expect(state.messages[1].content).toBe("previous answer");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -436,13 +451,73 @@ describe("ERROR", () => {
 });
 
 // ---------------------------------------------------------------------------
+// QUESTION_RESOLVED
+// ---------------------------------------------------------------------------
+
+describe("QUESTION_RESOLVED", () => {
+  const pendingQuestion = {
+    questionId: "q1",
+    question: "继续吗？",
+    allowFreeText: true,
+  };
+
+  it("questionId 匹配时清除待回答问题", () => {
+    const state = chatReducer(
+      { messages: [], pendingQuestion },
+      { type: "QUESTION_RESOLVED", questionId: "q1" },
+    );
+    expect(state.pendingQuestion).toBeUndefined();
+  });
+
+  it("questionId 不匹配时保留当前问题", () => {
+    const initial: ChatState = { messages: [], pendingQuestion };
+    const state = chatReducer(initial, {
+      type: "QUESTION_RESOLVED",
+      questionId: "q2",
+    });
+    expect(state).toBe(initial);
+  });
+
+  it("未提供 questionId 时直接清除", () => {
+    const state = chatReducer(
+      { messages: [], pendingQuestion },
+      { type: "QUESTION_RESOLVED" },
+    );
+    expect(state.pendingQuestion).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// RESET_MESSAGES
+// ---------------------------------------------------------------------------
+
+describe("RESET_MESSAGES", () => {
+  it("应清空消息和待回答问题", () => {
+    const initial: ChatState = {
+      messages: [userMsg("u1", "some message")],
+      pendingQuestion: {
+        questionId: "q1",
+        question: "继续吗？",
+        allowFreeText: true,
+      },
+    };
+    const state = chatReducer(initial, { type: "RESET_MESSAGES" });
+    expect(state.messages).toHaveLength(0);
+    expect(state.pendingQuestion).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // LOAD_MESSAGES
 // ---------------------------------------------------------------------------
 
 describe("LOAD_MESSAGES", () => {
-  it("应该替换整个 messages 数组", () => {
+  it("历史消息在前，保留快照中没有的实时消息", () => {
     const initial: ChatState = {
-      messages: [userMsg("u1", "old message")],
+      messages: [
+        userMsg("u-live", "live message"),
+        assistantMsg("msg-1", "just finished"),
+      ],
     };
     const loaded = [
       userMsg("u2", "loaded message 1"),
@@ -452,19 +527,40 @@ describe("LOAD_MESSAGES", () => {
       type: "LOAD_MESSAGES",
       messages: loaded,
     });
-    expect(state.messages).toHaveLength(2);
-    expect(state.messages[0].content).toBe("loaded message 1");
+    expect(state.messages.map((m) => m.id)).toEqual([
+      "u2",
+      "a1",
+      "u-live",
+      "msg-1",
+    ]);
   });
 
-  it("空数组应清空所有消息", () => {
+  it("历史中已存在的消息不会重复追加", () => {
     const initial: ChatState = {
-      messages: [userMsg("u1", "some message")],
+      messages: [assistantMsg("a1", "same")],
     };
     const state = chatReducer(initial, {
       type: "LOAD_MESSAGES",
-      messages: [],
+      messages: [assistantMsg("a1", "same")],
     });
-    expect(state.messages).toHaveLength(0);
+    expect(state.messages).toHaveLength(1);
+  });
+
+  it("加载历史时保留已到达的待回答问题", () => {
+    const question = {
+      questionId: "q1",
+      question: "继续吗？",
+      allowFreeText: true,
+    };
+    const initial: ChatState = {
+      messages: [],
+      pendingQuestion: question,
+    };
+    const state = chatReducer(initial, {
+      type: "LOAD_MESSAGES",
+      messages: [userMsg("u1", "hello")],
+    });
+    expect(state.pendingQuestion).toEqual(question);
   });
 });
 

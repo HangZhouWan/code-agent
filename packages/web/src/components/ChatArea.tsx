@@ -102,7 +102,10 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
           break;
 
         case "user.question.resolved":
-          dispatch({ type: "QUESTION_RESOLVED" });
+          dispatch({
+            type: "QUESTION_RESOLVED",
+            questionId: event.questionId,
+          });
           break;
 
         case "session.title.updated":
@@ -169,7 +172,7 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
       const pending = state.pendingQuestion;
       if (!pending) return;
       answer(pending.questionId, value);
-      dispatch({ type: "QUESTION_RESOLVED" });
+      dispatch({ type: "QUESTION_RESOLVED", questionId: pending.questionId });
     },
     [answer, dispatch, state.pendingQuestion],
   );
@@ -186,7 +189,7 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
 
   useEffect(() => {
     if (!sessionId) {
-      dispatch({ type: "LOAD_MESSAGES", messages: [] });
+      dispatch({ type: "RESET_MESSAGES" });
       setHistoryLoading(false);
       return;
     }
@@ -194,7 +197,7 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
     let cancelled = false;
 
     const loadHistory = async () => {
-      dispatch({ type: "LOAD_MESSAGES", messages: [] });
+      dispatch({ type: "RESET_MESSAGES" });
       setHistoryLoading(true);
 
       try {

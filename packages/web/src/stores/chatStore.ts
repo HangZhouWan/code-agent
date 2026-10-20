@@ -146,9 +146,10 @@ export type ChatAction =
     }
   | { type: "FINALIZE_ASSISTANT"; id?: string; content: string }
   | { type: "QUESTION_REQUIRED"; question: QuestionPrompt }
-  | { type: "QUESTION_RESOLVED" }
+  | { type: "QUESTION_RESOLVED"; questionId?: string }
   | { type: "DONE"; finalResponse: string }
   | { type: "ERROR"; message: string }
+  | { type: "RESET_MESSAGES" }
   | { type: "LOAD_MESSAGES"; messages: Message[] };
 
 // ---------------------------------------------------------------------------
@@ -363,13 +364,23 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return { ...state, pendingQuestion: action.question };
 
     case "QUESTION_RESOLVED":
+      // 并发提问时只清理由该 questionId 对应的卡片
+      if (
+        state.pendingQuestion &&
+        action.questionId &&
+        state.pendingQuestion.questionId !== action.questionId
+      ) {
+        return state;
+      }
       return { ...state, pendingQuestion: undefined };
 
     // ── 流式输出完成 ──
     case "DONE": {
       const msgs = [...state.messages];
       const last = msgs[msgs.length - 1];
-      if (last?.role === "assistant") {
+      // 只更新仍在流式的消息：已完成的消息内容由 message.completed 写入，
+      // 重放历史事件时不能把旧消息覆盖成另一次 run 的结果。
+      if (last?.role === "assistant" && last.isStreaming) {
         msgs[msgs.length - 1] = {
           ...last,
           isStreaming: false,
@@ -377,7 +388,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
             ? { content: action.finalResponse }
             : {}),
         };
-      } else if (action.finalResponse) {
+      } else if (last?.role !== "assistant" && action.finalResponse) {
         msgs.push({
           id: uid(),
           role: "assistant",
@@ -412,9 +423,24 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       };
     }
 
-    // ── 批量加载历史消息（替换整个 messages 数组） ──
+    // ── 清空消息（切换会话时使用） ──
+    case "RESET_MESSAGES": {
+      return { ...state, messages: [], pendingQuestion: undefined };
+    }
+
+    // ── 加载历史消息 ──
     case "LOAD_MESSAGES": {
-      return { ...state, messages: action.messages, pendingQuestion: undefined };
+      // 历史请求是异步的，期间可能已经收到 WebSocket 实时/重放事件。
+      // 以历史快照为底，保留其中没有的消息，避免把刚完成的回复覆盖掉。
+      const historyIds = new Set(action.messages.map((message) => message.id));
+      const liveMessages = state.messages.filter(
+        (message) => !historyIds.has(message.id),
+      );
+      // 不清空 pendingQuestion：加载期间到达的提问需要继续展示
+      return {
+        ...state,
+        messages: [...action.messages, ...liveMessages],
+      };
     }
 
     default:
