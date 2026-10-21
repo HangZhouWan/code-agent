@@ -12,6 +12,8 @@
  *   < options.cliModel
  *
  * 所有层只接受已知配置键，避免 process.env 噪声污染配置。
+ * 例外：LANGSMITH_* / LANGCHAIN_* 追踪变量会参与合并，并在最后写回
+ * process.env，供 LangChain / LangSmith SDK 直接读取。
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -70,13 +72,32 @@ const KNOWN_KEYS = new Set<string>([
   ...CONTEXT_STRING_KEYS,
 ]);
 
+/**
+ * LangSmith 追踪相关的前缀。
+ *
+ * 这些键不进入 ResolvedConfig，但需要参与分层合并，
+ * 并在最后写回 process.env 供 LangChain / LangSmith SDK 读取。
+ * 同时包含 LANGSMITH_* 新变量与 LANGCHAIN_* 旧别名。
+ */
+const TRACING_ENV_PREFIXES = ["LANGSMITH_", "LANGCHAIN_"] as const;
+
+/** 判断 key 是否为追踪相关环境变量 */
+export function isTracingEnvKey(key: string): boolean {
+  return TRACING_ENV_PREFIXES.some((prefix) => key.startsWith(prefix));
+}
+
+/** 判断 key 是否允许进入配置合并（已知配置键或追踪变量） */
+function isKnownKey(key: string): boolean {
+  return KNOWN_KEYS.has(key) || isTracingEnvKey(key);
+}
+
 function pickKnown(
   source: Record<string, unknown> | undefined,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   if (!source) return result;
   for (const [key, value] of Object.entries(source)) {
-    if (KNOWN_KEYS.has(key) && value !== undefined) {
+    if (isKnownKey(key) && value !== undefined) {
       result[key] = value;
     }
   }
@@ -134,9 +155,31 @@ function mergeInto(
 ): void {
   if (!source) return;
   for (const [key, value] of Object.entries(source)) {
-    if (value !== undefined && KNOWN_KEYS.has(key)) {
+    if (value !== undefined && isKnownKey(key)) {
       target[key] = value;
     }
+  }
+}
+
+/**
+ * 将合并后的追踪变量写回 process.env。
+ *
+ * LangChain / LangSmith SDK 直接读取 process.env，而 .env 文件只经过
+ * dotenv.parse 解析，不会进入进程环境；这里补齐这一步。
+ * 仅在调用方以真实 process.env 作为来源时执行，避免测试注入的环境
+ * 泄漏到全局。
+ *
+ * @param merged - 已完成所有层级合并的配置
+ * @param sourceEnv - 本次加载使用的环境变量来源
+ */
+function applyTracingEnv(
+  merged: Record<string, unknown>,
+  sourceEnv: Record<string, string | undefined>,
+): void {
+  if (sourceEnv !== process.env) return;
+  for (const [key, value] of Object.entries(merged)) {
+    if (!isTracingEnvKey(key) || value === undefined) continue;
+    process.env[key] = String(value);
   }
 }
 
@@ -273,6 +316,9 @@ export function loadConfig(options: LoadConfigOptions = {}): ResolvedConfig {
     LOG_LEVEL: merged.LOG_LEVEL,
     AUTO_MODE: normalizeBoolean(merged.AUTO_MODE),
   });
+
+  // .env 中的 LANGSMITH_* / LANGCHAIN_* 需要写回进程环境，SDK 才能读到
+  applyTracingEnv(merged, env);
 
   return {
     ...llm,

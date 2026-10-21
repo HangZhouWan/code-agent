@@ -378,6 +378,117 @@ describe("loadConfig 分层优先级", () => {
   });
 });
 
+describe("LangSmith 追踪环境变量", () => {
+  const TRACING_KEYS = [
+    "LANGSMITH_TRACING",
+    "LANGSMITH_API_KEY",
+    "LANGSMITH_PROJECT",
+    "LANGSMITH_ENDPOINT",
+    "LANGSMITH_HIDE_INPUTS",
+    "LANGSMITH_HIDE_OUTPUTS",
+    "LANGCHAIN_TRACING_V2",
+    "LANGCHAIN_API_KEY",
+    "LANGCHAIN_PROJECT",
+    "LANGCHAIN_ENDPOINT",
+  ] as const;
+  const previous = new Map<string, string | undefined>();
+
+  beforeEach(() => {
+    for (const key of TRACING_KEYS) {
+      previous.set(key, process.env[key]);
+      delete process.env[key];
+    }
+  });
+
+  afterEach(() => {
+    for (const key of TRACING_KEYS) {
+      const value = previous.get(key);
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    previous.clear();
+  });
+
+  it(".env 中的追踪变量会写回 process.env，未知键仍被过滤", () => {
+    const { workspace } = makeWorkspace();
+    const home = makeTempDir("home");
+    writeFileSync(
+      join(workspace, ".env"),
+      [
+        "LLM_PROVIDER=openai",
+        "LLM_MODEL=gpt-4o",
+        "LLM_API_KEY=sk-test",
+        "LANGSMITH_TRACING=true",
+        "LANGSMITH_API_KEY=lsv2_pt_test",
+        "LANGSMITH_PROJECT=code-agent-test",
+        "LANGCHAIN_TRACING_V2=true",
+        "UNRELATED_KEY=should-not-leak",
+      ].join("\n"),
+    );
+
+    loadConfig({
+      workspacePath: workspace,
+      homeDir: home,
+      env: process.env,
+      logger: () => {},
+    });
+
+    expect(process.env.LANGSMITH_TRACING).toBe("true");
+    expect(process.env.LANGSMITH_API_KEY).toBe("lsv2_pt_test");
+    expect(process.env.LANGSMITH_PROJECT).toBe("code-agent-test");
+    expect(process.env.LANGCHAIN_TRACING_V2).toBe("true");
+    expect(process.env.UNRELATED_KEY).toBeUndefined();
+  });
+
+  it("process.env 中的追踪变量优先于 .env", () => {
+    const { workspace } = makeWorkspace();
+    const home = makeTempDir("home");
+    writeFileSync(
+      join(workspace, ".env"),
+      [
+        "LLM_PROVIDER=openai",
+        "LLM_MODEL=gpt-4o",
+        "LLM_API_KEY=sk-test",
+        "LANGSMITH_PROJECT=from-file",
+      ].join("\n"),
+    );
+    process.env.LANGSMITH_PROJECT = "from-process";
+
+    loadConfig({
+      workspacePath: workspace,
+      homeDir: home,
+      env: process.env,
+      logger: () => {},
+    });
+
+    expect(process.env.LANGSMITH_PROJECT).toBe("from-process");
+  });
+
+  it("注入的自定义 env 不会写回 process.env", () => {
+    const { workspace } = makeWorkspace();
+    const home = makeTempDir("home");
+    writeFileSync(
+      join(workspace, ".env"),
+      "LANGSMITH_PROJECT=from-file\n",
+    );
+
+    loadConfig({
+      workspacePath: workspace,
+      homeDir: home,
+      env: {
+        LLM_PROVIDER: "openai",
+        LLM_MODEL: "gpt-4o",
+        LLM_API_KEY: "sk-test",
+        LANGSMITH_TRACING: "true",
+      },
+      logger: () => {},
+    });
+
+    expect(process.env.LANGSMITH_TRACING).toBeUndefined();
+    expect(process.env.LANGSMITH_PROJECT).toBeUndefined();
+  });
+});
+
 describe("GlobalConfigManager", () => {
   it("保存后 isConfigured 为 true，且文件权限为 0600", () => {
     const home = makeTempDir("home");
