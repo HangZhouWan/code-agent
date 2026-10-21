@@ -132,6 +132,112 @@ describe("consumeRun", () => {
     expect(answer).toHaveBeenCalledWith(asQuestionId("q1"), "");
   });
 
+  it("非交互模式自动拒绝计划方案", async () => {
+    const approve = vi.fn(() => true);
+    const session = { approve } as unknown as AgentSession;
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    await consumeRun(
+      session,
+      handle(
+        [
+          {
+            type: "approval.required",
+            request: {
+              callId: asCallId("plan-1"),
+              sessionId,
+              runId,
+              taskId,
+              toolName: "submit_proposals",
+              args: {},
+              createdAt: now,
+              expiresAt: now,
+              kind: "plan",
+              plan: {
+                summary: "发现改进点",
+                proposals: [
+                  {
+                    id: "p1",
+                    title: "方案一",
+                    summary: "说明",
+                    files: [{ path: "src/a.ts", changes: ["改这里"] }],
+                  },
+                ],
+              },
+            },
+          },
+          { type: "run.completed", result: completed },
+        ],
+        completed,
+      ),
+      { interactive: false },
+    );
+
+    expect(approve).toHaveBeenCalledWith(
+      asCallId("plan-1"),
+      expect.objectContaining({
+        decision: "denied",
+        feedback: expect.stringContaining("--no-plan"),
+      }),
+    );
+  });
+
+  it("交互模式按序号选择方案", async () => {
+    const approve = vi.fn(() => true);
+    const session = { approve } as unknown as AgentSession;
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    await consumeRun(
+      session,
+      handle(
+        [
+          {
+            type: "approval.required",
+            request: {
+              callId: asCallId("plan-2"),
+              sessionId,
+              runId,
+              taskId,
+              toolName: "submit_proposals",
+              args: {},
+              createdAt: now,
+              expiresAt: now,
+              kind: "plan",
+              plan: {
+                summary: "发现改进点",
+                proposals: [
+                  {
+                    id: "p1",
+                    title: "方案一",
+                    summary: "说明",
+                    files: [{ path: "src/a.ts", changes: ["改这里"] }],
+                    recommended: true,
+                  },
+                  {
+                    id: "p2",
+                    title: "方案二",
+                    summary: "说明",
+                    files: [{ path: "src/b.ts", changes: ["改那里"] }],
+                  },
+                ],
+              },
+            },
+          },
+          { type: "run.completed", result: completed },
+        ],
+        completed,
+      ),
+      { interactive: true, ask: vi.fn(async () => "2") },
+    );
+
+    expect(approve).toHaveBeenCalledWith(asCallId("plan-2"), {
+      decision: "approved",
+      selectedProposalIds: ["p2"],
+    });
+  });
+
   it("交互模式使用用户回答", async () => {
     const approve = vi.fn(() => true);
     const answer = vi.fn(() => true);

@@ -20,7 +20,7 @@ import {
   type JsonValue,
   type TaskResult,
 } from "@code-agent/protocol";
-import type { ToolContext } from "../tools/base.js";
+import type { ToolContext, ToolDefinition } from "../tools/base.js";
 import type { ToolExecutionDependencies } from "../tools/middleware.js";
 import type { HooksEngine } from "../hooks/engine.js";
 import type {
@@ -59,12 +59,38 @@ const FILE_WRITE_NUDGE =
   "You have not created or modified any file. This task requires a file change. " +
   "Use file_write (or file_edit) now, then summarize the result.";
 
+/** 方案已批准但模型没有落地时，提示一次立即实现 */
+const PLAN_IMPLEMENT_NUDGE =
+  "The user approved the selected proposals. Implement them now with file_write/file_edit " +
+  "(and run tests if appropriate). Do not stop at describing the work.";
+
 /** 输出被截断后，引导模型改用分块写入 */
 const TRUNCATION_NUDGE =
   "Your previous response was truncated by the max_tokens output limit, so the tool call was lost. " +
   "Do not write the whole file in one call. Split it into chunks: call file_write with append=false " +
   "for the first ~3000 characters, then call file_write with append=true and the same path for each " +
   "remaining chunk. Every call MUST include path.";
+
+/**
+ * 是否已成功执行过 mutating 工具。
+ *
+ * 输入：工具调用历史与工具查找函数
+ * 输出：存在成功的变更类工具调用时为 true
+ */
+function mutatingToolSucceeded(
+  history: SerializedToolCall[],
+  getTool: (name: string) => ToolDefinition | undefined,
+): boolean {
+  return history.some((call) => {
+    if (!call.ok) return false;
+    const tool = getTool(call.name);
+    if (!tool) return false;
+    return (
+      tool.sideEffect === "mutating" ||
+      (!tool.sideEffect && tool.permission === "confirm")
+    );
+  });
+}
 
 function expectsFileWrite(input: AgentTaskInput): boolean {
   return input.role === "code" && FILE_WRITE_INTENT.test(input.description);
@@ -110,8 +136,10 @@ function collectFilesChanged(
 function attemptedFileWrite(history: SerializedToolCall[]): boolean {
   return history.some(
     (call) =>
-      call.name === ToolNames.FILE_WRITE ||
-      call.name === ToolNames.FILE_EDIT,
+      (call.name === ToolNames.FILE_WRITE ||
+        call.name === ToolNames.FILE_EDIT) &&
+      // 计划闸门拦截不算“尝试过写入”，否则未批准时也能误判任务完成
+      call.errorCode !== "PLAN_APPROVAL_REQUIRED",
   );
 }
 
@@ -213,6 +241,7 @@ export class AgentExecutionEngine implements AgentInvoker {
         : {}),
       ...(scope.withWriteLock ? { withWriteLock: scope.withWriteLock } : {}),
       ...(scope.delegation ? { delegation: scope.delegation } : {}),
+      ...(scope.plan ? { plan: scope.plan } : {}),
       ...(scope.emit ? { emit: scope.emit } : {}),
     };
 
@@ -362,6 +391,7 @@ export class AgentExecutionEngine implements AgentInvoker {
     ) as ChatModelLike;
     let nudgedForFileWrite = false;
     let nudgedForTruncation = false;
+    let nudgedForPlanImplementation = false;
 
     for (let step = 0; step < maxIterations; step++) {
       if (controller.signal.aborted) {
@@ -440,6 +470,31 @@ export class AgentExecutionEngine implements AgentInvoker {
             serializeError(
               new Error(
                 "模型输出达到 max_tokens 上限，工具调用被截断；请增大 LLM_MAX_TOKENS 或拆分文件写入",
+              ),
+              "VALIDATION",
+            ),
+          );
+        }
+
+        // 方案已批准却没有落地任何变更：先提醒一次，仍无动作则失败。
+        const planApproved = Boolean(
+          toolContext.plan?.required && toolContext.plan.isApproved(),
+        );
+        if (
+          planApproved &&
+          !mutatingToolSucceeded(toolHistory, (name) => toolExecutor.get(name))
+        ) {
+          if (!nudgedForPlanImplementation) {
+            nudgedForPlanImplementation = true;
+            messages.push(new HumanMessage({ content: PLAN_IMPLEMENT_NUDGE }));
+            continue;
+          }
+          return this.failure(
+            input,
+            "failed",
+            serializeError(
+              new Error(
+                "用户已批准方案，但未执行任何成功的变更操作",
               ),
               "VALIDATION",
             ),
@@ -559,6 +614,7 @@ export class AgentExecutionEngine implements AgentInvoker {
     messages[0] = new SystemMessage({ content: fallbackSystem });
     let nudgedForFileWrite = false;
     let nudgedForTruncation = false;
+    let nudgedForPlanImplementation = false;
 
     for (let step = 0; step < maxIterations; step++) {
       if (controller.signal.aborted) {
@@ -611,6 +667,37 @@ export class AgentExecutionEngine implements AgentInvoker {
       const thought = parseFallbackThought(text);
 
       if (thought.decision === "done") {
+        const planApproved = Boolean(
+          toolContext.plan?.required && toolContext.plan.isApproved(),
+        );
+        if (
+          planApproved &&
+          !mutatingToolSucceeded(toolHistory, (name) => toolExecutor.get(name))
+        ) {
+          if (!nudgedForPlanImplementation) {
+            nudgedForPlanImplementation = true;
+            messages.push(response);
+            messages.push(
+              new HumanMessage({
+                content:
+                  PLAN_IMPLEMENT_NUDGE +
+                  ' Respond with decision="use_tool" and a file_write/file_edit toolCall.',
+              }),
+            );
+            continue;
+          }
+          return this.failure(
+            input,
+            "failed",
+            serializeError(
+              new Error(
+                "用户已批准方案，但未执行任何成功的变更操作",
+              ),
+              "VALIDATION",
+            ),
+          );
+        }
+
         if (expectsFileWrite(input) && !attemptedFileWrite(toolHistory)) {
           if (!nudgedForFileWrite) {
             nudgedForFileWrite = true;

@@ -132,6 +132,33 @@ describe("client websocket messages", () => {
     expect(
       clientWsMessageSchema.parse({ type: "resume", runId: "r1" }),
     ).toEqual({ type: "resume", runId: "r1" });
+
+    expect(
+      clientWsMessageSchema.parse({ type: "plan_mode", enabled: false }),
+    ).toEqual({ type: "plan_mode", enabled: false });
+  });
+
+  it("计划审批可以携带选择与反馈", () => {
+    expect(
+      clientWsMessageSchema.parse({
+        type: "approval",
+        callId: "c1",
+        approved: true,
+        selectedProposalIds: ["p1", "p2"],
+      }),
+    ).toMatchObject({
+      type: "approval",
+      selectedProposalIds: ["p1", "p2"],
+    });
+
+    expect(
+      clientWsMessageSchema.parse({
+        type: "approval",
+        callId: "c2",
+        approved: false,
+        feedback: "风险太高",
+      }),
+    ).toMatchObject({ type: "approval", feedback: "风险太高" });
   });
 
   it("拒绝未知类型", () => {
@@ -160,6 +187,7 @@ describe("client websocket messages", () => {
     expectTypeOf(message).toMatchTypeOf<
       | { type: "message"; content: string }
       | { type: "approval"; callId: string; approved: boolean }
+      | { type: "plan_mode"; enabled: boolean }
       | { type: "answer"; questionId: string; answer: string }
       | { type: "abort"; runId?: string; reason?: string }
       | { type: "resume"; runId: string }
@@ -189,7 +217,16 @@ describe("server websocket messages", () => {
         sessionId: "s1",
         lastSeq: 0,
       }),
-    ).toMatchObject({ type: "ready", lastSeq: 0 });
+    ).toMatchObject({ type: "ready", lastSeq: 0, planMode: true });
+
+    expect(
+      serverWsMessageSchema.parse({
+        type: "ready",
+        sessionId: "s1",
+        lastSeq: 0,
+        planMode: false,
+      }),
+    ).toMatchObject({ type: "ready", planMode: false });
 
     expect(
       serverWsMessageSchema.parse({ type: "event", event: envelope }),

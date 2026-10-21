@@ -26,6 +26,8 @@ export interface PoolTaskInput {
   memory?: string;
   messages?: import("@code-agent/protocol").SerializedMessage[];
   maxIterations?: number;
+  /** 单任务超时；计划模式需要覆盖默认的 5 分钟 */
+  timeoutMs?: number;
 }
 
 export class AgentPool {
@@ -68,6 +70,21 @@ export class AgentPool {
     const releaseGlobal = await this.global.acquire();
     const releaseRole = await roleSemaphore.acquire();
     try {
+      // 把计划模式状态作为背景注入，让模型知道当前能不能改动工作区
+      const planDirective = scope.plan
+        ? scope.plan.required
+          ? scope.plan.isApproved()
+            ? `PLAN MODE IS ON. The user approved proposal(s): ${
+                scope.plan.selectedProposalIds().join(", ") || "(none)"
+              }. Implement only the approved proposals.`
+            : "PLAN MODE IS ON. All mutating tools are blocked until the user approves proposals. " +
+              "Investigate with read-only tools, then call submit_proposals with 1-4 concrete proposals."
+          : "PLAN MODE IS OFF. Do not call submit_proposals; implement the request directly."
+        : undefined;
+      const context = [task.context, planDirective]
+        .filter((part): part is string => Boolean(part))
+        .join("\n\n");
+
       return await this.options.engine.invoke(
         {
           taskId: task.taskId,
@@ -76,10 +93,11 @@ export class AgentPool {
           systemPrompt: role.systemPrompt,
           tools: this.toolsForRole(role.id),
           workspacePath: this.options.workspacePath,
-          ...(task.context ? { context: task.context } : {}),
+          ...(context ? { context } : {}),
           ...(task.memory ? { memory: task.memory } : {}),
           ...(task.messages ? { messages: task.messages } : {}),
           ...(task.maxIterations ? { maxIterations: task.maxIterations } : {}),
+          ...(task.timeoutMs ? { timeoutMs: task.timeoutMs } : {}),
         },
         scope,
       );

@@ -62,6 +62,14 @@ describe("parseArgs", () => {
     expect(result.query).toBe("查询");
   });
 
+  it("解析 --plan / --no-plan", () => {
+    expect(parseArgs(["node", "cli", "--plan", "do it"]).planMode).toBe(true);
+    expect(parseArgs(["node", "cli", "--no-plan", "do it"]).planMode).toBe(
+      false,
+    );
+    expect(parseArgs(["node", "cli", "do it"]).planMode).toBeUndefined();
+  });
+
   it("解析 -h 和 -v", () => {
     expect(parseArgs(argv("--help")).showHelp).toBe(true);
     expect(parseArgs(argv("-h")).showHelp).toBe(true);

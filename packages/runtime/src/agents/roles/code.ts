@@ -28,6 +28,7 @@ export const CODE_ROLE: RoleDefinition = {
     ToolNames.MEMORY_STORE,
     ToolNames.DELEGATE_TASK,
     ToolNames.PLAN_UPDATE,
+    ToolNames.SUBMIT_PROPOSALS,
     ToolNames.ASK_USER,
   ],
   acceptedCommands: ["agent.command.code"],

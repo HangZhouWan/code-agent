@@ -24,6 +24,11 @@ export type {
 export { EventChannel } from "./session/event-channel.js";
 export type { EventChannelOptions } from "./session/event-channel.js";
 export { PlanState } from "./session/plan-state.js";
+export { PlanApprovalService } from "./session/plan-approval-service.js";
+export type {
+  PlanApprovalContext,
+  PlanApprovalServiceOptions,
+} from "./session/plan-approval-service.js";
 export { TitleService } from "./session/title-service.js";
 export type { TitleServiceOptions } from "./session/title-service.js";
 export { UserQuestionService } from "./session/user-question-service.js";
@@ -33,6 +38,7 @@ export type {
 } from "./session/user-question-service.js";
 export { ApprovalService } from "./approval/approval-service.js";
 export type {
+  ApprovalOutcome,
   ApprovalRequestInput,
   ApprovalServiceOptions,
 } from "./approval/approval-service.js";

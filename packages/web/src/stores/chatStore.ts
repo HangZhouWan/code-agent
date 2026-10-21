@@ -17,6 +17,7 @@
  */
 
 import { useReducer } from "react";
+import type { CodeProposal } from "@code-agent/protocol";
 
 // ---------------------------------------------------------------------------
 // 类型定义
@@ -59,12 +60,24 @@ export interface Message {
 /** 当前 run 的生命周期状态 */
 export type RunStatus = "idle" | "running" | "completed" | "failed";
 
+/** 计划模式下等待用户确认的方案集合 */
+export interface PlanApprovalPrompt {
+  callId: string;
+  summary: string;
+  proposals: CodeProposal[];
+  expiresAt?: string;
+}
+
 /** 整个聊天状态 */
 export interface ChatState {
   messages: Message[];
   pendingQuestion?: QuestionPrompt;
   /** 当前 run 状态；用于可靠地切换 Send/Stop 并提示任务结束 */
   runStatus?: RunStatus;
+  /** 会话是否启用计划模式；缺省视为开启 */
+  planMode?: boolean;
+  /** 等待用户选择的改进方案；与工具审批分开渲染 */
+  pendingPlanApproval?: PlanApprovalPrompt;
 }
 
 // ---------------------------------------------------------------------------
@@ -121,6 +134,16 @@ export function dbMessagesToMessages(rows: DBMessageRow[]): Message[] {
 // ---------------------------------------------------------------------------
 
 export type ChatAction =
+  | { type: "SESSION_READY"; planMode: boolean }
+  | { type: "PLAN_MODE_CHANGED"; enabled: boolean }
+  | {
+      type: "PLAN_APPROVAL_REQUIRED";
+      callId: string;
+      summary: string;
+      proposals: CodeProposal[];
+      expiresAt?: string;
+    }
+  | { type: "PLAN_APPROVAL_RESOLVED"; callId: string }
   | { type: "RUN_STARTED" }
   | { type: "ADD_USER_MESSAGE"; id: string; content: string }
   | { type: "ADD_ASSISTANT_MESSAGE"; id: string }
@@ -180,6 +203,33 @@ function uid(): string {
  */
 export function chatReducer(state: ChatState, action: ChatAction): ChatState {
   switch (action.type) {
+    // ── 连接就绪：同步服务端会话的计划模式 ──
+    case "SESSION_READY":
+      return { ...state, planMode: action.planMode };
+
+    case "PLAN_MODE_CHANGED":
+      return { ...state, planMode: action.enabled };
+
+    // ── 计划模式：等待用户选择方案 ──
+    case "PLAN_APPROVAL_REQUIRED":
+      return {
+        ...state,
+        pendingPlanApproval: {
+          callId: action.callId,
+          summary: action.summary,
+          proposals: action.proposals,
+          ...(action.expiresAt ? { expiresAt: action.expiresAt } : {}),
+        },
+      };
+
+    case "PLAN_APPROVAL_RESOLVED": {
+      const pending = state.pendingPlanApproval;
+      if (!pending) return state;
+      // 重放旧事件时不要清掉当前仍在等待的另一个方案
+      if (action.callId && pending.callId !== action.callId) return state;
+      return { ...state, pendingPlanApproval: undefined };
+    }
+
     // ── 服务端 run 开始（含重放） ──
     case "RUN_STARTED":
       return { ...state, runStatus: "running" };
@@ -415,6 +465,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...state,
         messages: msgs,
         pendingQuestion: undefined,
+        pendingPlanApproval: undefined,
         runStatus: "completed",
       };
     }
@@ -439,6 +490,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...state,
         messages: [...msgs, errMsg],
         pendingQuestion: undefined,
+        pendingPlanApproval: undefined,
         runStatus: "failed",
       };
     }
@@ -449,6 +501,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...state,
         messages: [],
         pendingQuestion: undefined,
+        pendingPlanApproval: undefined,
         runStatus: "idle",
       };
     }
@@ -478,7 +531,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
 // ---------------------------------------------------------------------------
 
 /** 初始聊天状态 */
-const initialChatState: ChatState = { messages: [] };
+const initialChatState: ChatState = { messages: [], planMode: true };
 
 /**
  * useChatStore hook

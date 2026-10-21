@@ -12,6 +12,7 @@ export type {
   PermissionEvaluator,
   ToolPermissionSpec,
   ToolResult,
+  PlanContext,
 } from "./base.js";
 
 export {
@@ -39,5 +40,7 @@ export type {
   BuiltinToolOptions,
   MemoryToolService,
   CollaborationToolService,
+  PlanSubmitInput,
+  PlanSubmitOutcome,
   PlanTaskInput,
 } from "./builtins/index.js";

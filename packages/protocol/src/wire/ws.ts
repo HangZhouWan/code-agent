@@ -24,6 +24,14 @@ export const clientWsMessageSchema = z.discriminatedUnion("type", [
     type: z.literal("approval"),
     callId: z.string().min(1),
     approved: z.boolean(),
+    /** 计划审批：用户选中的方案 ID */
+    selectedProposalIds: z.array(z.string().min(1)).optional(),
+    /** 计划审批：拒绝原因或补充意见 */
+    feedback: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("plan_mode"),
+    enabled: z.boolean(),
   }),
   z.object({
     type: z.literal("answer"),
@@ -58,6 +66,7 @@ export const serverWsMessageSchema = z.discriminatedUnion("type", [
     type: z.literal("ready"),
     sessionId: z.string().min(1),
     lastSeq: z.number().int().nonnegative(),
+    planMode: z.boolean().default(true),
   }),
   z.object({
     type: z.literal("event"),
@@ -70,6 +79,11 @@ export const serverWsMessageSchema = z.discriminatedUnion("type", [
 ]);
 
 export type ServerWsMessage =
-  | { type: "ready"; sessionId: SessionId; lastSeq: number }
+  | {
+      type: "ready";
+      sessionId: SessionId;
+      lastSeq: number;
+      planMode: boolean;
+    }
   | { type: "event"; event: EventEnvelope<SessionEvent> }
   | { type: "error"; error: SerializedError };

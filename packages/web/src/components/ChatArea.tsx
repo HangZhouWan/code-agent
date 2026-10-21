@@ -13,6 +13,7 @@ import { useWebSocket } from "../hooks/useWebSocket.js";
 import { MessageList } from "./MessageList.js";
 import { InputBar } from "./InputBar.js";
 import { QuestionCard } from "./QuestionCard.js";
+import { PlanApprovalCard } from "./PlanApprovalCard.js";
 
 export interface ChatAreaProps {
   sessionId: string | null;
@@ -28,6 +29,10 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
     (message: ServerWsMessage) => {
       if (message.type === "error") {
         dispatch({ type: "ERROR", message: message.error.message });
+        return;
+      }
+      if (message.type === "ready") {
+        dispatch({ type: "SESSION_READY", planMode: message.planMode });
         return;
       }
       if (message.type !== "event") return;
@@ -74,21 +79,44 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
           break;
 
         case "approval.required":
-          dispatch({
-            type: "CONFIRM_REQUIRED",
-            callId: event.request.callId,
-            tool: event.request.toolName,
-            args: event.request.args as Record<string, unknown>,
-          });
+          if (event.request.kind === "plan" && event.request.plan) {
+            dispatch({
+              type: "PLAN_APPROVAL_REQUIRED",
+              callId: event.request.callId,
+              summary: event.request.plan.summary,
+              proposals: event.request.plan.proposals,
+              ...(event.request.expiresAt
+                ? { expiresAt: event.request.expiresAt }
+                : {}),
+            });
+          } else {
+            dispatch({
+              type: "CONFIRM_REQUIRED",
+              callId: event.request.callId,
+              tool: event.request.toolName,
+              args: event.request.args as Record<string, unknown>,
+            });
+          }
           break;
 
         case "approval.resolved":
-          dispatch({
-            type: "APPROVAL_RESOLVED",
-            callId: event.callId,
-            decision: event.decision,
-            ...(event.reason ? { reason: event.reason } : {}),
-          });
+          if (event.kind === "plan") {
+            dispatch({
+              type: "PLAN_APPROVAL_RESOLVED",
+              callId: event.callId,
+            });
+          } else {
+            dispatch({
+              type: "APPROVAL_RESOLVED",
+              callId: event.callId,
+              decision: event.decision,
+              ...(event.reason ? { reason: event.reason } : {}),
+            });
+          }
+          break;
+
+        case "plan.mode.changed":
+          dispatch({ type: "PLAN_MODE_CHANGED", enabled: event.enabled });
           break;
 
         case "user.question.required":
@@ -138,7 +166,7 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
     [dispatch, onTitleUpdated],
   );
 
-  const { status, send, approve, answer, abort } = useWebSocket({
+  const { status, send, approve, answer, abort, setPlanMode } = useWebSocket({
     sessionId: sessionId ?? null,
     onMessage,
   });
@@ -166,6 +194,20 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
     [approve],
   );
 
+  const handlePlanApprove = useCallback(
+    (callId: string, selectedProposalIds: string[]) => {
+      approve(callId, true, { selectedProposalIds });
+    },
+    [approve],
+  );
+
+  const handlePlanReject = useCallback(
+    (callId: string, feedback: string) => {
+      approve(callId, false, feedback ? { feedback } : {});
+    },
+    [approve],
+  );
+
   // ── 停止当前 run ──
   const handleStop = useCallback(() => {
     abort("用户停止");
@@ -187,6 +229,7 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
 
   // 以 run 生命周期为准切换 Send/Stop，避免个别消息状态异常时按钮卡住
   const isStreaming = state.runStatus === "running";
+  const planMode = state.planMode ?? true;
 
   useEffect(() => {
     if (!sessionId) {
@@ -268,9 +311,48 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
 
   return (
     <div className="flex-1 flex flex-col bg-gray-950 h-full min-w-0">
+      <div className="flex items-center justify-between gap-3 border-b border-gray-800 px-4 py-2">
+        <div className="min-w-0">
+          <span className="text-xs font-medium text-gray-300">计划模式</span>
+          <span className="ml-2 text-[11px] text-gray-500">
+            先扫描并提交方案，确认后再改文件
+          </span>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={planMode}
+          aria-label="切换计划模式"
+          disabled={status !== "connected" || isStreaming}
+          onClick={() => setPlanMode(!planMode)}
+          className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+            planMode
+              ? "border-purple-500/60 bg-purple-500/15 text-purple-200"
+              : "border-gray-700 bg-gray-900 text-gray-400"
+          }`}
+        >
+          {planMode ? "已开启" : "已关闭"}
+        </button>
+      </div>
+
       <MessageList messages={state.messages} onApprove={handleApprove} />
 
       <div ref={messagesEndRef} />
+
+      {state.pendingPlanApproval && (
+        <PlanApprovalCard
+          key={state.pendingPlanApproval.callId}
+          callId={state.pendingPlanApproval.callId}
+          summary={state.pendingPlanApproval.summary}
+          proposals={state.pendingPlanApproval.proposals}
+          {...(state.pendingPlanApproval.expiresAt
+            ? { expiresAt: state.pendingPlanApproval.expiresAt }
+            : {})}
+          disabled={status !== "connected"}
+          onApprove={handlePlanApprove}
+          onReject={handlePlanReject}
+        />
+      )}
 
       {state.pendingQuestion && (
         <QuestionCard

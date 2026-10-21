@@ -37,6 +37,8 @@ export interface RuntimeHarness {
   writeLock?: <T>(fn: () => Promise<T>) => Promise<T>;
   /** Auto mode：工作区内 confirm 级工具免审批 */
   autoApprove?: boolean;
+  /** 计划模式：先提案后执行 */
+  planMode?: boolean;
 }
 
 export interface RuntimeOptions {
@@ -44,6 +46,12 @@ export interface RuntimeOptions {
   maxIterations?: number;
   approvalTimeoutMs?: number;
   questionTimeoutMs?: number;
+  /** 方案确认超时 */
+  planApprovalTimeoutMs?: number;
+  /** 计划模式任务超时 */
+  planModeTimeoutMs?: number;
+  /** 计划模式迭代上限 */
+  planModeMaxIterations?: number;
   /** 默认是否启用 LangGraph 编排 */
   orchestration?: boolean;
 }
@@ -54,6 +62,8 @@ export interface CreateSessionInput {
   workspacePath: string;
   title?: string;
   orchestration?: boolean;
+  /** 覆盖默认计划模式设置 */
+  planMode?: boolean;
 }
 
 export interface RecoveryReport {
@@ -83,6 +93,7 @@ export function createRuntime(
         asSessionId(options.ports.ids.next("session"));
       const orchestration =
         input.orchestration ?? options.orchestration;
+      const planMode = input.planMode ?? harness.planMode;
       const session = await AgentSession.create({
         sessionId,
         workspaceId:
@@ -120,6 +131,16 @@ export function createRuntime(
         ...(options.questionTimeoutMs
           ? { questionTimeoutMs: options.questionTimeoutMs }
           : {}),
+        ...(options.planApprovalTimeoutMs
+          ? { planApprovalTimeoutMs: options.planApprovalTimeoutMs }
+          : {}),
+        ...(options.planModeTimeoutMs
+          ? { planModeTimeoutMs: options.planModeTimeoutMs }
+          : {}),
+        ...(options.planModeMaxIterations
+          ? { planModeMaxIterations: options.planModeMaxIterations }
+          : {}),
+        ...(planMode !== undefined ? { planMode } : {}),
         ...(input.title ? { title: input.title } : {}),
         ...(orchestration !== undefined ? { orchestration } : {}),
       });

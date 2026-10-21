@@ -81,6 +81,7 @@ async function setup(
     workspacePath: workspace,
     title: "Orchestrator Test",
     orchestration: true,
+    planMode: false,
   });
   return { session, workspace, model };
 }

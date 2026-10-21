@@ -21,6 +21,7 @@ import {
   asRunId,
   asSessionId,
   asWorkspaceId,
+  type ApprovalRequest,
   type MemoryRecord,
 } from "@code-agent/protocol";
 import { createRuntime, type Runtime } from "../factory.js";
@@ -101,6 +102,8 @@ async function setup(
     extractor?: import("@code-agent/core").MemoryExtractor;
     title?: string;
     autoApprove?: boolean;
+    planMode?: boolean;
+    orchestration?: boolean;
   } = {},
 ): Promise<{
   ports: ReturnType<typeof createInMemoryPorts>;
@@ -126,7 +129,8 @@ async function setup(
   const session = await runtime.createSession({
     workspacePath: workspace,
     title: options.title ?? "Test Session",
-    orchestration: false,
+    orchestration: options.orchestration ?? false,
+    planMode: options.planMode ?? false,
   });
   return { ports, workspace, session, runtime };
 }
@@ -152,6 +156,30 @@ async function approveNext(
       return;
     }
   }
+}
+
+async function approvePlanNext(
+  session: AgentSession,
+  decision: "approved" | "denied",
+  options: { selectedProposalIds?: string[]; feedback?: string } = {},
+): Promise<ApprovalRequest | undefined> {
+  for await (const envelope of session.subscribe()) {
+    const event = envelope.event;
+    if (
+      event.type === "approval.required" &&
+      event.request.kind === "plan"
+    ) {
+      session.approve(event.request.callId, {
+        decision,
+        ...(options.selectedProposalIds
+          ? { selectedProposalIds: options.selectedProposalIds }
+          : {}),
+        ...(options.feedback ? { feedback: options.feedback } : {}),
+      });
+      return event.request;
+    }
+  }
+  return undefined;
 }
 
 async function answerNext(session: AgentSession, answer: string): Promise<void> {
@@ -288,6 +316,106 @@ describe("approval", () => {
   });
 });
 
+describe("plan mode", () => {
+  const p1 = {
+    id: "p1",
+    title: "集中错误映射",
+    summary: "在 api.ts 中统一错误处理",
+    files: [{ path: "plan.txt", changes: ["写入 plan.txt"] }],
+    recommended: true,
+  };
+  const p2 = {
+    id: "p2",
+    title: "只改调用方",
+    summary: "在各调用点分别处理",
+    files: [{ path: "plan.txt", changes: ["写入 plan.txt"] }],
+  };
+
+  it("扫描 → 提交方案 → 批准 → 同一 run 内完成写入", async () => {
+    const model = new ScriptedModel([
+      toolCall("submit_proposals", {
+        summary: "发现两处可改进",
+        proposals: [p1, p2],
+      }),
+      toolCall("file_write", { path: "plan.txt", content: "hello" }),
+      text("done"),
+    ]);
+    // orchestration 为 true 也应走 direct，验证计划模式绕过编排
+    const { session, workspace } = await setup(model, {
+      autoApprove: true,
+      planMode: true,
+      orchestration: true,
+    });
+
+    const handle = await session.run({ content: "改进错误处理" });
+    const request = await approvePlanNext(session, "approved", {
+      selectedProposalIds: ["p1"],
+    });
+    const result = await handle.done;
+
+    expect(request?.plan?.proposals).toHaveLength(2);
+    expect(result.status).toBe("completed");
+    expect(existsSync(join(workspace, "plan.txt"))).toBe(true);
+  });
+
+  it("拒绝后 agent 可以修订方案并重新申请", async () => {
+    const model = new ScriptedModel([
+      toolCall("submit_proposals", {
+        summary: "方案 v1",
+        proposals: [p1],
+      }),
+      toolCall("submit_proposals", {
+        summary: "方案 v2",
+        proposals: [p2],
+      }),
+      toolCall("file_write", { path: "plan.txt", content: "hello" }),
+      text("done"),
+    ]);
+    const { session, workspace } = await setup(model, {
+      autoApprove: true,
+      planMode: true,
+    });
+
+    const decisions = [
+      { decision: "denied" as const, feedback: "换一个方案" },
+      { decision: "approved" as const, selectedProposalIds: ["p2"] },
+    ];
+    const seen: ApprovalRequest[] = [];
+    const consumer = (async () => {
+      let index = 0;
+      for await (const envelope of session.subscribe()) {
+        const event = envelope.event;
+        if (
+          event.type === "approval.required" &&
+          event.request.kind === "plan"
+        ) {
+          seen.push(event.request);
+          const next = decisions[index++];
+          if (next) session.approve(event.request.callId, next);
+        }
+        if (
+          event.type === "run.completed" ||
+          event.type === "run.failed" ||
+          event.type === "run.aborted"
+        ) {
+          break;
+        }
+      }
+    })();
+
+    const handle = await session.run({ content: "改进错误处理" });
+    const result = await handle.done;
+    await consumer;
+
+    expect(seen.map((request) => request.plan?.summary)).toEqual([
+      "方案 v1",
+      "方案 v2",
+    ]);
+    expect(result.status).toBe("completed");
+    expect(existsSync(join(workspace, "plan.txt"))).toBe(true);
+  });
+});
+
 describe("ask_user", () => {
   it("等待用户回答后继续", async () => {
     const model = new ScriptedModel([
@@ -364,6 +492,7 @@ describe("memory", () => {
       workspaceId,
       title: "Test",
       orchestration: false,
+      planMode: false,
     });
 
     const handle = await session.run({ content: "pnpm 怎么用" });

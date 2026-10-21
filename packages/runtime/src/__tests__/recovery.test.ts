@@ -167,6 +167,7 @@ describe("AgentSession.resume", () => {
       workspacePath: workspace,
       title: "Recovery",
       orchestration: true,
+      planMode: false,
     });
     await ports.checkpoints.saveSession(checkpoint(workspace));
 
@@ -195,6 +196,7 @@ describe("AgentSession.resume", () => {
       sessionId,
       workspacePath: workspace,
       title: "Recovery",
+      planMode: false,
     });
     await ports.checkpoints.saveSession(checkpoint(workspace));
 
@@ -222,6 +224,7 @@ describe("AgentSession.resume", () => {
       sessionId,
       workspacePath: workspace,
       title: "Recovery",
+      planMode: false,
     });
     await ports.checkpoints.saveSession(
       checkpoint(workspace, { pendingApprovals: [approval()] }),
@@ -243,6 +246,7 @@ describe("AgentSession.resume", () => {
       sessionId,
       workspacePath: workspace,
       title: "Recovery",
+      planMode: false,
     });
     await ports.checkpoints.saveSession(checkpoint(workspace));
     await ports.checkpoints.saveAgent(agentCheckpoint());

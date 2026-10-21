@@ -15,7 +15,7 @@ import {
   type SessionEvent,
   type EventEnvelope,
 } from "@code-agent/protocol";
-import type { AgentSession } from "@code-agent/runtime";
+import { SessionBusyError, type AgentSession } from "@code-agent/runtime";
 import type { SessionService } from "../../session/session-service.js";
 
 export interface RuntimeChatOptions {
@@ -44,6 +44,7 @@ export function createRuntimeChatWebSocket(options: RuntimeChatOptions) {
       type: "ready",
       sessionId,
       lastSeq: session.lastSeq,
+      planMode: session.planMode,
     });
 
     let closed = false;
@@ -90,10 +91,18 @@ export function createRuntimeChatWebSocket(options: RuntimeChatOptions) {
               await session.run({ content: message.content });
               break;
             case "approval":
-              session.approve(
-                message.callId,
-                message.approved ? "approved" : "denied",
-              );
+              session.approve(message.callId, {
+                decision: message.approved ? "approved" : "denied",
+                ...(message.selectedProposalIds
+                  ? { selectedProposalIds: message.selectedProposalIds }
+                  : {}),
+                ...(message.feedback !== undefined
+                  ? { feedback: message.feedback }
+                  : {}),
+              });
+              break;
+            case "plan_mode":
+              session.setPlanMode(message.enabled);
               break;
             case "answer":
               session.answer(message.questionId, message.answer);
@@ -111,7 +120,12 @@ export function createRuntimeChatWebSocket(options: RuntimeChatOptions) {
         } catch (error) {
           send({
             type: "error",
-            error: serializeError(error, "VALIDATION"),
+            error: serializeError(
+              error,
+              error instanceof SessionBusyError
+                ? "SESSION_BUSY"
+                : "VALIDATION",
+            ),
           });
         }
       })();

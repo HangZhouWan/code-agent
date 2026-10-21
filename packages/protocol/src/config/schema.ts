@@ -59,6 +59,8 @@ export const globalConfigSchema = llmConfigObjectSchema
       .optional(),
     /** Auto mode：工作区内写文件/改文件/执行命令无需人工审批 */
     AUTO_MODE: z.boolean().default(false),
+    /** 计划模式：先只读扫描并提交方案，用户批准后再改文件 */
+    PLAN_MODE: z.boolean().default(true),
   })
   .superRefine(requireApiKeyIfNeeded);
 
@@ -90,6 +92,7 @@ export const appConfigSchema = z.object({
   CODE_AGENT_HOME: z.string().optional(),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
   AUTO_MODE: z.boolean().default(false),
+  PLAN_MODE: z.boolean().default(true),
 });
 
 export type LlmConfig = z.infer<typeof llmConfigObjectSchema>;

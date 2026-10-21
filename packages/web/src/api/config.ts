@@ -19,6 +19,8 @@ export interface ModelConfigView {
   workspacePath: string;
   /** Auto mode：工作区内写入/命令执行免审批 */
   autoMode: boolean;
+  /** 计划模式：先提交方案，确认后执行 */
+  planMode: boolean;
 }
 
 /** 保存配置的输入；空 apiKey 表示沿用服务端已保存的 Key */
@@ -32,6 +34,8 @@ export interface SaveModelConfigInput {
   workspacePath?: string;
   /** Auto mode 开关；缺省为关闭 */
   autoMode?: boolean;
+  /** 计划模式开关；缺省为开启 */
+  planMode?: boolean;
 }
 
 /** 将未知值收窄为普通对象 */
@@ -85,6 +89,8 @@ export async function fetchModelConfig(): Promise<ModelConfigView | null> {
     workspacePath:
       typeof raw.WORKSPACE_PATH === "string" ? raw.WORKSPACE_PATH : "",
     autoMode: raw.AUTO_MODE === true,
+    // 旧配置没有该字段时保持产品默认：开启
+    planMode: raw.PLAN_MODE !== false,
   };
 }
 
@@ -110,6 +116,7 @@ export async function saveModelConfig(
       LLM_BASE_URL: input.baseUrl?.trim() || null,
       WORKSPACE_PATH: input.workspacePath?.trim() || null,
       AUTO_MODE: input.autoMode === true,
+      PLAN_MODE: input.planMode !== false,
     }),
   });
 

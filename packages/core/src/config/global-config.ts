@@ -41,6 +41,8 @@ export type GlobalConfigInput = {
   WORKSPACE_PATH?: string;
   /** Auto mode：工作区内写入/命令执行免审批 */
   AUTO_MODE?: boolean;
+  /** 计划模式：先提案后执行 */
+  PLAN_MODE?: boolean;
 };
 
 export interface GlobalConfigManagerOptions {

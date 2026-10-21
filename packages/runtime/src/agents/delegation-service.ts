@@ -113,6 +113,7 @@ export class DelegationService {
         ? { requestApproval: ctx.requestApproval }
         : {}),
       ...(ctx.withWriteLock ? { withWriteLock: ctx.withWriteLock } : {}),
+      ...(ctx.plan ? { plan: ctx.plan } : {}),
       delegation: {
         depth,
         maxDepth,

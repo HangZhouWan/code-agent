@@ -324,6 +324,63 @@ describe("native tool calling", () => {
     expect(requestApproval).toHaveBeenCalledTimes(1);
   });
 
+  it("计划未批准时被拦截的写入不算已尝试，任务不会误报成功", async () => {
+    const model = new ScriptedModel([
+      new AIMessage({
+        content: "",
+        tool_calls: [
+          {
+            id: "w1",
+            name: "file_write",
+            args: { path: "index.html", content: "<html></html>" },
+          },
+        ],
+      }),
+      new AIMessage({ content: "done" }),
+      new AIMessage({ content: "done" }),
+    ]);
+    const engine = new AgentExecutionEngine(model);
+    const { scope: runScope } = scope({
+      plan: {
+        required: true,
+        isApproved: () => false,
+        selectedProposalIds: () => [],
+      },
+    });
+
+    const result = await engine.invoke(
+      input([writeTool()], { description: "write a file" }),
+      runScope,
+    );
+
+    expect(result.status).toBe("failed");
+    assertHasToolMessage(model.calls[1], "Plan approval required");
+  });
+
+  it("方案批准后没有实际变更时先提醒，再判定失败", async () => {
+    const model = new ScriptedModel([
+      new AIMessage({ content: "我会稍后实现" }),
+      new AIMessage({ content: "仍然没有实现" }),
+    ]);
+    const engine = new AgentExecutionEngine(model);
+    const { scope: runScope } = scope({
+      plan: {
+        required: true,
+        isApproved: () => true,
+        selectedProposalIds: () => ["p1"],
+      },
+    });
+
+    const result = await engine.invoke(input([writeTool()]), runScope);
+
+    expect(result.status).toBe("failed");
+    expect(
+      model.calls[1]?.some((message) =>
+        String(message.content).includes("approved the selected proposals"),
+      ),
+    ).toBe(true);
+  });
+
   it("confirm 工具经过审批，拒绝时把错误反馈给模型", async () => {
     const requestApproval = vi.fn(async () => false);
     const model = new ScriptedModel([

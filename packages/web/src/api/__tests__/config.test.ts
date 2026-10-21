@@ -46,6 +46,7 @@ describe("fetchModelConfig", () => {
       baseUrl: "https://example.com/v1",
       workspacePath: "/Users/me/projects/app",
       autoMode: true,
+      planMode: true,
     });
   });
 
@@ -103,6 +104,7 @@ describe("saveModelConfig", () => {
       LLM_BASE_URL: "https://example.com/v1",
       WORKSPACE_PATH: "/Users/me/projects/app",
       AUTO_MODE: true,
+      PLAN_MODE: true,
     });
   });
 
@@ -119,6 +121,7 @@ describe("saveModelConfig", () => {
       LLM_BASE_URL: null,
       WORKSPACE_PATH: null,
       AUTO_MODE: false,
+      PLAN_MODE: true,
     });
   });
 

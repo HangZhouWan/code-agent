@@ -69,6 +69,7 @@ const EXPECTED_TOOL_NAMES: Record<string, string[]> = {
     "code_search",
     "run_tests",
     "git_diff",
+    "submit_proposals",
   ],
   test: ["file_read", "file_write", "file_edit", "run_tests"],
   doc: ["file_read", "file_edit", "file_write", "code_search"],
@@ -133,6 +134,13 @@ describe("内置角色提示词", () => {
     const code = BUILTIN_ROLES.find((role) => role.id === "code");
     expect(code?.systemPrompt).toContain("6000");
     expect(code?.systemPrompt).toContain("append");
+  });
+
+  it("计划模式规则出现在所有角色提示词中", () => {
+    for (const role of BUILTIN_ROLES) {
+      expect(role.systemPrompt).toContain("submit_proposals");
+      expect(role.systemPrompt).toContain("selected proposals");
+    }
   });
 
   it("Review Agent 强调只读与运行时目录", () => {

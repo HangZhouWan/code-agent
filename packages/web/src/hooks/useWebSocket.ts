@@ -16,13 +16,24 @@ export interface UseWebSocketOptions {
   onMessage: (message: ServerWsMessage) => void;
 }
 
+export interface ApprovalOptions {
+  selectedProposalIds?: string[];
+  feedback?: string;
+}
+
 export interface UseWebSocketReturn {
   status: WSStatus;
   send: (content: string) => void;
-  approve: (callId: string, approved: boolean) => void;
+  approve: (
+    callId: string,
+    approved: boolean,
+    options?: ApprovalOptions,
+  ) => void;
   answer: (questionId: string, answer: string) => void;
   /** 中断当前 run */
   abort: (reason?: string) => void;
+  /** 切换会话计划模式 */
+  setPlanMode: (enabled: boolean) => void;
 }
 
 function parseJson(data: unknown): unknown {
@@ -141,8 +152,18 @@ export function useWebSocket({
   );
 
   const approve = useCallback(
-    (callId: string, approved: boolean) =>
-      sendClient({ type: "approval", callId, approved }),
+    (callId: string, approved: boolean, options?: ApprovalOptions) =>
+      sendClient({
+        type: "approval",
+        callId,
+        approved,
+        ...(options?.selectedProposalIds
+          ? { selectedProposalIds: options.selectedProposalIds }
+          : {}),
+        ...(options?.feedback !== undefined
+          ? { feedback: options.feedback }
+          : {}),
+      }),
     [sendClient],
   );
 
@@ -158,5 +179,10 @@ export function useWebSocket({
     [sendClient],
   );
 
-  return { status, send, approve, answer, abort };
+  const setPlanMode = useCallback(
+    (enabled: boolean) => sendClient({ type: "plan_mode", enabled }),
+    [sendClient],
+  );
+
+  return { status, send, approve, answer, abort, setPlanMode };
 }

@@ -16,6 +16,7 @@ import type {
   ApprovalRequest,
   UserQuestion,
 } from "../domain/interaction.js";
+import type { ApprovalKind } from "../domain/interaction.js";
 import type { MemoryOp } from "../domain/memory.js";
 
 export const SESSION_EVENT_TYPES = [
@@ -30,6 +31,7 @@ export const SESSION_EVENT_TYPES = [
   "user.question.resolved",
   "task.status",
   "plan.updated",
+  "plan.mode.changed",
   "checkpoint.saved",
   "context.compacted",
   "memory.updated",
@@ -69,6 +71,9 @@ export type SessionEvent =
       callId: CallId;
       decision: ApprovalDecision;
       reason?: string;
+      kind?: ApprovalKind;
+      selectedProposalIds?: string[];
+      feedback?: string;
     }
   | { type: "user.question.required"; question: UserQuestion }
   | { type: "user.question.resolved"; questionId: QuestionId; answer: string }
@@ -79,6 +84,7 @@ export type SessionEvent =
       status: TaskStatus;
     }
   | { type: "plan.updated"; plan: Plan }
+  | { type: "plan.mode.changed"; enabled: boolean }
   | { type: "checkpoint.saved"; checkpointId: string; scope: "agent" | "session"; node?: string }
   | {
       type: "context.compacted";

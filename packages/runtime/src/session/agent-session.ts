@@ -34,6 +34,7 @@ import {
   asTaskId,
   serializeError,
   type ApprovalDecision,
+  type ApprovalResolution,
   type ChatMessage,
   type EventEnvelope,
   type JsonValue,
@@ -59,6 +60,7 @@ import { RoutingDispatcher } from "../dispatch/routing-dispatcher.js";
 import { SessionOrchestrator } from "../orchestrator/orchestrator.js";
 import type { RuntimePorts } from "../ports/types.js";
 import { EventChannel } from "./event-channel.js";
+import { PlanApprovalService } from "./plan-approval-service.js";
 import { PlanState } from "./plan-state.js";
 import { TitleService } from "./title-service.js";
 import { UserQuestionService } from "./user-question-service.js";
@@ -110,6 +112,14 @@ export interface AgentSessionOptions {
   orchestration?: boolean;
   /** Auto mode：工作区内 confirm 级工具免审批 */
   autoApprove?: boolean;
+  /** 计划模式：先只读扫描并提交方案，用户批准后再改文件；默认开启 */
+  planMode?: boolean;
+  /** 方案确认超时，默认 5 分钟 */
+  planApprovalTimeoutMs?: number;
+  /** 计划模式下单个任务的超时，默认 15 分钟 */
+  planModeTimeoutMs?: number;
+  /** 计划模式下单个任务的迭代上限，默认 40 */
+  planModeMaxIterations?: number;
 }
 
 export interface RunOptions {
@@ -139,6 +149,10 @@ export class AgentSession {
   private readonly state: SessionStateManager;
   private readonly eventChannel: EventChannel;
   private readonly approvalService: ApprovalService;
+  private readonly planApproval: PlanApprovalService;
+  private readonly planModeTimeoutMs?: number;
+  private readonly planModeMaxIterations?: number;
+  private planModeEnabled: boolean;
   private readonly questionService: UserQuestionService;
   private readonly delegationService: DelegationService;
   private readonly planState = new PlanState();
@@ -177,6 +191,16 @@ export class AgentSession {
       emit: (event) => this.emitEvent(event),
       ...(options.approvalTimeoutMs
         ? { timeoutMs: options.approvalTimeoutMs }
+        : {}),
+    });
+    this.planModeEnabled = options.planMode ?? true;
+    this.planModeTimeoutMs = options.planModeTimeoutMs;
+    this.planModeMaxIterations = options.planModeMaxIterations;
+    this.planApproval = new PlanApprovalService({
+      approvalService: this.approvalService,
+      enabled: this.planModeEnabled,
+      ...(options.planApprovalTimeoutMs
+        ? { timeoutMs: options.planApprovalTimeoutMs }
         : {}),
     });
     this.questionService = new UserQuestionService({
@@ -269,6 +293,18 @@ export class AgentSession {
       updatePlan: async (tasks) => {
         const plan = this.planState.update(tasks);
         this.emitEvent({ type: "plan.updated", plan });
+      },
+      submitProposals: async (input, ctx) => {
+        const runId = ctx?.runId ? asRunId(ctx.runId) : this.activeRunId;
+        const taskId = ctx?.taskId ? asTaskId(ctx.taskId) : undefined;
+        if (!runId || !taskId) {
+          throw new Error("submit_proposals requires an active run/task");
+        }
+        return this.planApproval.submit(input, {
+          runId,
+          taskId,
+          ...(ctx?.signal ? { signal: ctx.signal } : {}),
+        });
       },
       askUser: async (input, ctx) => {
         const runId = ctx?.runId ? asRunId(ctx.runId) : this.activeRunId;
@@ -389,6 +425,7 @@ export class AgentSession {
     this.activeController = controller;
     this.delegationService.reset();
     this.planState.clear();
+    this.planApproval.beginRun(runId);
 
     await this.ports.runs.createRun({
       id: runId,
@@ -404,14 +441,18 @@ export class AgentSession {
       resumed: false,
     });
 
-    const execution = this.orchestration
-      ? this.executeOrchestrated(runId, input, controller)
-      : this.executeDirect(runId, input, controller);
+    // 计划模式需要同一个 agent 完成「扫描 → 提案 → 实现」，
+    // 因此绕过编排，走单 Code 任务；关闭计划模式时保持原有行为。
+    const execution =
+      this.planModeEnabled || !this.orchestration
+        ? this.executeDirect(runId, input, controller)
+        : this.executeOrchestrated(runId, input, controller);
     const done = execution.finally(() => {
       if (this.activeRunId === runId) {
         this.activeRunId = null;
         this.activeController = null;
       }
+      this.planApproval.endRun(runId);
     });
 
     return {
@@ -443,6 +484,13 @@ export class AgentSession {
     if (checkpoint.v !== 1) {
       throw new SessionResumeError(
         `Incompatible checkpoint version: ${String(checkpoint.v)}`,
+        "INCOMPATIBLE",
+      );
+    }
+    // 直接执行（含计划模式）没有编排图可重放，明确拒绝而不是错误恢复
+    if (checkpoint.executionMode === "direct") {
+      throw new SessionResumeError(
+        "Direct/plan-mode runs cannot be resumed; start a new run",
         "INCOMPATIBLE",
       );
     }
@@ -487,6 +535,9 @@ export class AgentSession {
     this.activeController = controller;
     this.delegationService.reset();
     this.planState.clear();
+    this.planModeEnabled = checkpoint.planMode ?? this.planModeEnabled;
+    this.planApproval.setEnabled(this.planModeEnabled);
+    this.planApproval.beginRun(checkpoint.runId);
     this.state.hydrate(checkpoint.tasks, checkpoint.artifacts);
 
     const results: TaskResult[] = checkpoint.tasks
@@ -616,8 +667,31 @@ export class AgentSession {
     return this.eventChannel.subscribe(options.afterSeq ?? 0);
   }
 
-  approve(callId: string, decision: ApprovalDecision): boolean {
-    return this.approvalService.resolve(asCallId(callId), decision);
+  approve(
+    callId: string,
+    resolution: ApprovalDecision | ApprovalResolution,
+  ): boolean {
+    return this.approvalService.resolve(asCallId(callId), resolution);
+  }
+
+  /** 当前会话是否启用计划模式 */
+  get planMode(): boolean {
+    return this.planModeEnabled;
+  }
+
+  /**
+   * 切换计划模式；只允许在空闲时调用。
+   *
+   * @throws {SessionBusyError} 运行中切换时抛出
+   */
+  setPlanMode(enabled: boolean): void {
+    if (this.activeRunId) {
+      throw new SessionBusyError(this.id);
+    }
+    if (this.planModeEnabled === enabled) return;
+    this.planModeEnabled = enabled;
+    this.planApproval.setEnabled(enabled);
+    this.emitSessionEvent({ type: "plan.mode.changed", enabled });
   }
 
   answer(questionId: string, answer: string): boolean {
@@ -662,14 +736,14 @@ export class AgentSession {
       const taskId = request.taskId
         ? asTaskId(request.taskId)
         : fallbackTaskId;
-      const decision = await this.approvalService.request({
+      const outcome = await this.approvalService.request({
         runId,
         taskId,
         toolName: request.toolName,
         args: toJsonValue(request.args),
         ...(request.reason ? { reason: request.reason } : {}),
       });
-      return decision === "approved";
+      return outcome.decision === "approved";
     };
   }
 
@@ -684,6 +758,7 @@ export class AgentSession {
       requestApproval: this.makeApprovalHandler(runId, fallbackTaskId),
       ...(this.writeLock ? { withWriteLock: this.writeLock } : {}),
       delegation: { depth: 0, maxDepth: 2 },
+      plan: this.planApproval.context(),
     };
   }
 
@@ -707,6 +782,7 @@ export class AgentSession {
         maxDepth: 2,
         allowedRoles: role.delegatableRoles,
       },
+      plan: this.planApproval.context(),
     };
   }
 
@@ -873,17 +949,18 @@ export class AgentSession {
         emit: (event) => this.emitEvent(event),
         requestApproval: async (request) => {
           if (!taskId) return false;
-          const decision = await this.approvalService.request({
+          const outcome = await this.approvalService.request({
             runId,
             taskId,
             toolName: request.toolName,
             args: toJsonValue(request.args),
             ...(request.reason ? { reason: request.reason } : {}),
           });
-          return decision === "approved";
+          return outcome.decision === "approved";
         },
         ...(this.writeLock ? { withWriteLock: this.writeLock } : {}),
         delegation: { depth: 0, maxDepth: 2 },
+        plan: this.planApproval.context(),
       };
 
       taskResult = await this.pool.invoke(
@@ -893,9 +970,15 @@ export class AgentSession {
           description: input.content,
           messages: history,
           ...(memoryText ? { memory: memoryText } : {}),
-          ...(this.maxIterations
-            ? { maxIterations: this.maxIterations }
-            : {}),
+          // 计划模式包含人工确认时间，需要更长的任务超时和迭代预算
+          ...(this.planModeEnabled
+            ? {
+                timeoutMs: this.planModeTimeoutMs ?? 900_000,
+                maxIterations: this.planModeMaxIterations ?? 40,
+              }
+            : this.maxIterations
+              ? { maxIterations: this.maxIterations }
+              : {}),
         },
         scope,
       );
@@ -1170,6 +1253,11 @@ export class AgentSession {
       status,
       node,
       workspacePath: this.options.workspacePath,
+      planMode: this.planModeEnabled,
+      executionMode:
+        this.planModeEnabled || !this.orchestration
+          ? "direct"
+          : "orchestrated",
       ...(this.planState.get() ? { plan: this.planState.get()! } : {}),
       tasks,
       completedTaskIds: tasks
@@ -1219,6 +1307,11 @@ export class AgentSession {
     const runId = this.activeRunId;
     if (!runId) return;
     this.eventChannel.emit(runId, event);
+  }
+
+  /** 空闲状态下也发送会话级事件（如 plan.mode.changed） */
+  private emitSessionEvent(event: SessionEvent): void {
+    this.eventChannel.emit(this.activeRunId ?? asRunId("session"), event);
   }
 
   private async *filterRun(

@@ -315,6 +315,23 @@ Agent 启动时声明能力范围（`tools` + `paths`），超出范围的调用
 - 支持 `resume(taskId)` 恢复中断的执行
 - 持久化到文件系统（`~/.code-agent/checkpoints/`）
 
+### 🧭 计划模式（先提案、确认后执行）
+
+默认开启（`PLAN_MODE=true`）。收到改进请求后：
+
+1. Code Agent 只用只读工具扫描代码库（`file_read` / `code_search` / `git_diff` 等）。
+2. 调用 `submit_proposals` 提交 1-4 个具体方案：涉及文件、修改点、理由、风险和工作量，不预写代码。
+3. 用户在 Web 方案卡片或 CLI 中选择一个或多个方案并批准。
+4. **同一 run 继续执行**，只实现被选中的方案。
+
+未批准前，所有 mutating 工具（`file_write` / `file_edit` / `shell_exec` / `run_tests` / git 写操作）
+都会被拦截；拒绝后 agent 可以按反馈修订方案并重新提交。计划模式绕过 LangGraph 编排，
+由单个 Code Agent 完成「扫描 → 提案 → 实现」；关闭后恢复原有编排与逐工具审批。
+
+- Web：聊天区顶部可切换当前会话的计划模式；运行中不可切换。
+- CLI：`/plan on|off` 交互切换，或启动参数 `--plan` / `--no-plan`。
+- AUTO_MODE 与计划确认相互独立：Auto mode 只跳过逐工具审批，计划确认仍然生效。
+
 ### 💬 实时聊天界面
 
 - 左侧会话列表，右侧聊天区域
@@ -357,6 +374,9 @@ Agent 启动时声明能力范围（`tools` + `paths`），超出范围的调用
 ```json
 { "type": "message", "content": "帮我重构这段代码" }
 { "type": "approval", "callId": "xxx", "approved": true }
+{ "type": "approval", "callId": "xxx", "approved": true, "selectedProposalIds": ["p1"] }
+{ "type": "approval", "callId": "xxx", "approved": false, "feedback": "风险太高" }
+{ "type": "plan_mode", "enabled": false }
 { "type": "answer", "questionId": "xxx", "answer": "yes" }
 { "type": "abort", "runId": "xxx", "reason": "user cancelled" }
 { "type": "resume", "runId": "xxx" }
@@ -365,7 +385,7 @@ Agent 启动时声明能力范围（`tools` + `paths`），超出范围的调用
 **服务端 → 客户端**：
 
 ```json
-{ "type": "ready", "sessionId": "xxx", "lastSeq": 0 }
+{ "type": "ready", "sessionId": "xxx", "lastSeq": 0, "planMode": true }
 { "type": "event", "event": { "v": 1, "sessionId": "...", "runId": "...", "seq": 1, "ts": "...", "event": { "type": "message.delta", "delta": "..." } } }
 { "type": "error", "error": { "code": "INTERNAL", "message": "...", "retryable": false } }
 ```
@@ -393,6 +413,9 @@ Web 首次配置页和设置页（Settings）均可修改该值；未配置时�
 shell 命令执行不再弹出人工审批。路径逃逸与高危命令（`sudo`、`rm -rf /` 等）
 仍会被拒绝。
 
+**计划模式**（`PLAN_MODE`，默认 `true`）控制是否先提交方案再执行。可在设置页修改
+全局默认值（重启后生效），也可在 Web 聊天区或 CLI 中按会话切换。
+
 ### 环境变量
 
 完整环境变量列表见 `.env.example`：
@@ -408,6 +431,7 @@ shell 命令执行不再弹出人工审批。路径逃逸与高危命令（`sudo
 | `HOST` | 否 | `127.0.0.1` | 服务主机地址 |
 | `PORT` | 否 | `3000` | 服务端口 |
 | `WORKSPACE_PATH` | 否 | 当前目录 | Agent 工作目录 |
+| `PLAN_MODE` | 否 | `true` | 计划模式：先提交方案，确认后执行 |
 | `AUTO_MODE` | 否 | `false` | Auto mode：工作区内写入/命令执行免人工审批 |
 | `DB_PATH` | 否 | `<workspace>/.agent/data/code-agent.db` | SQLite 数据库路径 |
 

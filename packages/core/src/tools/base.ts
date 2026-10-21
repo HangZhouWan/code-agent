@@ -28,6 +28,20 @@ export type PermissionLevel = 'allow' | 'safe' | 'confirm' | 'deny';
 /** 工具副作用分类，用于 checkpoint/恢复与写锁 */
 export type ToolSideEffect = 'none' | 'idempotent' | 'mutating';
 
+/**
+ * 计划模式上下文
+ *
+ * 由 runtime 注入；工具中间件据此在用户批准方案前拦截 mutating 工具。
+ */
+export interface PlanContext {
+  /** 当前会话是否启用计划模式 */
+  required: boolean;
+  /** 用户是否已批准当前 run 的方案 */
+  isApproved(): boolean;
+  /** 用户选中的方案 ID */
+  selectedProposalIds(): readonly string[];
+}
+
 export interface PermissionDecision {
   level: PermissionLevel;
   reason?: string;
@@ -110,6 +124,9 @@ export interface ToolContext {
     parentTaskId?: string;
     allowedRoles?: string[];
   };
+
+  /** 计划模式上下文；未启用时为 required=false */
+  plan?: PlanContext;
 
   /** 会话事件出口（工具内部触发交互时使用） */
   emit?: (event: SessionEvent) => void;

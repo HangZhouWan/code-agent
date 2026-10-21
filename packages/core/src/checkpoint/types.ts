@@ -70,6 +70,10 @@ export interface SessionCheckpointV1 {
   node: SessionNode;
   /** 恢复时用于重建 workspace；可选以兼容旧快照 */
   workspacePath?: string;
+  /** 本次 run 是否启用计划模式 */
+  planMode?: boolean;
+  /** 执行路径；直接执行（含计划模式）暂不支持恢复 */
+  executionMode?: "direct" | "orchestrated";
   plan?: Plan;
   tasks: TaskRecord[];
   completedTaskIds: TaskId[];

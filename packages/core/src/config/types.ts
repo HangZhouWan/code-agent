@@ -31,6 +31,8 @@ export interface ResolvedConfig extends LlmConfig {
   LOG_LEVEL: NonNullable<AppConfig["LOG_LEVEL"]>;
   /** Auto mode：工作区内写入/命令执行免审批 */
   AUTO_MODE: boolean;
+  /** 计划模式：先只读扫描并提交方案，用户批准后再改文件 */
+  PLAN_MODE: boolean;
   CONTEXT: ContextConfig;
   paths: WorkspacePaths;
 }

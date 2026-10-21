@@ -392,4 +392,123 @@ describe("ChatArea", () => {
 
     expect(screen.queryByText(/Confirm Action:/)).not.toBeInTheDocument();
   });
+
+  it("计划审批：默认选推荐方案，批准后发送选择并移除卡片", async () => {
+    render(<ChatArea sessionId="s1" />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Send a message to start the conversation/),
+      ).toBeInTheDocument();
+    });
+
+    const socket = latestSocket();
+    act(() => {
+      socket.readyState = MockWebSocket.OPEN;
+      socket.onopen?.();
+      socket.receive({
+        type: "ready",
+        sessionId: "s1",
+        lastSeq: 0,
+        planMode: true,
+      });
+      socket.receive(
+        eventMessage(1, {
+          type: "approval.required",
+          request: {
+            callId: "plan-call-1",
+            sessionId: "s1",
+            runId: "run-1",
+            taskId: "task-1",
+            toolName: "submit_proposals",
+            args: {},
+            createdAt: "2024-01-01T00:00:00.000Z",
+            expiresAt: "2024-01-01T00:05:00.000Z",
+            kind: "plan",
+            plan: {
+              summary: "发现两处可改进",
+              proposals: [
+                {
+                  id: "p1",
+                  title: "集中错误映射",
+                  summary: "统一处理错误",
+                  files: [
+                    { path: "src/api.ts", changes: ["增加错误映射"] },
+                  ],
+                  recommended: true,
+                },
+                {
+                  id: "p2",
+                  title: "只改调用方",
+                  summary: "逐个调用点处理",
+                  files: [
+                    { path: "src/caller.ts", changes: ["补充 try/catch"] },
+                  ],
+                },
+              ],
+            },
+          },
+        }),
+      );
+    });
+
+    expect(screen.getByText(/计划确认/)).toBeInTheDocument();
+    expect(screen.getByText("集中错误映射")).toBeInTheDocument();
+    expect(screen.getByText("只改调用方")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("批准并执行"));
+
+    expect(socket.sent.map((data) => JSON.parse(data))).toContainEqual({
+      type: "approval",
+      callId: "plan-call-1",
+      approved: true,
+      selectedProposalIds: ["p1"],
+    });
+
+    act(() => {
+      socket.receive(
+        eventMessage(2, {
+          type: "approval.resolved",
+          callId: "plan-call-1",
+          decision: "approved",
+          kind: "plan",
+          selectedProposalIds: ["p1"],
+        }),
+      );
+    });
+
+    expect(screen.queryByText(/计划确认/)).not.toBeInTheDocument();
+  });
+
+  it("计划模式开关发送 plan_mode", async () => {
+    render(<ChatArea sessionId="s1" />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Send a message to start the conversation/),
+      ).toBeInTheDocument();
+    });
+
+    const socket = latestSocket();
+    act(() => {
+      socket.readyState = MockWebSocket.OPEN;
+      socket.onopen?.();
+      socket.receive({
+        type: "ready",
+        sessionId: "s1",
+        lastSeq: 0,
+        planMode: true,
+      });
+    });
+
+    const toggle = screen.getByRole("switch", { name: "切换计划模式" });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(toggle);
+
+    expect(socket.sent.map((data) => JSON.parse(data))).toContainEqual({
+      type: "plan_mode",
+      enabled: false,
+    });
+  });
 });

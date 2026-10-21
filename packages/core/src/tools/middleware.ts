@@ -22,6 +22,7 @@ import {
   createDefaultPermissionPolicy,
   type PermissionPolicy,
 } from "../permissions/policy.js";
+import { ToolNames } from "./tool-names.js";
 
 export interface ArtifactSink {
   put(content: string, meta: { toolName: string }): Promise<string>;
@@ -153,6 +154,21 @@ export async function executeTool(
     return toolError(
       `Tool "${tool.name}" denied: ${decision.reason ?? "permission denied"}`,
       "PERMISSION_DENIED",
+    );
+  }
+
+  // 计划模式闸门：用户批准方案前，所有 mutating 工具都不可执行。
+  // 放在 confirm 之前，确保 AUTO_MODE 把 confirm 升级为 allow 时也无法绕过。
+  if (
+    sideEffectOf(tool) === "mutating" &&
+    ctx.plan?.required &&
+    !ctx.plan.isApproved()
+  ) {
+    return toolError(
+      `Plan approval required: mutating tool "${tool.name}" is blocked. ` +
+        `Investigate with read-only tools, then call ${ToolNames.SUBMIT_PROPOSALS} ` +
+        `with 1-4 concrete proposals and wait for the user to approve.`,
+      "PLAN_APPROVAL_REQUIRED",
     );
   }
 

@@ -125,7 +125,13 @@ export { RUN_STATUSES } from "./domain/session.js";
 
 export type {
   ApprovalDecision,
+  ApprovalKind,
   ApprovalRequest,
+  ApprovalResolution,
+  ProposalEffort,
+  ProposalChangePoint,
+  CodeProposal,
+  PlanProposalSet,
   UserQuestion,
   UserAnswer,
 } from "./domain/interaction.js";

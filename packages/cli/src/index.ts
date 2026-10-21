@@ -92,6 +92,7 @@ async function main(): Promise<void> {
         workspacePath,
         title: "Resumed",
         orchestration: true,
+        ...(args.planMode !== undefined ? { planMode: args.planMode } : {}),
       });
 
       const handle = await session.resume(target.runId);
@@ -113,6 +114,7 @@ async function main(): Promise<void> {
       sessionId: asSessionId("cli-default"),
       workspacePath: args.workspacePath,
       title: "CLI Session",
+      ...(args.planMode !== undefined ? { planMode: args.planMode } : {}),
     });
 
     if (args.query) {

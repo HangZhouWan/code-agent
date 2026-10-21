@@ -630,6 +630,91 @@ describe("dbMessagesToMessages", () => {
 });
 
 // ---------------------------------------------------------------------------
+// 计划模式
+// ---------------------------------------------------------------------------
+
+describe("计划模式状态", () => {
+  const proposals = [
+    {
+      id: "p1",
+      title: "方案一",
+      summary: "说明",
+      files: [{ path: "src/a.ts", changes: ["改这里"] }],
+    },
+  ];
+
+  it("SESSION_READY / PLAN_MODE_CHANGED 同步开关", () => {
+    const ready = chatReducer(empty, {
+      type: "SESSION_READY",
+      planMode: false,
+    });
+    expect(ready.planMode).toBe(false);
+
+    const changed = chatReducer(ready, {
+      type: "PLAN_MODE_CHANGED",
+      enabled: true,
+    });
+    expect(changed.planMode).toBe(true);
+  });
+
+  it("PLAN_APPROVAL_REQUIRED 记录待确认方案", () => {
+    const state = chatReducer(empty, {
+      type: "PLAN_APPROVAL_REQUIRED",
+      callId: "plan-1",
+      summary: "发现改进点",
+      proposals,
+    });
+    expect(state.pendingPlanApproval).toMatchObject({
+      callId: "plan-1",
+      summary: "发现改进点",
+    });
+  });
+
+  it("PLAN_APPROVAL_RESOLVED 只清理由对应 callId 的卡片", () => {
+    const withPending = chatReducer(empty, {
+      type: "PLAN_APPROVAL_REQUIRED",
+      callId: "plan-1",
+      summary: "发现改进点",
+      proposals,
+    });
+
+    const other = chatReducer(withPending, {
+      type: "PLAN_APPROVAL_RESOLVED",
+      callId: "plan-2",
+    });
+    expect(other.pendingPlanApproval).toBeDefined();
+
+    const cleared = chatReducer(withPending, {
+      type: "PLAN_APPROVAL_RESOLVED",
+      callId: "plan-1",
+    });
+    expect(cleared.pendingPlanApproval).toBeUndefined();
+  });
+
+  it("DONE / ERROR / RESET_MESSAGES 清理待确认方案", () => {
+    const withPending = chatReducer(empty, {
+      type: "PLAN_APPROVAL_REQUIRED",
+      callId: "plan-1",
+      summary: "发现改进点",
+      proposals,
+    });
+
+    expect(
+      chatReducer(withPending, { type: "DONE", finalResponse: "ok" })
+        .pendingPlanApproval,
+    ).toBeUndefined();
+    expect(
+      chatReducer(withPending, { type: "ERROR", message: "boom" })
+        .pendingPlanApproval,
+    ).toBeUndefined();
+    expect(
+      chatReducer(withPending, { type: "RESET_MESSAGES" })
+        .pendingPlanApproval,
+    ).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 不可变性
 // ---------------------------------------------------------------------------
 

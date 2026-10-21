@@ -1,7 +1,7 @@
 /**
  * 内置工具目录
  *
- * 纯工具 15 个；注入 memory/collaboration 服务后再增加 5 个，共 20 个。
+ * 纯工具 15 个；注入 memory/collaboration 服务后再增加 6 个，共 21 个。
  */
 
 import type { ToolDefinition } from "../base.js";
@@ -86,6 +86,8 @@ export { createMemoryTools, type MemoryToolService } from "./memory.js";
 export {
   createCollaborationTools,
   type CollaborationToolService,
+  type PlanSubmitInput,
+  type PlanSubmitOutcome,
   type PlanTaskInput,
 } from "./collaboration.js";
 export { detectTestCommand } from "./shell.js";

@@ -313,13 +313,22 @@ describe("collaboration tools", () => {
     updatePlan: async (tasks) => {
       calls.push(`plan:${tasks.length}`);
     },
+    submitProposals: async (input) => {
+      calls.push(`propose:${input.proposals.length}`);
+      return {
+        status: "approved",
+        selectedProposalIds: [input.proposals[0]?.id ?? "p1"],
+        planMode: true,
+      };
+    },
     askUser: async (input) => {
       calls.push(`ask:${input.question}`);
       return "yes";
     },
   };
 
-  const [delegate, plan, askUser] = createCollaborationTools(service);
+  const [delegate, plan, submitProposals, askUser] =
+    createCollaborationTools(service);
   const workspace = makeWorkspace();
 
   it("三个协作工具都能执行", async () => {
@@ -348,10 +357,107 @@ describe("collaboration tools", () => {
     expect(answer.content).toContain("yes");
     expect(calls).toEqual(["delegate:test", "plan:1", "ask:继续吗？"]);
   });
+
+  it("submit_proposals 提交方案并返回批准结果", async () => {
+    const result = await runTool(
+      submitProposals,
+      {
+        summary: "可以改进错误处理",
+        proposals: [
+          {
+            id: "p1",
+            title: "统一错误映射",
+            summary: "集中处理 API 错误",
+            files: [
+              { path: "src/api.ts", changes: ["增加错误映射函数"] },
+            ],
+            recommended: true,
+          },
+        ],
+      },
+      ctx(makeWorkspace()),
+    );
+    expect(result.content).toContain('"status": "approved"');
+    expect(result.content).toContain('"p1"');
+    expect(calls).toContain("propose:1");
+  });
+
+  it("submit_proposals 拒绝重复 ID", async () => {
+    const result = await runTool(
+      submitProposals,
+      {
+        summary: "重复 ID",
+        proposals: [
+          proposal("p1"),
+          proposal("p1"),
+        ],
+      },
+      ctx(makeWorkspace()),
+    );
+    expect(result.errorCode).toBe("VALIDATION");
+    expect(result.content).toContain("duplicate id");
+  });
+
+  it("submit_proposals 拒绝多个推荐方案", async () => {
+    const result = await runTool(
+      submitProposals,
+      {
+        summary: "多个推荐",
+        proposals: [
+          { ...proposal("p1"), recommended: true },
+          { ...proposal("p2"), recommended: true },
+        ],
+      },
+      ctx(makeWorkspace()),
+    );
+    expect(result.errorCode).toBe("VALIDATION");
+    expect(result.content).toContain("recommended");
+  });
+
+  it("submit_proposals 拒绝工作区外路径", async () => {
+    const result = await runTool(
+      submitProposals,
+      {
+        summary: "越界",
+        proposals: [
+          {
+            ...proposal("p1"),
+            files: [{ path: "../outside.ts", changes: ["x"] }],
+          },
+        ],
+      },
+      ctx(makeWorkspace()),
+    );
+    expect(result.errorCode).toBe("VALIDATION");
+    expect(result.content).toContain("path escapes workspace");
+  });
+
+  it("submit_proposals 限制 1-4 个方案", async () => {
+    await expect(
+      runTool(
+        submitProposals,
+        {
+          summary: "空方案",
+          proposals: [],
+        },
+        ctx(makeWorkspace()),
+      ),
+    ).rejects.toThrow();
+  });
 });
 
+/** 构造一个最小方案 */
+function proposal(id: string) {
+  return {
+    id,
+    title: `方案 ${id}`,
+    summary: "说明",
+    files: [{ path: "src/api.ts", changes: ["修改错误处理"] }],
+  };
+}
+
 describe("builtin catalog", () => {
-  it("纯工具 15 个，注入服务后 20 个", () => {
+  it("纯工具 15 个，注入服务后 21 个", () => {
     expect(createBuiltinTools()).toHaveLength(15);
     expect(
       createBuiltinTools({
@@ -362,10 +468,15 @@ describe("builtin catalog", () => {
         collaboration: {
           delegate: async () => ({}),
           updatePlan: async () => {},
+          submitProposals: async () => ({
+            status: "approved",
+            selectedProposalIds: [],
+            planMode: true,
+          }),
           askUser: async () => "ok",
         },
       }),
-    ).toHaveLength(20);
+    ).toHaveLength(21);
   });
 
   it("包含所有核心工具名", () => {

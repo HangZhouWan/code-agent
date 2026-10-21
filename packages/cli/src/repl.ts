@@ -72,6 +72,30 @@ export async function startRepl(options: ReplOptions): Promise<void> {
       await session.abort();
       continue;
     }
+    if (line === "/plan" || line.startsWith("/plan ")) {
+      const value = line.slice("/plan".length).trim();
+      if (!value) {
+        console.log(
+          dim(`计划模式: ${session.planMode ? "开启" : "关闭"}`),
+        );
+        continue;
+      }
+      if (value !== "on" && value !== "off") {
+        console.log(yellow("用法: /plan [on|off]"));
+        continue;
+      }
+      try {
+        session.setPlanMode(value === "on");
+        console.log(
+          dim(`计划模式已${value === "on" ? "开启" : "关闭"}`),
+        );
+      } catch (error) {
+        console.log(
+          yellow(error instanceof Error ? error.message : String(error)),
+        );
+      }
+      continue;
+    }
     if (line === "/memory" || line.startsWith("/memory ")) {
       await showMemory(memory, line.slice("/memory".length).trim());
       continue;
@@ -109,6 +133,7 @@ function printReplHelp(): void {
       "  /help                 显示帮助",
       "  /exit, /quit          退出",
       "  /abort                取消当前任务",
+      "  /plan [on|off]        查看/切换计划模式",
       "  /memory [query]       查看/搜索长期记忆",
       "  /remember <text>      写入一条记忆",
       "  /forget <id>          删除一条记忆",

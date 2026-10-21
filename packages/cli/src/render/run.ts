@@ -3,7 +3,11 @@
  */
 
 import type { AgentSession, RunHandle } from "@code-agent/runtime";
-import type { RunResult } from "@code-agent/protocol";
+import type {
+  ApprovalRequest,
+  CodeProposal,
+  RunResult,
+} from "@code-agent/protocol";
 import {
   dim,
   formatError,
@@ -74,6 +78,10 @@ export async function consumeRun(
 
         case "approval.required": {
           const request = event.request;
+          if (request.kind === "plan") {
+            await handlePlanApproval(session, request, options);
+            break;
+          }
           if (options.interactive && options.ask) {
             const answer = await options.ask(
               `${yellow(`工具 ${request.toolName} 需要审批`)}\n` +
@@ -152,4 +160,109 @@ export async function consumeRun(
   const result = await handle.done;
   await streamed;
   return result;
+}
+
+/** 默认选择推荐方案，其次第一个方案 */
+function defaultSelection(proposals: CodeProposal[]): string[] {
+  const recommended = proposals.find((proposal) => proposal.recommended);
+  return [recommended?.id ?? proposals[0]!.id];
+}
+
+/**
+ * 解析方案选择输入。
+ *
+ * 输入：用户输入、方案列表
+ * 输出：选中的方案 ID；无法识别时返回 null
+ */
+function parsePlanSelection(
+  answer: string,
+  proposals: CodeProposal[],
+): string[] | null {
+  if (!answer) return defaultSelection(proposals);
+  if (/^a(ll)?$/i.test(answer)) return proposals.map((p) => p.id);
+
+  const ids: string[] = [];
+  for (const part of answer.split(/[,\s]+/).filter(Boolean)) {
+    const index = Number(part);
+    if (!Number.isInteger(index) || index < 1 || index > proposals.length) {
+      return null;
+    }
+    ids.push(proposals[index - 1]!.id);
+  }
+  return ids.length > 0 ? [...new Set(ids)] : null;
+}
+
+/** 在终端展示方案并等待用户选择或拒绝 */
+async function handlePlanApproval(
+  session: AgentSession,
+  request: ApprovalRequest,
+  options: ConsumeRunOptions,
+): Promise<void> {
+  const plan = request.plan;
+  if (!plan) {
+    session.approve(request.callId, {
+      decision: "denied",
+      feedback: "Missing plan payload",
+    });
+    return;
+  }
+
+  console.log(yellow("\n计划模式：请确认改进方案"));
+  console.log(plan.summary);
+
+  plan.proposals.forEach((proposal, index) => {
+    console.log(
+      `\n${index + 1}. ${proposal.title}${
+        proposal.recommended ? "（推荐）" : ""
+      }`,
+    );
+    console.log(`   ${proposal.summary}`);
+    for (const file of proposal.files) {
+      console.log(`   - ${file.path}`);
+      for (const change of file.changes) {
+        console.log(`     · ${change}`);
+      }
+    }
+    if (proposal.effort) console.log(`   工作量: ${proposal.effort}`);
+    if (proposal.rationale) console.log(`   理由: ${proposal.rationale}`);
+    if (proposal.risks) console.log(`   风险: ${proposal.risks}`);
+  });
+
+  if (!options.interactive || !options.ask) {
+    console.log(
+      yellow(
+        "非交互模式无法确认方案，自动拒绝；如需直接执行请使用 --no-plan",
+      ),
+    );
+    session.approve(request.callId, {
+      decision: "denied",
+      feedback:
+        "Plan approval requires an interactive terminal. Re-run with --no-plan to apply changes directly.",
+    });
+    return;
+  }
+
+  const answer = (
+    await options.ask(
+      "\n选择方案（序号逗号分隔 / a=全部 / Enter=推荐 / n=拒绝）: ",
+    )
+  ).trim();
+
+  if (/^n(o)?$/i.test(answer)) {
+    const feedback = (await options.ask("拒绝原因（可留空）: ")).trim();
+    session.approve(request.callId, {
+      decision: "denied",
+      ...(feedback ? { feedback } : {}),
+    });
+    return;
+  }
+
+  const selected = parsePlanSelection(answer, plan.proposals);
+  if (!selected) {
+    console.log(yellow("输入无法识别，默认选择推荐方案"));
+  }
+  session.approve(request.callId, {
+    decision: "approved",
+    selectedProposalIds: selected ?? defaultSelection(plan.proposals),
+  });
 }

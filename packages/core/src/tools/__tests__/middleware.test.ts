@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ToolContext, ToolDefinition } from "../base.js";
 import { executeTool } from "../middleware.js";
+import { ToolNames } from "../tool-names.js";
 import {
   createAutoApprovePermissionPolicy,
   createDefaultPermissionPolicy,
@@ -326,6 +327,115 @@ describe("executeTool", () => {
     );
     expect(result).toMatchObject({ ok: true, content: "done" });
     expect(lockCalls).toBe(1);
+  });
+
+  it("计划未批准时拦截 mutating 工具，且 AUTO_MODE 也无法绕过", async () => {
+    const result = await executeTool(
+      confirmTool,
+      {},
+      makeCtx(workspace, {
+        requestApproval: async () => true,
+        plan: {
+          required: true,
+          isApproved: () => false,
+          selectedProposalIds: () => [],
+        },
+      }),
+      { policy: createAutoApprovePermissionPolicy() },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.errorCode).toBe("PLAN_APPROVAL_REQUIRED");
+    expect(result.content).toContain(ToolNames.SUBMIT_PROPOSALS);
+  });
+
+  it("计划批准后允许 mutating 工具执行", async () => {
+    const result = await executeTool(
+      confirmTool,
+      {},
+      makeCtx(workspace, {
+        requestApproval: async () => true,
+        plan: {
+          required: true,
+          isApproved: () => true,
+          selectedProposalIds: () => ["p1"],
+        },
+      }),
+    );
+    expect(result).toMatchObject({ ok: true, content: "done" });
+  });
+
+  it("计划模式关闭时不影响 mutating 工具", async () => {
+    const result = await executeTool(
+      confirmTool,
+      {},
+      makeCtx(workspace, {
+        requestApproval: async () => true,
+        plan: {
+          required: false,
+          isApproved: () => false,
+          selectedProposalIds: () => [],
+        },
+      }),
+    );
+    expect(result).toMatchObject({ ok: true, content: "done" });
+  });
+
+  it("计划闸门不拦截只读工具", async () => {
+    const result = await executeTool(
+      allowTool,
+      {},
+      makeCtx(workspace, {
+        plan: {
+          required: true,
+          isApproved: () => false,
+          selectedProposalIds: () => [],
+        },
+      }),
+    );
+    expect(result).toMatchObject({ ok: true, content: "ok" });
+  });
+
+  it("硬性 deny 优先于计划闸门", async () => {
+    const denyTool: ToolDefinition = {
+      ...confirmTool,
+      name: "deny_tool",
+      permission: "deny",
+    };
+    const result = await executeTool(
+      denyTool,
+      {},
+      makeCtx(workspace, {
+        plan: {
+          required: true,
+          isApproved: () => false,
+          selectedProposalIds: () => [],
+        },
+      }),
+    );
+    expect(result.errorCode).toBe("PERMISSION_DENIED");
+  });
+
+  it("submit_proposals 不受计划闸门影响", async () => {
+    const proposeTool: ToolDefinition = {
+      name: ToolNames.SUBMIT_PROPOSALS,
+      description: "test",
+      schema: z.object({}),
+      permission: "allow",
+      sideEffect: "none",
+      execute: async () => "submitted",
+    };
+    const result = await executeTool(
+      proposeTool,
+      {},
+      makeCtx(workspace, {
+        plan: {
+          required: true,
+          isApproved: () => false,
+          selectedProposalIds: () => [],
+        },
+      }),
+    );
+    expect(result).toMatchObject({ ok: true, content: "submitted" });
   });
 
   it("beforeTool 可以跳过执行", async () => {

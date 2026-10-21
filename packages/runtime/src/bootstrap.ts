@@ -100,6 +100,7 @@ export function createRuntimeBootstrap(
     ...(memoryExtractor ? { memoryExtractor } : {}),
     ...(options.writeLock ? { writeLock: options.writeLock } : {}),
     autoApprove: config.AUTO_MODE,
+    planMode: config.PLAN_MODE,
   };
 
   return {

@@ -50,6 +50,7 @@ export const ToolNames = {
   // ---- 多 Agent 协作 / 交互 ----
   DELEGATE_TASK: 'delegate_task',
   PLAN_UPDATE: 'plan_update',
+  SUBMIT_PROPOSALS: 'submit_proposals',
   ASK_USER: 'ask_user',
 } as const;
 

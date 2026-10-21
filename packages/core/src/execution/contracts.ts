@@ -11,7 +11,11 @@ import type {
   TaskResult,
 } from "@code-agent/protocol";
 import type { SerializedMessage } from "@code-agent/protocol";
-import type { ToolContext, ToolDefinition } from "../tools/base.js";
+import type {
+  PlanContext,
+  ToolContext,
+  ToolDefinition,
+} from "../tools/base.js";
 
 export interface RunScope {
   sessionId: SessionId;
@@ -23,6 +27,7 @@ export interface RunScope {
   requestApproval?: ToolContext["requestApproval"];
   withWriteLock?: ToolContext["withWriteLock"];
   delegation?: ToolContext["delegation"];
+  plan?: PlanContext;
 }
 
 export interface AgentTaskInput {

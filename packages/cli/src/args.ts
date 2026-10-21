@@ -27,6 +27,8 @@ export interface CliArgs {
   model: string | undefined;
   /** 恢复 checkpoint 的任务 ID */
   resumeTaskId: string | undefined;
+  /** 计划模式覆盖；undefined 使用配置默认值 */
+  planMode: boolean | undefined;
   /** 是否显示帮助信息 */
   showHelp: boolean;
   /** 是否显示版本号 */
@@ -51,6 +53,7 @@ Options:
   -p, --print               Print-only mode (implied when query is provided)
   -m, --model <model>       Override the LLM model (e.g. gpt-4o, claude-opus-4-8)
   --resume <task-id>        Resume a previously interrupted task from checkpoint
+  --plan / --no-plan        Enable/disable plan mode (propose before editing)
   -v, --version             Show version number
   -h, --help                Show this help message
 
@@ -98,6 +101,7 @@ export function parseArgs(argv: string[]): CliArgs {
   let printMode = false;
   let model: string | undefined;
   let resumeTaskId: string | undefined;
+  let planMode: boolean | undefined;
   let showHelp = false;
   let showVersion = false;
 
@@ -136,6 +140,14 @@ export function parseArgs(argv: string[]): CliArgs {
         }
         break;
 
+      case "--plan":
+        planMode = true;
+        break;
+
+      case "--no-plan":
+        planMode = false;
+        break;
+
       default: {
         // Positional argument — determine if path or query
         if (arg.startsWith("-")) {
@@ -170,6 +182,7 @@ export function parseArgs(argv: string[]): CliArgs {
     printMode,
     model: model ?? undefined,
     resumeTaskId: resumeTaskId ?? undefined,
+    planMode,
     showHelp,
     showVersion,
   };

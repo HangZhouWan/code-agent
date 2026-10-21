@@ -19,16 +19,29 @@ const routes: FastifyPluginAsync<RuntimeToolRoutesOptions> = async (
     const body = (request.body ?? {}) as {
       sessionId?: unknown;
       approved?: unknown;
+      selectedProposalIds?: unknown;
+      feedback?: unknown;
     };
+
+    const selectedProposalIds = body.selectedProposalIds;
+    const validSelection =
+      selectedProposalIds === undefined ||
+      (Array.isArray(selectedProposalIds) &&
+        selectedProposalIds.every(
+          (id): id is string => typeof id === "string" && id.length > 0,
+        ));
 
     if (
       typeof body.sessionId !== "string" ||
-      typeof body.approved !== "boolean"
+      typeof body.approved !== "boolean" ||
+      (body.feedback !== undefined && typeof body.feedback !== "string") ||
+      !validSelection
     ) {
       return reply.status(400).send({
         error: {
           code: "VALIDATION",
-          message: "sessionId and approved are required",
+          message:
+            "sessionId and approved are required; selectedProposalIds must be string[] and feedback must be a string",
           retryable: false,
         },
       });
@@ -47,10 +60,15 @@ const routes: FastifyPluginAsync<RuntimeToolRoutesOptions> = async (
       });
     }
 
-    const resolved = session.approve(
-      callId,
-      body.approved ? "approved" : "denied",
-    );
+    const resolved = session.approve(callId, {
+      decision: body.approved ? "approved" : "denied",
+      ...(selectedProposalIds
+        ? { selectedProposalIds: selectedProposalIds as string[] }
+        : {}),
+      ...(typeof body.feedback === "string"
+        ? { feedback: body.feedback }
+        : {}),
+    });
     if (!resolved) {
       return reply.status(404).send({
         error: {

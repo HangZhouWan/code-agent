@@ -51,6 +51,7 @@ export function ModelConfigForm({
     initial?.workspacePath ?? "",
   );
   const [autoMode, setAutoMode] = useState(initial?.autoMode ?? false);
+  const [planMode, setPlanMode] = useState(initial?.planMode ?? true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -82,6 +83,7 @@ export function ModelConfigForm({
         baseUrl,
         workspacePath,
         autoMode,
+        planMode,
       });
       setApiKey("");
       onSaved?.();
@@ -203,6 +205,25 @@ export function ModelConfigForm({
             ⚠ Agent 将直接修改文件并执行 shell 命令，请仅在可信的工作区开启。
           </p>
         )}
+      </div>
+
+      <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-3">
+        <label className="flex cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            checked={planMode}
+            onChange={(e) => setPlanMode(e.target.checked)}
+            className="mt-0.5 h-4 w-4 cursor-pointer accent-purple-500"
+          />
+          <span>
+            <span className="block text-sm font-medium text-gray-200">
+              计划模式
+            </span>
+            <span className="mt-0.5 block text-xs text-gray-500">
+              Agent 先只读扫描代码库并提交改进方案，用户确认后才修改文件。
+            </span>
+          </span>
+        </label>
       </div>
 
       {error && (
