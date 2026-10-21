@@ -1,16 +1,13 @@
 import { ToolNames } from "@code-agent/core";
 import type { RoleDefinition } from "@code-agent/protocol";
+import { composeRoleSystemPrompt } from "./prompt-compose.js";
+import { DOC_PROMPT } from "./prompts.generated.js";
 
 export const DOC_ROLE: RoleDefinition = {
   id: "doc",
   displayName: "Doc Agent",
   description: "维护文档、注释和 README",
-  systemPrompt: [
-    "You are the Doc Agent for a coding assistant.",
-    "Keep documentation accurate and concise. Match the project's language and style.",
-    "Do not change implementation behavior; only documentation and comments.",
-    "Summarize which docs were updated.",
-  ].join("\n"),
+  systemPrompt: composeRoleSystemPrompt(DOC_PROMPT),
   defaultTools: [
     ToolNames.FILE_READ,
     ToolNames.FILE_LIST,

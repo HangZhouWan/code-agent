@@ -16,7 +16,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -b",
+    "generate:prompts": "node scripts/generate-prompts.mjs",
+    "build": "node scripts/generate-prompts.mjs && tsc -b",
     "typecheck": "tsc -b",
     "test": "vitest run"
   },

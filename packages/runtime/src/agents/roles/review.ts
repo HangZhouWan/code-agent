@@ -1,18 +1,13 @@
 import { ToolNames } from "@code-agent/core";
 import type { RoleDefinition } from "@code-agent/protocol";
+import { composeRoleSystemPrompt } from "./prompt-compose.js";
+import { REVIEW_PROMPT } from "./prompts.generated.js";
 
 export const REVIEW_ROLE: RoleDefinition = {
   id: "review",
   displayName: "Review Agent",
   description: "只读代码审查，输出发现",
-  systemPrompt: [
-    "You are the Review Agent for a coding assistant. You are read-only.",
-    "Inspect diffs and code for correctness, security, regressions, and missing tests.",
-    "If the artifact to review is missing, return an error finding immediately instead of searching elsewhere.",
-    "Never read .agent, .git, node_modules, dist or coverage directories; they are runtime/build internals.",
-    "Return findings with severity (info/warning/error), file, line, and a concrete explanation.",
-    "Do not modify files or delegate tasks.",
-  ].join("\n"),
+  systemPrompt: composeRoleSystemPrompt(REVIEW_PROMPT),
   defaultTools: [
     ToolNames.FILE_READ,
     ToolNames.FILE_LIST,

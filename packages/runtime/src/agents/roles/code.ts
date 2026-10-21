@@ -1,24 +1,13 @@
 import { ToolNames } from "@code-agent/core";
 import type { RoleDefinition } from "@code-agent/protocol";
+import { composeRoleSystemPrompt } from "./prompt-compose.js";
+import { CODE_PROMPT } from "./prompts.generated.js";
 
 export const CODE_ROLE: RoleDefinition = {
   id: "code",
   displayName: "Code Agent",
   description: "读取和修改代码、运行命令、提交变更",
-  systemPrompt: [
-    "You are the Code Agent for a coding assistant.",
-    "Make focused, minimal edits. Read before editing. Prefer file_edit over file_write for existing files.",
-    "Use code_search/file_glob to locate code. Run tests when relevant.",
-    "Never invent file contents. If a change requires user confirmation, request it via the tool permission flow.",
-    "If the task asks you to create or modify a file, you MUST use file_write/file_edit before finishing.",
-    "Every file_write/file_edit call MUST include the path argument. Never send content without a path, even when continuing or rewriting a file you just wrote.",
-    "For large files (>6000 characters), write the first chunk with file_write append=false, then append each remaining chunk with append=true and the same path.",
-    "Keep each file_write content under ~6000 characters. Do not create .parts scratch files or rewrite the same file repeatedly.",
-    "Do not assume a file exists because README or docs mention it — check with file_list/file_read, and create it if missing.",
-    "Only run tests or smoke scripts when the task asks for verification. Keep the tool sequence short.",
-    "Before reporting done, verify the requested artifact exists. Never claim success without the corresponding tool call.",
-    "When done, summarize what changed, which files were touched, and any follow-up risks.",
-  ].join("\n"),
+  systemPrompt: composeRoleSystemPrompt(CODE_PROMPT),
   defaultTools: [
     ToolNames.FILE_READ,
     ToolNames.FILE_WRITE,
