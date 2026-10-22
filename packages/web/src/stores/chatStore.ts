@@ -36,6 +36,8 @@ export interface ToolCallState {
   status: ToolCallStatus;
   /** 审批回调 ID（仅 awaiting_approval 状态时有值） */
   approvalId?: string;
+  /** 工具执行耗时（毫秒） */
+  durationMs?: number;
 }
 
 /** 待回答的用户问题 */
@@ -160,6 +162,7 @@ export type ChatAction =
       tool: string;
       result: string;
       ok?: boolean;
+      durationMs?: number;
     }
   | {
       type: "CONFIRM_REQUIRED";
@@ -314,6 +317,9 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
           ...updated[idx],
           result: action.result,
           status: action.ok === false ? "error" : "done",
+          ...(action.durationMs !== undefined
+            ? { durationMs: action.durationMs }
+            : {}),
         };
         last.toolCalls = updated;
       }

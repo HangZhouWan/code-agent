@@ -75,6 +75,7 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
             tool: "",
             result: event.resultPreview,
             ok: event.ok,
+            durationMs: event.durationMs,
           });
           break;
 

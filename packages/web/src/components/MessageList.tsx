@@ -15,7 +15,7 @@
 
 import type { Message } from "../stores/chatStore.js";
 import { TextMessage } from "./TextMessage.js";
-import { ToolCallCard } from "./ToolCallCard.js";
+import { ToolCallTimeline } from "./ToolCallTimeline.js";
 import { ConfirmCard } from "./ConfirmCard.js";
 
 // ---------------------------------------------------------------------------
@@ -96,26 +96,27 @@ function MessageBubble({ message, onApprove }: MessageBubbleProps) {
           />
         )}
 
-        {/* ── 工具调用卡片 ── */}
+        {/* ── 工具调用：待审批卡片 + 其余按紧凑时间线展示 ── */}
         {message.toolCalls.length > 0 && (
           <div className="mt-2 border-t border-gray-700/50 pt-2">
-            {message.toolCalls.map((tc, idx) => {
-              if (tc.status === "awaiting_approval") {
-                return (
-                  <ConfirmCard
-                    key={tc.callId ?? `confirm-${idx}`}
-                    toolCall={tc}
-                    onApprove={onApprove}
-                  />
-                );
-              }
-              return (
-                <ToolCallCard
-                  key={`${tc.tool}-${idx}`}
+            {message.toolCalls
+              .filter((tc) => tc.status === "awaiting_approval")
+              .map((tc, idx) => (
+                <ConfirmCard
+                  key={tc.callId ?? `confirm-${idx}`}
                   toolCall={tc}
+                  onApprove={onApprove}
                 />
-              );
-            })}
+              ))}
+            {message.toolCalls.some(
+              (tc) => tc.status !== "awaiting_approval",
+            ) && (
+              <ToolCallTimeline
+                toolCalls={message.toolCalls.filter(
+                  (tc) => tc.status !== "awaiting_approval",
+                )}
+              />
+            )}
           </div>
         )}
       </div>
