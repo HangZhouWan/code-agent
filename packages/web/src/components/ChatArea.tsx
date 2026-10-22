@@ -310,7 +310,7 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-gray-950 h-full min-w-0">
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-gray-950">
       <div className="flex items-center justify-between gap-3 border-b border-gray-800 px-4 py-2">
         <div className="min-w-0">
           <span className="text-xs font-medium text-gray-300">计划模式</span>

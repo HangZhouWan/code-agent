@@ -50,8 +50,8 @@ export function PlanApprovalCard({
   };
 
   return (
-    <div className="mx-4 mb-3 rounded-lg border border-purple-500/40 bg-purple-500/5 p-4">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+    <div className="mx-auto mb-3 flex max-h-[55dvh] w-[calc(100%-2rem)] max-w-4xl flex-col rounded-lg border border-purple-500/40 bg-purple-500/5 p-4">
+      <div className="mb-2 flex shrink-0 flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-purple-200">
           计划确认：选择要执行的方案
         </h3>
@@ -62,11 +62,11 @@ export function PlanApprovalCard({
         )}
       </div>
 
-      <p className="mb-3 whitespace-pre-wrap text-sm text-gray-200">
+      <p className="mb-3 shrink-0 whitespace-pre-wrap break-words text-sm text-gray-200">
         {summary}
       </p>
 
-      <div className="space-y-2">
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
         {proposals.map((proposal) => {
           const checked = selected.includes(proposal.id);
           return (
@@ -102,19 +102,21 @@ export function PlanApprovalCard({
                     )}
                   </div>
 
-                  <p className="mt-1 whitespace-pre-wrap text-xs text-gray-400">
+                  <p className="mt-1 whitespace-pre-wrap break-words text-xs text-gray-400">
                     {proposal.summary}
                   </p>
 
                   <ul className="mt-2 space-y-1.5">
                     {proposal.files.map((file) => (
                       <li key={file.path} className="text-xs text-gray-300">
-                        <span className="font-mono text-gray-200">
+                        <span className="break-all font-mono text-gray-200">
                           {file.path}
                         </span>
                         <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-gray-500">
                           {file.changes.map((change, index) => (
-                            <li key={index}>{change}</li>
+                            <li key={index} className="break-words">
+                              {change}
+                            </li>
                           ))}
                         </ul>
                       </li>
@@ -122,12 +124,12 @@ export function PlanApprovalCard({
                   </ul>
 
                   {proposal.rationale && (
-                    <p className="mt-2 text-xs text-gray-400">
+                    <p className="mt-2 break-words text-xs text-gray-400">
                       理由：{proposal.rationale}
                     </p>
                   )}
                   {proposal.risks && (
-                    <p className="mt-1 text-xs text-amber-400/90">
+                    <p className="mt-1 break-words text-xs text-amber-400/90">
                       风险：{proposal.risks}
                     </p>
                   )}
@@ -143,10 +145,10 @@ export function PlanApprovalCard({
         onChange={(event) => setFeedback(event.target.value)}
         rows={2}
         placeholder="拒绝时说明原因，或补充对方案的要求（可选）"
-        className="mt-3 w-full rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-purple-500 focus:outline-none"
+        className="mt-3 w-full shrink-0 rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-purple-500 focus:outline-none"
       />
 
-      <div className="mt-3 flex gap-2">
+      <div className="mt-3 flex shrink-0 gap-2">
         <button
           type="button"
           onClick={() => onApprove(callId, selected)}
