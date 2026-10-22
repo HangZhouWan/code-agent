@@ -53,7 +53,7 @@ export function MessageList({ messages, onApprove }: MessageListProps) {
   }
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
+    <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-4 py-6">
       <div className="max-w-4xl mx-auto space-y-6">
         {messages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} onApprove={onApprove} />

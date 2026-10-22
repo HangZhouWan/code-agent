@@ -47,8 +47,13 @@ describe("PlanApprovalCard", () => {
 
     expect(screen.getByText("发现两处可改进")).toBeInTheDocument();
     expect(screen.getByText("集中错误映射")).toBeInTheDocument();
-    expect(screen.getByText("src/api.ts")).toBeInTheDocument();
     expect(screen.getByText("推荐")).toBeInTheDocument();
+    // 详情默认折叠
+    expect(screen.queryByText("src/api.ts")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByText("展开详情")[0]);
+    expect(screen.getByText("src/api.ts")).toBeInTheDocument();
+    expect(screen.getByText("增加错误映射函数")).toBeInTheDocument();
 
     const checkboxes = screen.getAllByRole("checkbox");
     expect(checkboxes[0]).toBeChecked();
@@ -110,6 +115,48 @@ describe("PlanApprovalCard", () => {
     // 取消推荐方案的勾选
     fireEvent.click(screen.getAllByRole("checkbox")[0]);
     expect(screen.getByText("批准并执行")).toBeDisabled();
+  });
+
+  it("点击最小化回调，不再占用聊天区域", () => {
+    const onMinimize = vi.fn();
+    const { container } = render(
+      <PlanApprovalCard
+        callId="plan-6"
+        summary="方案"
+        proposals={proposals}
+        onMinimize={onMinimize}
+        onApprove={vi.fn()}
+        onReject={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("最小化"));
+    expect(onMinimize).toHaveBeenCalledTimes(1);
+    // 模态框使用 fixed 覆盖层，而不是撑高聊天布局
+    expect(
+      container.firstElementChild?.className,
+    ).toContain("fixed");
+  });
+
+  it("最小化状态显示悬浮条，可恢复", () => {
+    const onRestore = vi.fn();
+    render(
+      <PlanApprovalCard
+        callId="plan-7"
+        summary="方案"
+        proposals={proposals}
+        minimized
+        onRestore={onRestore}
+        onApprove={vi.fn()}
+        onReject={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/计划待确认：2 个方案/)).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("查看方案"));
+    expect(onRestore).toHaveBeenCalledTimes(1);
   });
 
   it("disabled 时两个按钮都不可用", () => {

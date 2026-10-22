@@ -230,6 +230,12 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
   // 以 run 生命周期为准切换 Send/Stop，避免个别消息状态异常时按钮卡住
   const isStreaming = state.runStatus === "running";
   const planMode = state.planMode ?? true;
+  const [planMinimized, setPlanMinimized] = useState(false);
+
+  // 新的一次计划确认出现时，重新展开模态框
+  useEffect(() => {
+    setPlanMinimized(false);
+  }, [state.pendingPlanApproval?.callId]);
 
   useEffect(() => {
     if (!sessionId) {
@@ -349,6 +355,9 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
             ? { expiresAt: state.pendingPlanApproval.expiresAt }
             : {})}
           disabled={status !== "connected"}
+          minimized={planMinimized}
+          onMinimize={() => setPlanMinimized(true)}
+          onRestore={() => setPlanMinimized(false)}
           onApprove={handlePlanApprove}
           onReject={handlePlanReject}
         />
