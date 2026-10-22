@@ -25,6 +25,17 @@ export function WorkspacePanel() {
   const [mode, setMode] = useState<"code" | "diff">("code");
   const [diff, setDiff] = useState<WorkspaceDiff | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+
+  // 全屏时按 Esc 退出
+  useEffect(() => {
+    if (!fullscreen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFullscreen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [fullscreen]);
 
   const openFile = useCallback(async (path: string) => {
     try {
@@ -101,12 +112,26 @@ export function WorkspacePanel() {
     openFiles.find((item) => item.path === activePath)?.file ?? null;
 
   return (
-    <aside className="flex w-[45%] min-w-[320px] max-w-3xl flex-col border-l border-gray-800 bg-gray-900">
+    <aside
+      className={
+        fullscreen
+          ? "fixed inset-0 z-40 flex h-full w-full flex-col bg-gray-900"
+          : "flex w-[45%] min-w-[320px] max-w-3xl flex-col border-l border-gray-800 bg-gray-900"
+      }
+    >
       <div className="flex items-center justify-between border-b border-gray-800 px-3 py-2">
         <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
           Workspace
         </span>
         <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setFullscreen((value) => !value)}
+            aria-label={fullscreen ? "退出全屏" : "全屏"}
+            className="rounded border border-gray-700 px-2 py-1 text-xs text-gray-300 hover:bg-gray-800"
+          >
+            {fullscreen ? "退出全屏" : "全屏"}
+          </button>
           <button
             type="button"
             onClick={() => void tree.refresh()}
@@ -126,7 +151,11 @@ export function WorkspacePanel() {
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <div className="w-52 shrink-0 overflow-auto border-r border-gray-800 p-2">
+        <div
+          className={`shrink-0 overflow-auto border-r border-gray-800 p-2 ${
+            fullscreen ? "w-64" : "w-52"
+          }`}
+        >
           {tree.error && (
             <p className="p-2 text-xs text-red-400">{tree.error}</p>
           )}
@@ -134,6 +163,7 @@ export function WorkspacePanel() {
             entries={tree.root}
             children={tree.children}
             expanded={tree.expanded}
+            loadingPaths={tree.loadingPaths}
             selectedPath={activePath}
             onToggle={(path) => void tree.toggle(path)}
             onSelect={(path) => void openFile(path)}

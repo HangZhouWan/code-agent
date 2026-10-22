@@ -8,6 +8,8 @@ export interface FileTreeProps {
   entries: WorkspaceEntry[];
   children: Record<string, WorkspaceEntry[]>;
   expanded: Set<string>;
+  /** 正在加载的目录路径 */
+  loadingPaths: Set<string>;
   selectedPath?: string | null;
   onToggle: (path: string) => void;
   onSelect: (path: string) => void;
@@ -25,6 +27,7 @@ function TreeLevel({
   entries,
   children,
   expanded,
+  loadingPaths,
   selectedPath,
   onToggle,
   onSelect,
@@ -61,16 +64,42 @@ function TreeLevel({
               <span className="truncate">{entry.name}</span>
             </button>
 
-            {isDirectory && isOpen && children[entry.path] && (
-              <TreeLevel
-                entries={children[entry.path]}
-                children={children}
-                expanded={expanded}
-                selectedPath={selectedPath}
-                onToggle={onToggle}
-                onSelect={onSelect}
-                depth={depth + 1}
-              />
+            {isDirectory && isOpen && (
+              children[entry.path] ? (
+                children[entry.path].length > 0 ? (
+                  <TreeLevel
+                    entries={children[entry.path]}
+                    children={children}
+                    expanded={expanded}
+                    loadingPaths={loadingPaths}
+                    selectedPath={selectedPath}
+                    onToggle={onToggle}
+                    onSelect={onSelect}
+                    depth={depth + 1}
+                  />
+                ) : (
+                  <div
+                    className="py-1 text-xs text-gray-500"
+                    style={{ paddingLeft: 22 + (depth + 1) * 12 }}
+                  >
+                    （空目录）
+                  </div>
+                )
+              ) : loadingPaths.has(entry.path) ? (
+                <div
+                  className="py-1 text-xs text-gray-500"
+                  style={{ paddingLeft: 22 + (depth + 1) * 12 }}
+                >
+                  加载中…
+                </div>
+              ) : (
+                <div
+                  className="py-1 text-xs text-red-400"
+                  style={{ paddingLeft: 22 + (depth + 1) * 12 }}
+                >
+                  加载失败，点击目录重试
+                </div>
+              )
             )}
           </div>
         );

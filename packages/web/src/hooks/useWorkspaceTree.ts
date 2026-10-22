@@ -10,6 +10,8 @@ export interface UseWorkspaceTreeReturn {
   root: WorkspaceEntry[];
   children: Record<string, WorkspaceEntry[]>;
   expanded: Set<string>;
+  /** 正在加载的目录路径 */
+  loadingPaths: Set<string>;
   loading: boolean;
   error: string | null;
   toggle: (path: string) => Promise<void>;
@@ -23,12 +25,16 @@ export function useWorkspaceTree(): UseWorkspaceTreeReturn {
     Record<string, WorkspaceEntry[]>
   >({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(false);
+  const [loadingPaths, setLoadingPaths] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async (path: string) => {
+    setLoadingPaths((prev) => {
+      const next = new Set(prev);
+      next.add(path);
+      return next;
+    });
     try {
-      setLoading(true);
       setError(null);
       const entries = await fetchWorkspaceTree(path);
       if (path === ".") {
@@ -39,7 +45,11 @@ export function useWorkspaceTree(): UseWorkspaceTreeReturn {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setLoading(false);
+      setLoadingPaths((prev) => {
+        const next = new Set(prev);
+        next.delete(path);
+        return next;
+      });
     }
   }, []);
 
@@ -51,23 +61,31 @@ export function useWorkspaceTree(): UseWorkspaceTreeReturn {
 
   const toggle = useCallback(
     async (path: string) => {
-      let opening = false;
+      const isOpen = expanded.has(path);
+      const hasChildren = children[path] !== undefined;
+      const isLoading = loadingPaths.has(path);
+
+      if (!isOpen) {
+        setExpanded((prev) => new Set(prev).add(path));
+        if (!hasChildren && !isLoading) {
+          await load(path);
+        }
+        return;
+      }
+
+      // 展开状态下没有子节点，说明上一次加载失败：保持展开并重试
+      if (!hasChildren) {
+        if (!isLoading) await load(path);
+        return;
+      }
+
       setExpanded((prev) => {
         const next = new Set(prev);
-        if (next.has(path)) {
-          next.delete(path);
-        } else {
-          next.add(path);
-          opening = true;
-        }
+        next.delete(path);
         return next;
       });
-
-      if (opening && !children[path]) {
-        await load(path);
-      }
     },
-    [children, load],
+    [children, expanded, load, loadingPaths],
   );
 
   useEffect(() => {
@@ -78,7 +96,8 @@ export function useWorkspaceTree(): UseWorkspaceTreeReturn {
     root,
     children,
     expanded,
-    loading,
+    loadingPaths,
+    loading: loadingPaths.size > 0,
     error,
     toggle,
     refresh,

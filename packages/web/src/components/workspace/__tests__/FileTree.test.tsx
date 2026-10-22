@@ -28,6 +28,7 @@ describe("FileTree", () => {
         entries={entries}
         children={children}
         expanded={new Set()}
+        loadingPaths={new Set()}
         selectedPath={null}
         onToggle={onToggle}
         onSelect={() => {}}
@@ -43,6 +44,7 @@ describe("FileTree", () => {
         entries={entries}
         children={children}
         expanded={new Set(["src"])}
+        loadingPaths={new Set()}
         selectedPath="src/a.ts"
         onToggle={onToggle}
         onSelect={() => {}}
@@ -58,6 +60,7 @@ describe("FileTree", () => {
         entries={entries}
         children={children}
         expanded={new Set()}
+        loadingPaths={new Set()}
         selectedPath={null}
         onToggle={() => {}}
         onSelect={onSelect}
@@ -66,5 +69,49 @@ describe("FileTree", () => {
 
     fireEvent.click(screen.getByText("README.md"));
     expect(onSelect).toHaveBeenCalledWith("README.md");
+  });
+
+  it("目录展开但子节点未返回时显示加载中", () => {
+    render(
+      <FileTree
+        entries={entries}
+        children={{}}
+        expanded={new Set(["src"])}
+        loadingPaths={new Set(["src"])}
+        selectedPath={null}
+        onToggle={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("加载中…")).toBeInTheDocument();
+  });
+
+  it("空目录显示提示，加载失败显示重试提示", () => {
+    const { rerender } = render(
+      <FileTree
+        entries={entries}
+        children={{ src: [] }}
+        expanded={new Set(["src"])}
+        loadingPaths={new Set()}
+        selectedPath={null}
+        onToggle={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    expect(screen.getByText("（空目录）")).toBeInTheDocument();
+
+    rerender(
+      <FileTree
+        entries={entries}
+        children={{}}
+        expanded={new Set(["src"])}
+        loadingPaths={new Set()}
+        selectedPath={null}
+        onToggle={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    expect(screen.getByText(/加载失败/)).toBeInTheDocument();
   });
 });
