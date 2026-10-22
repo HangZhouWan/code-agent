@@ -79,6 +79,12 @@ export class SessionOrchestrator {
     const result = await graph.invoke(initial, {
       recursionLimit: 50,
       configurable: { thread_id: input.runId },
+      runName: "code-agent-session",
+      tags: ["code-agent", `session:${input.sessionId}`],
+      metadata: {
+        sessionId: String(input.sessionId),
+        runId: String(input.runId),
+      },
       signal: input.scope.signal,
     });
 

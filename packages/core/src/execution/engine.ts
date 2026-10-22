@@ -48,6 +48,7 @@ import type {
 import { buildInitialMessages, buildSystemPrompt } from "./prompt-builder.js";
 import { parseFallbackThought } from "./thought-parser.js";
 import { ToolExecutor } from "./tool-executor.js";
+import { executeToolWithTrace, runWithTrace } from "./tracing.js";
 import { ToolNames } from "../tools/tool-names.js";
 
 /** 代码任务描述中出现这些词时，视为需要落盘文件变更 */
@@ -214,6 +215,34 @@ export class AgentExecutionEngine implements AgentInvoker {
   }
 
   async invoke(
+    input: AgentTaskInput,
+    scope: RunScope,
+  ): Promise<TaskResult> {
+    return runWithTrace(
+      {
+        name: `${input.role}-agent`,
+        tags: ["code-agent", `role:${input.role}`],
+        metadata: {
+          sessionId: String(scope.sessionId),
+          runId: String(scope.runId),
+          taskId: String(input.taskId),
+          role: String(input.role),
+          planMode: Boolean(scope.plan?.required),
+          planApproved: Boolean(scope.plan?.isApproved()),
+        },
+      },
+      () => this.executeTask(input, scope),
+      (result) => ({
+        status: result.status,
+        summary: result.summary,
+        ...(result.error ? { errorCode: result.error.code } : {}),
+        filesChanged:
+          result.artifacts?.filesChanged?.map((file) => file.path) ?? [],
+      }),
+    );
+  }
+
+  private async executeTask(
     input: AgentTaskInput,
     scope: RunScope,
   ): Promise<TaskResult> {
@@ -550,7 +579,11 @@ export class AgentExecutionEngine implements AgentInvoker {
             (definition?.permission === "confirm" ? "mutating" : "none"),
         });
 
-        const result = await toolExecutor.execute(call, toolContext);
+        const result = await executeToolWithTrace(
+          toolExecutor,
+          call,
+          toolContext,
+        );
         toolHistory.push({
           callId,
           name: call.name,
@@ -749,7 +782,11 @@ export class AgentExecutionEngine implements AgentInvoker {
         name: thought.toolCall.name,
         args: thought.toolCall.args,
       };
-      const result = await toolExecutor.execute(call, toolContext);
+      const result = await executeToolWithTrace(
+        toolExecutor,
+        call,
+        toolContext,
+      );
       toolHistory.push({
         callId: asCallId(call.id),
         name: call.name,
