@@ -78,10 +78,10 @@ function MessageBubble({ message, onApprove }: MessageBubbleProps) {
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+        className={`rounded-2xl px-4 py-3 ${
           isUser
-            ? "bg-blue-600 text-white"
-            : "bg-gray-800 text-gray-100 border border-gray-700/50"
+            ? "max-w-[80%] bg-blue-600 text-white"
+            : "w-[85%] max-w-3xl bg-gray-800 text-gray-100 border border-gray-700/50"
         }`}
       >
         {/* ── 消息文本（使用 prose-invert 仅在 assistant 消息上） ── */}

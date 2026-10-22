@@ -35,6 +35,28 @@ export interface TextMessageProps {
  * ```
  */
 export function TextMessage({ content, isStreaming }: TextMessageProps) {
+  // 模型还没有输出时显示动态 loading，而不是一个孤立的闪烁光标
+  if (isStreaming && !content.trim()) {
+    return (
+      <div
+        role="status"
+        aria-label="正在生成回复"
+        className="flex items-center gap-2 text-sm text-gray-400"
+      >
+        <span className="flex items-end gap-1" aria-hidden="true">
+          {[0, 1, 2].map((index) => (
+            <span
+              key={index}
+              className="h-1.5 w-1.5 animate-bounce rounded-full bg-blue-400"
+              style={{ animationDelay: `${index * 0.15}s` }}
+            />
+          ))}
+        </span>
+        <span>思考中…</span>
+      </div>
+    );
+  }
+
   return (
     <div className="prose prose-invert max-w-none prose-headings:text-gray-100 prose-p:text-gray-200 prose-a:text-blue-400 prose-strong:text-gray-100 prose-code:text-blue-300 prose-pre:bg-gray-950 prose-pre:border prose-pre:border-gray-700 prose-pre:rounded-lg prose-blockquote:border-l-blue-500 prose-blockquote:text-gray-400 prose-li:text-gray-200">
       <ReactMarkdown remarkPlugins={[remarkGfm]}>
