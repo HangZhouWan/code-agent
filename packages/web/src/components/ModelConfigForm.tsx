@@ -95,7 +95,7 @@ export function ModelConfigForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <form onSubmit={handleSubmit} className="space-y-4">
       <div>
         <label className="mb-1.5 block text-sm font-medium text-gray-300">
           Provider
@@ -183,47 +183,49 @@ export function ModelConfigForm({
         </p>
       </div>
 
-      <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-3">
-        <label className="flex cursor-pointer items-start gap-3">
-          <input
-            type="checkbox"
-            checked={autoMode}
-            onChange={(e) => setAutoMode(e.target.checked)}
-            className="mt-0.5 h-4 w-4 cursor-pointer accent-blue-500"
-          />
-          <span>
-            <span className="block text-sm font-medium text-gray-200">
-              Auto mode
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-3">
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              checked={autoMode}
+              onChange={(e) => setAutoMode(e.target.checked)}
+              className="mt-0.5 h-4 w-4 cursor-pointer accent-blue-500"
+            />
+            <span>
+              <span className="block text-sm font-medium text-gray-200">
+                Auto mode
+              </span>
+              <span className="mt-0.5 block text-xs text-gray-500">
+                写文件和执行命令无需逐次审批。
+              </span>
             </span>
-            <span className="mt-0.5 block text-xs text-gray-500">
-              开启后，工作区内的文件写入/修改和命令执行无需人工审批。
-            </span>
-          </span>
-        </label>
-        {autoMode && (
-          <p className="mt-2 text-xs text-amber-400">
-            ⚠ Agent 将直接修改文件并执行 shell 命令，请仅在可信的工作区开启。
-          </p>
-        )}
-      </div>
+          </label>
+          {autoMode && (
+            <p className="mt-2 text-xs text-amber-400">
+              ⚠ Agent 将直接修改文件并执行 shell 命令，请仅在可信的工作区开启。
+            </p>
+          )}
+        </div>
 
-      <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-3">
-        <label className="flex cursor-pointer items-start gap-3">
-          <input
-            type="checkbox"
-            checked={planMode}
-            onChange={(e) => setPlanMode(e.target.checked)}
-            className="mt-0.5 h-4 w-4 cursor-pointer accent-purple-500"
-          />
-          <span>
-            <span className="block text-sm font-medium text-gray-200">
-              计划模式
+        <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-3">
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              checked={planMode}
+              onChange={(e) => setPlanMode(e.target.checked)}
+              className="mt-0.5 h-4 w-4 cursor-pointer accent-purple-500"
+            />
+            <span>
+              <span className="block text-sm font-medium text-gray-200">
+                计划模式
+              </span>
+              <span className="mt-0.5 block text-xs text-gray-500">
+                先只读扫描并提交方案，确认后再改文件。
+              </span>
             </span>
-            <span className="mt-0.5 block text-xs text-gray-500">
-              Agent 先只读扫描代码库并提交改进方案，用户确认后才修改文件。
-            </span>
-          </span>
-        </label>
+          </label>
+        </div>
       </div>
 
       {error && (

@@ -71,6 +71,23 @@ describe("SettingsModal", () => {
     ).toBeInTheDocument();
   });
 
+  it("弹窗限制在视口内，表单区域可独立滚动", async () => {
+    mockConfigApi();
+
+    render(<SettingsModal onClose={vi.fn()} />);
+
+    await screen.findByDisplayValue("claude-sonnet-4-5");
+    expect(
+      screen.getByTestId("settings-dialog").className,
+    ).toContain("max-h-[85dvh]");
+
+    const scroll = screen.getByTestId("settings-scroll");
+    expect(scroll.className).toContain("overflow-y-auto");
+    expect(scroll.className).toContain("min-h-0");
+    // 表单应渲染在滚动容器内，而不是直接撑高 dialog
+    expect(scroll.contains(screen.getByText("保存配置"))).toBe(true);
+  });
+
   it("保存成功后提示重启服务", async () => {
     mockConfigApi();
 
