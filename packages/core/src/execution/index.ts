@@ -13,6 +13,8 @@ export type {
   RunScope,
 } from "./contracts.js";
 export { ToolExecutor } from "./tool-executor.js";
+export { runWithTrace } from "./tracing.js";
+export type { TraceOptions } from "./tracing.js";
 export {
   buildInitialMessages,
   buildSystemPrompt,

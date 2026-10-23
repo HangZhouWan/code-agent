@@ -67,6 +67,8 @@ export interface TraceOptions {
   name: string;
   tags: string[];
   metadata: Record<string, unknown>;
+  /** trace 输入；用于让会话根 span 展示用户消息起点 */
+  input?: unknown;
 }
 
 /**
@@ -95,7 +97,7 @@ export async function runWithTrace<T>(
   });
 
   try {
-    await runner.invoke(undefined);
+    await runner.invoke(options.input as never);
   } catch (error) {
     // fn 已完成但摘要/trace 处理失败时，仍然返回真实结果
     if (completed) return actual as T;

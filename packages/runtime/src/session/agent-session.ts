@@ -12,6 +12,7 @@ import {
   createBuiltinTools,
   createCollaborationTools,
   createMemoryTools,
+  runWithTrace,
   type ChatModelLike,
   type CollaborationToolService,
   type ContextBudget,
@@ -443,10 +444,28 @@ export class AgentSession {
 
     // 计划模式需要同一个 agent 完成「扫描 → 提案 → 实现」，
     // 因此绕过编排，走单 Code 任务；关闭计划模式时保持原有行为。
-    const execution =
-      this.planModeEnabled || !this.orchestration
-        ? this.executeDirect(runId, input, controller)
-        : this.executeOrchestrated(runId, input, controller);
+    const useDirect = this.planModeEnabled || !this.orchestration;
+    const execution = runWithTrace(
+      {
+        name: "code-agent-turn",
+        tags: ["code-agent", `session:${this.id}`],
+        metadata: {
+          sessionId: String(this.id),
+          runId: String(runId),
+          mode: useDirect ? "direct" : "orchestrated",
+          planMode: this.planModeEnabled,
+        },
+        input: { message: input.content },
+      },
+      () =>
+        useDirect
+          ? this.executeDirect(runId, input, controller)
+          : this.executeOrchestrated(runId, input, controller),
+      (result) => ({
+        status: result.status,
+        finalResponse: result.finalResponse ?? "",
+      }),
+    );
     const done = execution.finally(() => {
       if (this.activeRunId === runId) {
         this.activeRunId = null;
