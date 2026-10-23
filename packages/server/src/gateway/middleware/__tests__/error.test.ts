@@ -9,7 +9,7 @@
  * - 生产环境下不泄露错误详情
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { ZodError } from "zod";
 import { errorHandler } from "../error.js";
 

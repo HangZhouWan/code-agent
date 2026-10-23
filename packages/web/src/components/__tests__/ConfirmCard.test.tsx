@@ -51,6 +51,22 @@ describe("ConfirmCard", () => {
     expect(onApprove).toHaveBeenCalledWith("call-123", false);
   });
 
+  it("存在 approvalId 时应优先提交 approvalId（而非 LLM callId）", () => {
+    const onApprove = vi.fn();
+    const tc: ToolCallState = {
+      ...BASE_TC,
+      callId: "llm-call-abc",
+      approvalId: "call-approval-1",
+    };
+    render(<ConfirmCard toolCall={tc} onApprove={onApprove} />);
+
+    fireEvent.click(screen.getByText("✅ Approve"));
+    expect(onApprove).toHaveBeenCalledWith("call-approval-1", true);
+
+    fireEvent.click(screen.getByText("❌ Deny"));
+    expect(onApprove).toHaveBeenLastCalledWith("call-approval-1", false);
+  });
+
   it("disabled 时按钮应不可用", () => {
     const onApprove = vi.fn();
     render(
@@ -64,11 +80,12 @@ describe("ConfirmCard", () => {
     expect(denyBtn).toBeDisabled();
   });
 
-  it("无 callId 时点击不应崩溃", () => {
+  it("无 callId / approvalId 时点击不应崩溃", () => {
     const onApprove = vi.fn();
     const tc: ToolCallState = {
       ...BASE_TC,
       callId: undefined,
+      approvalId: undefined,
     };
     render(<ConfirmCard toolCall={tc} onApprove={onApprove} />);
 

@@ -158,6 +158,86 @@ describe("useWebSocket", () => {
     expect(parsed.approved).toBe(false);
   });
 
+  it("计划审批的 approve 携带选择与反馈", async () => {
+    const onMessage = vi.fn();
+    const { result } = renderHook(() =>
+      useWebSocket({ sessionId: "s1", onMessage }),
+    );
+
+    await act(async () => {
+      mockInstance!.readyState = MockWebSocket.OPEN;
+      mockInstance!.onopen?.();
+    });
+
+    act(() => {
+      result.current.approve("plan-1", true, {
+        selectedProposalIds: ["p1", "p2"],
+      });
+      result.current.approve("plan-2", false, { feedback: "风险太高" });
+    });
+
+    const approved = JSON.parse(sentMessages[0]);
+    expect(approved).toEqual({
+      type: "approval",
+      callId: "plan-1",
+      approved: true,
+      selectedProposalIds: ["p1", "p2"],
+    });
+
+    const rejected = JSON.parse(sentMessages[1]);
+    expect(rejected).toEqual({
+      type: "approval",
+      callId: "plan-2",
+      approved: false,
+      feedback: "风险太高",
+    });
+  });
+
+  it("setPlanMode 应发送 plan_mode", async () => {
+    const onMessage = vi.fn();
+    const { result } = renderHook(() =>
+      useWebSocket({ sessionId: "s1", onMessage }),
+    );
+
+    await act(async () => {
+      mockInstance!.readyState = MockWebSocket.OPEN;
+      mockInstance!.onopen?.();
+    });
+
+    act(() => {
+      result.current.setPlanMode(false);
+    });
+
+    expect(JSON.parse(sentMessages[0])).toEqual({
+      type: "plan_mode",
+      enabled: false,
+    });
+  });
+
+  // ── abort ──
+
+  it("abort 应发送中断请求", async () => {
+    const onMessage = vi.fn();
+    const { result } = renderHook(() =>
+      useWebSocket({ sessionId: "s1", onMessage }),
+    );
+
+    await act(async () => {
+      mockInstance!.readyState = MockWebSocket.OPEN;
+      mockInstance!.onopen?.();
+    });
+
+    act(() => {
+      result.current.abort("用户停止");
+    });
+
+    expect(sentMessages).toHaveLength(1);
+    expect(JSON.parse(sentMessages[0])).toEqual({
+      type: "abort",
+      reason: "用户停止",
+    });
+  });
+
   // ── onMessage ──
 
   it("收到消息时应触发 onMessage 回调", async () => {
@@ -169,15 +249,32 @@ describe("useWebSocket", () => {
       mockInstance!.onopen?.();
     });
 
+    const envelope = {
+      type: "event",
+      event: {
+        v: 1,
+        id: "e1",
+        sessionId: "s1",
+        runId: "r1",
+        seq: 1,
+        ts: "2026-10-19T00:00:00.000Z",
+        event: {
+          type: "message.delta",
+          messageId: "m1",
+          delta: "Hello",
+        },
+      },
+    };
+
     await act(async () => {
       mockInstance!.onmessage?.(
         new MessageEvent("message", {
-          data: JSON.stringify({ type: "text", delta: "Hello" }),
+          data: JSON.stringify(envelope),
         }),
       );
     });
 
-    expect(onMessage).toHaveBeenCalledWith({ type: "text", delta: "Hello" });
+    expect(onMessage).toHaveBeenCalledWith(envelope);
   });
 
   it("应忽略服务端初始空 delta 消息", async () => {

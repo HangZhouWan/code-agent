@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "composite": true,
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    // protocol 必须浏览器安全：只暴露 DOM/ES 类型，不引入 Node 类型
+    "lib": ["ES2022", "DOM"],
+    "types": []
+  },
+  "include": ["src"]
+}

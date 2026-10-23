@@ -55,15 +55,19 @@ function safeJsonFormat(value: Record<string, unknown> | undefined): string {
  * ```
  */
 export function ConfirmCard({ toolCall, onApprove, disabled }: ConfirmCardProps) {
+  // 审批回执必须使用 ApprovalService 生成的 approvalId；
+  // callId 是 LLM 工具调用 ID，二者不同，服务端只认 approvalId。
+  const approvalCallId = toolCall.approvalId ?? toolCall.callId;
+
   const handleApprove = () => {
-    if (toolCall.callId) {
-      onApprove(toolCall.callId, true);
+    if (approvalCallId) {
+      onApprove(approvalCallId, true);
     }
   };
 
   const handleDeny = () => {
-    if (toolCall.callId) {
-      onApprove(toolCall.callId, false);
+    if (approvalCallId) {
+      onApprove(approvalCallId, false);
     }
   };
 

@@ -6,22 +6,74 @@
  *
  * 设计要点：
  * - Zod schema 驱动：每个工具用 Zod 定义输入 schema，自动获得类型推断和运行时校验
- * - 权限标签：每个工具声明 permission: 'safe' | 'confirm'，供后续 SandboxGuard 使用
+ * - 权限声明：每个工具声明 allow / confirm / deny 或动态 evaluator，由权限中间件执行
  * - 工具上下文：通过 ToolContext 注入 workspacePath 和 sessionId
  */
 
 import { z } from 'zod';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import type { StructuredTool } from '@langchain/core/tools';
+import type { SessionEvent } from '@code-agent/protocol';
 
 /**
  * 权限级别
  *
- * - 'safe': 静默放行，无需用户确认
+ * - 'allow': 静默放行，无需用户确认
+ * - 'safe':  旧命名，等价于 allow（迁移期兼容）
  * - 'confirm': 需要用户确认后才能执行
- * - 'deny': 完全禁止（由 SandboxGuard 动态判断，不由工具声明）
+ * - 'deny': 完全禁止
  */
-export type PermissionLevel = 'safe' | 'confirm' | 'deny';
+export type PermissionLevel = 'allow' | 'safe' | 'confirm' | 'deny';
+
+/** 工具副作用分类，用于 checkpoint/恢复与写锁 */
+export type ToolSideEffect = 'none' | 'idempotent' | 'mutating';
+
+/**
+ * 计划模式上下文
+ *
+ * 由 runtime 注入；工具中间件据此在用户批准方案前拦截 mutating 工具。
+ */
+export interface PlanContext {
+  /** 当前会话是否启用计划模式 */
+  required: boolean;
+  /** 用户是否已批准当前 run 的方案 */
+  isApproved(): boolean;
+  /** 用户选中的方案 ID */
+  selectedProposalIds(): readonly string[];
+}
+
+export interface PermissionDecision {
+  level: PermissionLevel;
+  reason?: string;
+}
+
+/**
+ * 动态权限判断；工具可以根据参数决定 allow/confirm/deny。
+ */
+export type PermissionEvaluator<T = Record<string, unknown>> = (
+  args: T,
+  ctx: ToolContext,
+) => PermissionDecision | Promise<PermissionDecision>;
+
+export type ToolPermissionSpec = PermissionLevel | PermissionEvaluator<any>;
+
+/** 工具结果（结构化，供 middleware/UI/artifact 使用） */
+export interface ToolResult {
+  ok: boolean;
+  /** 给模型的文本（已截断） */
+  content: string;
+  /** 结构化数据，供 UI/artifact 使用 */
+  metadata?: Record<string, unknown>;
+  errorCode?: string;
+  truncated?: boolean;
+  artifactId?: string;
+}
+
+export function normalizeToolResult(value: string | ToolResult): ToolResult {
+  return typeof value === 'string'
+    ? { ok: true, content: value }
+    : value;
+}
 
 /**
  * 工具执行上下文
@@ -36,15 +88,48 @@ export interface ToolContext {
   /**
    * 确认回调（可选）
    *
-   * 当工具需要用户确认时（permission = 'confirm'），SandboxGuard 会调用此回调
+   * 当工具需要用户确认时（permission = 'confirm'），权限中间件会调用此回调
    * 向用户推送确认请求。回调返回 true 表示批准，false 表示拒绝。
    *
-   * 如果未提供此回调，confirm 级别的工具将抛出 ConfirmRequiredError。
+   * 如果未提供审批通道，中间件返回 APPROVAL_REQUIRED 错误结果。
    */
   onConfirmRequired?: (
     toolName: string,
     args: Record<string, unknown>,
   ) => Promise<boolean>;
+
+  /** 统一取消信号 */
+  signal?: AbortSignal;
+  /** 运行/任务标识，用于事件与审计 */
+  runId?: string;
+  taskId?: string;
+  skillId?: string;
+  roleId?: string;
+
+  /** 新的审批回调（优先于 onConfirmRequired） */
+  requestApproval?: (request: {
+    toolName: string;
+    args: Record<string, unknown>;
+    taskId?: string;
+    reason?: string;
+  }) => Promise<boolean>;
+
+  /** 写操作互斥锁（跨会话共享） */
+  withWriteLock?: <T>(fn: () => Promise<T>) => Promise<T>;
+
+  /** 委派上下文（delegate_task 使用） */
+  delegation?: {
+    depth: number;
+    maxDepth: number;
+    parentTaskId?: string;
+    allowedRoles?: string[];
+  };
+
+  /** 计划模式上下文；未启用时为 required=false */
+  plan?: PlanContext;
+
+  /** 会话事件出口（工具内部触发交互时使用） */
+  emit?: (event: SessionEvent) => void;
 }
 
 /**
@@ -72,10 +157,12 @@ export interface ToolDefinition<T extends z.ZodObject<any> = any> {
   description: string;
   /** Zod schema，定义输入参数的结构和校验规则 */
   schema: T;
-  /** 权限级别：safe 静默放行 / confirm 需用户确认 */
-  permission: PermissionLevel;
-  /** 执行函数，接收 Zod 推导的参数和工具上下文，返回字符串结果 */
-  execute(args: z.infer<T>, ctx: ToolContext): Promise<string>;
+  /** 权限：allow 放行 / confirm 需确认 / deny 禁止 / 动态 evaluator */
+  permission: ToolPermissionSpec;
+  /** 副作用分类；旧工具可省略，middleware 默认按权限推断 */
+  sideEffect?: ToolSideEffect;
+  /** 执行函数；支持返回字符串（旧）或结构化 ToolResult（新） */
+  execute(args: z.infer<T>, ctx: ToolContext): Promise<string | ToolResult>;
 }
 
 /**
@@ -96,6 +183,7 @@ export function createLangChainTool<T extends z.ZodObject<any>>(
     name: def.name,
     description: def.description,
     schema: def.schema,
-    func: async (args: z.infer<T>) => def.execute(args, ctx),
+    func: async (args: z.infer<T>) =>
+      normalizeToolResult(await def.execute(args, ctx)).content,
   });
 }

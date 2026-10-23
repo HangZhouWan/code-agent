@@ -15,7 +15,7 @@
 
 import type { Message } from "../stores/chatStore.js";
 import { TextMessage } from "./TextMessage.js";
-import { ToolCallCard } from "./ToolCallCard.js";
+import { ToolCallTimeline } from "./ToolCallTimeline.js";
 import { ConfirmCard } from "./ConfirmCard.js";
 
 // ---------------------------------------------------------------------------
@@ -53,7 +53,7 @@ export function MessageList({ messages, onApprove }: MessageListProps) {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-6">
+    <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-4 py-6">
       <div className="max-w-4xl mx-auto space-y-6">
         {messages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} onApprove={onApprove} />
@@ -78,10 +78,10 @@ function MessageBubble({ message, onApprove }: MessageBubbleProps) {
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+        className={`rounded-2xl px-4 py-3 ${
           isUser
-            ? "bg-blue-600 text-white"
-            : "bg-gray-800 text-gray-100 border border-gray-700/50"
+            ? "max-w-[80%] bg-blue-600 text-white"
+            : "w-[85%] max-w-3xl bg-gray-800 text-gray-100 border border-gray-700/50"
         }`}
       >
         {/* ── 消息文本（使用 prose-invert 仅在 assistant 消息上） ── */}
@@ -96,26 +96,27 @@ function MessageBubble({ message, onApprove }: MessageBubbleProps) {
           />
         )}
 
-        {/* ── 工具调用卡片 ── */}
+        {/* ── 工具调用：待审批卡片 + 其余按紧凑时间线展示 ── */}
         {message.toolCalls.length > 0 && (
           <div className="mt-2 border-t border-gray-700/50 pt-2">
-            {message.toolCalls.map((tc, idx) => {
-              if (tc.status === "awaiting_approval") {
-                return (
-                  <ConfirmCard
-                    key={tc.callId ?? `confirm-${idx}`}
-                    toolCall={tc}
-                    onApprove={onApprove}
-                  />
-                );
-              }
-              return (
-                <ToolCallCard
-                  key={`${tc.tool}-${idx}`}
+            {message.toolCalls
+              .filter((tc) => tc.status === "awaiting_approval")
+              .map((tc, idx) => (
+                <ConfirmCard
+                  key={tc.callId ?? `confirm-${idx}`}
                   toolCall={tc}
+                  onApprove={onApprove}
                 />
-              );
-            })}
+              ))}
+            {message.toolCalls.some(
+              (tc) => tc.status !== "awaiting_approval",
+            ) && (
+              <ToolCallTimeline
+                toolCalls={message.toolCalls.filter(
+                  (tc) => tc.status !== "awaiting_approval",
+                )}
+              />
+            )}
           </div>
         )}
       </div>

@@ -5,3 +5,29 @@
  * 通过 @import 引入 Tailwind 样式层
  */
 @import 'tailwindcss';
+
+/*
+ * 细滚动条：macOS 默认 overlay scrollbar 不滚动时不可见，
+ * 显式样式让长列表（方案详情、消息列表）始终有可滚动提示。
+ */
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #4b5563 transparent;
+    scrollbar-gutter: stable;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background-color: #4b5563;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}

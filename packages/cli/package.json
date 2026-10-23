@@ -6,11 +6,11 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/index.ts",
-    "build": "tsc && node scripts/bundle.js",
+    "build": "tsc -b && node scripts/bundle.js",
     "publish:prep": "node scripts/publish-prep.js",
     "publish:npm": "pnpm build && node scripts/publish-prep.js && cd publish && npm publish",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src/",
+    "typecheck": "tsc -b",
+    "lint": "eslint src",
     "test": "vitest run"
   },
   "dependencies": {
@@ -18,16 +18,18 @@
     "@langchain/core": "^1.0.0",
     "@langchain/langgraph": "^1.0.0",
     "@langchain/openai": "^1.0.0",
+    "dotenv": "^16.4.0",
     "langchain": "^1.0.0",
     "simple-git": "^3.27.0",
     "zod": "^3.25.0"
   },
   "devDependencies": {
-    "@code-agent/core": "workspace:^",
-    "@code-agent/server": "workspace:^",
+    "@code-agent/protocol": "workspace:^",
+    "@code-agent/runtime": "workspace:^",
     "esbuild": "^0.28.1",
     "tsx": "^4.19.0",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.9"
   },
   "keywords": [
     "code-agent",

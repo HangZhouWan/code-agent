@@ -32,6 +32,17 @@ describe("TextMessage", () => {
     expect(code.tagName).toBe("CODE");
   });
 
+  it("流式但尚无内容时显示 loading", () => {
+    const { container } = render(<TextMessage content="" isStreaming />);
+
+    expect(screen.getByRole("status")).toHaveAttribute(
+      "aria-label",
+      "正在生成回复",
+    );
+    expect(screen.getByText("思考中…")).toBeInTheDocument();
+    expect(container.querySelector(".animate-pulse")).toBeNull();
+  });
+
   it("流式输出时应显示闪烁光标", () => {
     const { container } = render(
       <TextMessage content="streaming" isStreaming />,

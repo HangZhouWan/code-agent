@@ -5,7 +5,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
+import {
+  render,
+  screen,
+  waitFor,
+  cleanup,
+  act,
+  fireEvent,
+} from "@testing-library/react";
 import { ChatArea } from "../ChatArea.js";
 
 // ---------------------------------------------------------------------------
@@ -16,6 +23,7 @@ class MockWebSocket {
   static OPEN = 1;
   static CONNECTING = 0;
   static CLOSED = 3;
+  static instances: MockWebSocket[] = [];
   url: string;
   readyState = MockWebSocket.CONNECTING;
   onopen: (() => void) | null = null;
@@ -23,14 +31,48 @@ class MockWebSocket {
   onclose: (() => void) | null = null;
   onerror: (() => void) | null = null;
 
+  sent: string[] = [];
+
   constructor(url: string) {
     this.url = url;
+    MockWebSocket.instances.push(this);
   }
-  send(_data: string) {}
+  send(data: string) {
+    this.sent.push(data);
+  }
   close() {
     this.readyState = MockWebSocket.CLOSED;
     this.onclose?.();
   }
+  /** 模拟服务端推送一条 WS 消息 */
+  receive(message: unknown) {
+    this.onmessage?.({
+      data: JSON.stringify(message),
+    } as MessageEvent);
+  }
+}
+
+/** 获取最近创建的 WebSocket 实例 */
+function latestSocket(): MockWebSocket {
+  const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1];
+  if (!socket) throw new Error("no websocket created");
+  return socket;
+}
+
+/** 构造服务端事件信封 */
+function eventMessage(seq: number, event: Record<string, unknown>) {
+  return {
+    type: "event",
+    event: {
+      v: 1,
+      id: `evt-${seq}`,
+      sessionId: "s1",
+      runId: "run-1",
+      seq,
+      ts: "2024-01-01T00:00:00.000Z",
+      event,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -65,6 +107,7 @@ function mockFetchHistory(messages: unknown[]) {
 
 describe("ChatArea", () => {
   beforeEach(() => {
+    MockWebSocket.instances = [];
     vi.stubGlobal("WebSocket", MockWebSocket as unknown as typeof WebSocket);
     mockFetchEmptyHistory();
   });
@@ -137,6 +180,335 @@ describe("ChatArea", () => {
       expect(
         screen.getByText(/Send a message to start the conversation/),
       ).toBeInTheDocument();
+    });
+  });
+
+  it("重放已持久化的 message.completed 时不应产生重复消息", async () => {
+    mockFetchHistory([
+      {
+        id: "msg-1",
+        sessionId: "s1",
+        role: "assistant",
+        content: "Previous answer",
+        toolName: null,
+        toolArgs: null,
+        toolResult: null,
+        createdAt: "2024-01-01T00:00:01.000Z",
+      },
+    ]);
+
+    render(<ChatArea sessionId="s1" />);
+    await screen.findByText("Previous answer");
+
+    // 服务端连接后会从 seq 0 重放历史事件
+    act(() => {
+      latestSocket().receive(
+        eventMessage(1, {
+          type: "message.completed",
+          message: {
+            id: "msg-1",
+            sessionId: "s1",
+            role: "assistant",
+            content: "Previous answer",
+            createdAt: "2024-01-01T00:00:01.000Z",
+          },
+        }),
+      );
+    });
+
+    expect(screen.getAllByText("Previous answer")).toHaveLength(1);
+  });
+
+  it("历史快照晚于最终消息返回时不应丢失最终回复", async () => {
+    // 控制历史请求的返回时机，模拟“最终消息已由 WS 送达，历史才返回旧快照”
+    let resolveHistory!: (value: unknown) => void;
+    const historyPromise = new Promise((resolve) => {
+      resolveHistory = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => historyPromise,
+      }),
+    );
+
+    render(<ChatArea sessionId="s1" />);
+
+    const socket = latestSocket();
+    act(() => {
+      socket.readyState = MockWebSocket.OPEN;
+      socket.onopen?.();
+    });
+
+    act(() => {
+      socket.receive(
+        eventMessage(1, {
+          type: "message.completed",
+          message: {
+            id: "msg-final",
+            sessionId: "s1",
+            role: "assistant",
+            content: "Final answer",
+            createdAt: "2024-01-01T00:00:02.000Z",
+          },
+        }),
+      );
+      socket.receive(
+        eventMessage(2, {
+          type: "run.completed",
+          result: { finalResponse: "Final answer" },
+        }),
+      );
+    });
+
+    // 历史快照不包含刚完成的最终消息
+    await act(async () => {
+      resolveHistory({
+        messages: [
+          {
+            id: "msg-user",
+            sessionId: "s1",
+            role: "human",
+            content: "hello",
+            createdAt: "2024-01-01T00:00:00.000Z",
+          },
+        ],
+      });
+    });
+
+    expect(await screen.findByText("Final answer")).toBeInTheDocument();
+    expect(screen.getByText("hello")).toBeInTheDocument();
+    expect(screen.getByText("✓ 本轮任务已结束")).toBeInTheDocument();
+  });
+
+  it("运行中 Send 按钮应变为 Stop，点击后发送 abort", async () => {
+    render(<ChatArea sessionId="s1" />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Send a message to start the conversation/),
+      ).toBeInTheDocument();
+    });
+
+    const socket = latestSocket();
+    act(() => {
+      socket.readyState = MockWebSocket.OPEN;
+      socket.onopen?.();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText(/Type a message/), {
+      target: { value: "hello" },
+    });
+    fireEvent.click(screen.getByText("Send"));
+
+    expect(screen.getByText("Stop")).toBeInTheDocument();
+    expect(screen.queryByText("Send")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Stop"));
+
+    expect(socket.sent.map((data) => JSON.parse(data))).toContainEqual({
+      type: "abort",
+      reason: "用户停止",
+    });
+
+    // 服务端确认中断后恢复 Send 按钮
+    act(() => {
+      socket.receive(
+        eventMessage(1, { type: "run.aborted", reason: "用户停止" }),
+      );
+    });
+
+    expect(screen.queryByText("Stop")).not.toBeInTheDocument();
+    expect(screen.getByText("Send")).toBeInTheDocument();
+    expect(screen.getByText("✕ 本轮任务失败")).toBeInTheDocument();
+  });
+
+  it("点击 Approve 应提交审批 ID，approval.resolved 后移除确认卡片", async () => {
+    render(<ChatArea sessionId="s1" />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Send a message to start the conversation/),
+      ).toBeInTheDocument();
+    });
+
+    const socket = latestSocket();
+    act(() => {
+      socket.readyState = MockWebSocket.OPEN;
+      socket.onopen?.();
+    });
+    fireEvent.change(screen.getByPlaceholderText(/Type a message/), {
+      target: { value: "delete it" },
+    });
+    fireEvent.click(screen.getByText("Send"));
+
+    // tool.started 携带 LLM 工具调用 ID，approval.required 携带审批 ID，两者不同
+    act(() => {
+      socket.receive(
+        eventMessage(1, {
+          type: "tool.started",
+          callId: "llm-call-1",
+          toolName: "delete_file",
+          args: { path: "/tmp/x" },
+        }),
+      );
+      socket.receive(
+        eventMessage(2, {
+          type: "approval.required",
+          request: {
+            callId: "call-approval-1",
+            sessionId: "s1",
+            runId: "run-1",
+            taskId: "task-1",
+            toolName: "delete_file",
+            args: { path: "/tmp/x" },
+            createdAt: "2024-01-01T00:00:00.000Z",
+            expiresAt: "2024-01-01T00:02:00.000Z",
+          },
+        }),
+      );
+    });
+
+    expect(screen.getByText(/Confirm Action:/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("✅ Approve"));
+
+    expect(socket.sent.map((data) => JSON.parse(data))).toContainEqual({
+      type: "approval",
+      callId: "call-approval-1",
+      approved: true,
+    });
+
+    act(() => {
+      socket.receive(
+        eventMessage(3, {
+          type: "approval.resolved",
+          callId: "call-approval-1",
+          decision: "approved",
+        }),
+      );
+    });
+
+    expect(screen.queryByText(/Confirm Action:/)).not.toBeInTheDocument();
+  });
+
+  it("计划审批：默认选推荐方案，批准后发送选择并移除卡片", async () => {
+    render(<ChatArea sessionId="s1" />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Send a message to start the conversation/),
+      ).toBeInTheDocument();
+    });
+
+    const socket = latestSocket();
+    act(() => {
+      socket.readyState = MockWebSocket.OPEN;
+      socket.onopen?.();
+      socket.receive({
+        type: "ready",
+        sessionId: "s1",
+        lastSeq: 0,
+        planMode: true,
+      });
+      socket.receive(
+        eventMessage(1, {
+          type: "approval.required",
+          request: {
+            callId: "plan-call-1",
+            sessionId: "s1",
+            runId: "run-1",
+            taskId: "task-1",
+            toolName: "submit_proposals",
+            args: {},
+            createdAt: "2024-01-01T00:00:00.000Z",
+            expiresAt: "2024-01-01T00:05:00.000Z",
+            kind: "plan",
+            plan: {
+              summary: "发现两处可改进",
+              proposals: [
+                {
+                  id: "p1",
+                  title: "集中错误映射",
+                  summary: "统一处理错误",
+                  files: [
+                    { path: "src/api.ts", changes: ["增加错误映射"] },
+                  ],
+                  recommended: true,
+                },
+                {
+                  id: "p2",
+                  title: "只改调用方",
+                  summary: "逐个调用点处理",
+                  files: [
+                    { path: "src/caller.ts", changes: ["补充 try/catch"] },
+                  ],
+                },
+              ],
+            },
+          },
+        }),
+      );
+    });
+
+    expect(screen.getByText(/计划确认/)).toBeInTheDocument();
+    expect(screen.getByText("集中错误映射")).toBeInTheDocument();
+    expect(screen.getByText("只改调用方")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("批准并执行"));
+
+    expect(socket.sent.map((data) => JSON.parse(data))).toContainEqual({
+      type: "approval",
+      callId: "plan-call-1",
+      approved: true,
+      selectedProposalIds: ["p1"],
+    });
+
+    act(() => {
+      socket.receive(
+        eventMessage(2, {
+          type: "approval.resolved",
+          callId: "plan-call-1",
+          decision: "approved",
+          kind: "plan",
+          selectedProposalIds: ["p1"],
+        }),
+      );
+    });
+
+    expect(screen.queryByText(/计划确认/)).not.toBeInTheDocument();
+  });
+
+  it("计划模式开关发送 plan_mode", async () => {
+    render(<ChatArea sessionId="s1" />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Send a message to start the conversation/),
+      ).toBeInTheDocument();
+    });
+
+    const socket = latestSocket();
+    act(() => {
+      socket.readyState = MockWebSocket.OPEN;
+      socket.onopen?.();
+      socket.receive({
+        type: "ready",
+        sessionId: "s1",
+        lastSeq: 0,
+        planMode: true,
+      });
+    });
+
+    const toggle = screen.getByRole("switch", { name: "切换计划模式" });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(toggle);
+
+    expect(socket.sent.map((data) => JSON.parse(data))).toContainEqual({
+      type: "plan_mode",
+      enabled: false,
     });
   });
 });

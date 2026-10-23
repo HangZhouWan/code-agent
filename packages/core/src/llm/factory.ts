@@ -15,6 +15,7 @@
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { ChatOpenAI } from '@langchain/openai';
 import { ChatAnthropic } from '@langchain/anthropic';
+import { getProviderDefinition, type LlmConfig } from '@code-agent/protocol';
 import type { ModelConfig } from './types.js';
 
 // ─────────────────────────────────────────────
@@ -26,6 +27,14 @@ const DEFAULT_TEMPERATURE = 0.7;
 
 /** 默认最大重试次数 */
 const DEFAULT_MAX_RETRIES = 3;
+
+/**
+ * anthropic 默认输出上限。
+ *
+ * LangChain 对未知模型名（如 deepseek-flash 这类兼容端点模型）会回退到
+ * 4096，生成完整文件时工具调用容易被截断，因此显式提高默认值。
+ */
+const DEFAULT_ANTHROPIC_MAX_TOKENS = 8_192;
 
 // ─────────────────────────────────────────────
 // 核心函数
@@ -49,6 +58,17 @@ const DEFAULT_MAX_RETRIES = 3;
  * const response = await model.invoke("Hello!");
  * ```
  */
+export function createModel(config: LlmConfig): BaseChatModel {
+  return createChatModel({
+    provider: config.LLM_PROVIDER,
+    model: config.LLM_MODEL,
+    apiKey: config.LLM_API_KEY,
+    baseURL: config.LLM_BASE_URL,
+    maxRetries: config.LLM_MAX_RETRIES,
+    ...(config.LLM_MAX_TOKENS ? { maxTokens: config.LLM_MAX_TOKENS } : {}),
+  });
+}
+
 export function createChatModel(config: ModelConfig): BaseChatModel {
   const {
     provider,
@@ -57,13 +77,21 @@ export function createChatModel(config: ModelConfig): BaseChatModel {
     baseURL,
     maxRetries = DEFAULT_MAX_RETRIES,
     temperature = DEFAULT_TEMPERATURE,
+    maxTokens,
   } = config;
+
+  // anthropic 兼容端点下的未知模型名会被 LangChain 回退到 4096，
+  // 这里给一个更高的默认值，避免大文件写入的工具调用被截断。
+  const effectiveMaxTokens =
+    maxTokens ??
+    (provider === "anthropic" ? DEFAULT_ANTHROPIC_MAX_TOKENS : undefined);
 
   // 通用的基础参数
   const baseParams = {
     model,
     temperature,
     maxRetries,
+    ...(effectiveMaxTokens ? { maxTokens: effectiveMaxTokens } : {}),
   };
 
   switch (provider) {
@@ -84,14 +112,18 @@ export function createChatModel(config: ModelConfig): BaseChatModel {
       });
 
     // ── OpenAI 兼容协议 (Ollama / LM Studio / vLLM 等) ──
-    case 'openai-compatible':
+    case 'openai-compatible': {
+      const defaultBaseURL =
+        getProviderDefinition('openai-compatible').defaultBaseUrl ??
+        'http://localhost:11434/v1';
       return new ChatOpenAI({
         ...baseParams,
         apiKey: apiKey || 'not-needed', // 本地模型通常不需要 API key
         configuration: {
-          baseURL: baseURL || 'http://localhost:11434/v1',
+          baseURL: baseURL || defaultBaseURL,
         },
       });
+    }
 
     // ── 不支持的 provider ──
     default:

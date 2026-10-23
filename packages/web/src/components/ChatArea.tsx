@@ -1,162 +1,193 @@
 /**
- * ChatArea 组件 —— 聊天区核心控制器
- *
- * 负责串联 WebSocket、Store 和子组件：
- *
- * ```
- * handleSend(content):
- *   1. dispatch ADD_USER_MESSAGE
- *   2. dispatch ADD_ASSISTANT_MESSAGE
- *   3. ws.send(content)
- *
- * onMessage(wsMsg):
- *   switch msg.type:
- *     "text"             → dispatch APPEND_TEXT
- *     "tool_start"       → dispatch TOOL_START
- *     "tool_end"         → dispatch TOOL_END
- *     "confirm_required" → dispatch CONFIRM_REQUIRED
- *     "done"             → dispatch DONE
- *     "error"            → dispatch ERROR
- *
- * useEffect → messagesEndRef.scrollIntoView({ behavior: "smooth" })
- * ```
+ * ChatArea —— 聊天区控制器（新 SessionEvent 协议）
  */
 
-import { useRef, useEffect, useCallback, useMemo, useState } from "react";
-import { useChatStore, dbMessagesToMessages, type DBMessageRow } from "../stores/chatStore.js";
+import { useRef, useEffect, useCallback, useState } from "react";
+import type { ServerWsMessage } from "@code-agent/protocol";
+import {
+  useChatStore,
+  dbMessagesToMessages,
+  type DBMessageRow,
+} from "../stores/chatStore.js";
 import { useWebSocket } from "../hooks/useWebSocket.js";
-import type { WSMessage } from "../hooks/useWebSocket.js";
 import { MessageList } from "./MessageList.js";
 import { InputBar } from "./InputBar.js";
-
-// ---------------------------------------------------------------------------
-// Props
-// ---------------------------------------------------------------------------
+import { QuestionCard } from "./QuestionCard.js";
+import { PlanApprovalCard } from "./PlanApprovalCard.js";
 
 export interface ChatAreaProps {
-  /** 当前活跃的会话 ID（null 时显示引导页） */
   sessionId: string | null;
-
-  /** WebSocket 推送标题更新时的回调 */
   onTitleUpdated?: (sessionId: string, title: string) => void;
 }
 
-// ---------------------------------------------------------------------------
-// 组件
-// ---------------------------------------------------------------------------
-
-/**
- * ChatArea
- *
- * 聊天区域的主控制器。负责：
- * - 管理聊天状态（useChatStore）
- * - 管理 WebSocket 连接（useWebSocket）
- * - 将 WS 消息映射为 store dispatch action
- * - 自动滚动到底部
- *
- * @example
- * ```tsx
- * <ChatArea sessionId={activeSessionId} />
- * ```
- */
 export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
   const { state, dispatch } = useChatStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
-  // ── WS 消息 → dispatch 映射 ──
   const onMessage = useCallback(
-    (msg: WSMessage) => {
-      switch (msg.type) {
-        case "text":
-          if (msg.delta) {
-            dispatch({ type: "APPEND_TEXT", delta: msg.delta });
+    (message: ServerWsMessage) => {
+      if (message.type === "error") {
+        dispatch({ type: "ERROR", message: message.error.message });
+        return;
+      }
+      if (message.type === "ready") {
+        dispatch({ type: "SESSION_READY", planMode: message.planMode });
+        return;
+      }
+      if (message.type !== "event") return;
+
+      const event = message.event.event;
+      switch (event.type) {
+        case "run.started":
+          dispatch({ type: "RUN_STARTED" });
+          break;
+
+        case "message.delta":
+          if (event.delta) {
+            dispatch({ type: "APPEND_TEXT", delta: event.delta });
           }
           break;
 
-        case "tool_start":
-          if (msg.tool) {
+        case "message.completed":
+          if (event.message.role === "assistant") {
             dispatch({
-              type: "TOOL_START",
-              tool: msg.tool,
-              args: msg.args ?? {},
+              type: "FINALIZE_ASSISTANT",
+              id: event.message.id,
+              content: event.message.content,
             });
           }
           break;
 
-        case "tool_end":
-          if (msg.tool) {
-            dispatch({
-              type: "TOOL_END",
-              tool: msg.tool,
-              result: msg.result ?? "",
-            });
-          }
-          break;
-
-        case "confirm_required":
+        case "tool.started":
           dispatch({
-            type: "CONFIRM_REQUIRED",
-            callId: msg.callId ?? "",
-            tool: msg.tool ?? "unknown",
-            args: msg.args ?? {},
+            type: "TOOL_START",
+            callId: event.callId,
+            tool: event.toolName,
+            args: event.args as Record<string, unknown>,
           });
           break;
 
-        case "done":
+        case "tool.finished":
+          dispatch({
+            type: "TOOL_END",
+            callId: event.callId,
+            tool: "",
+            result: event.resultPreview,
+            ok: event.ok,
+            durationMs: event.durationMs,
+          });
+          break;
+
+        case "approval.required":
+          if (event.request.kind === "plan" && event.request.plan) {
+            dispatch({
+              type: "PLAN_APPROVAL_REQUIRED",
+              callId: event.request.callId,
+              summary: event.request.plan.summary,
+              proposals: event.request.plan.proposals,
+              ...(event.request.expiresAt
+                ? { expiresAt: event.request.expiresAt }
+                : {}),
+            });
+          } else {
+            dispatch({
+              type: "CONFIRM_REQUIRED",
+              callId: event.request.callId,
+              tool: event.request.toolName,
+              args: event.request.args as Record<string, unknown>,
+            });
+          }
+          break;
+
+        case "approval.resolved":
+          if (event.kind === "plan") {
+            dispatch({
+              type: "PLAN_APPROVAL_RESOLVED",
+              callId: event.callId,
+            });
+          } else {
+            dispatch({
+              type: "APPROVAL_RESOLVED",
+              callId: event.callId,
+              decision: event.decision,
+              ...(event.reason ? { reason: event.reason } : {}),
+            });
+          }
+          break;
+
+        case "plan.mode.changed":
+          dispatch({ type: "PLAN_MODE_CHANGED", enabled: event.enabled });
+          break;
+
+        case "user.question.required":
+          dispatch({
+            type: "QUESTION_REQUIRED",
+            question: {
+              questionId: event.question.questionId,
+              question: event.question.question,
+              allowFreeText: event.question.allowFreeText,
+              ...(event.question.options
+                ? { options: event.question.options }
+                : {}),
+            },
+          });
+          break;
+
+        case "user.question.resolved":
+          dispatch({
+            type: "QUESTION_RESOLVED",
+            questionId: event.questionId,
+          });
+          break;
+
+        case "session.title.updated":
+          onTitleUpdated?.(event.sessionId, event.title);
+          break;
+
+        case "run.completed":
           dispatch({
             type: "DONE",
-            finalResponse: msg.finalResponse ?? "",
+            finalResponse: event.result.finalResponse ?? "",
           });
           break;
 
-        case "error":
-          dispatch({
-            type: "ERROR",
-            message: msg.message ?? "Unknown error",
-          });
+        case "run.failed":
+          dispatch({ type: "ERROR", message: event.error.message });
           break;
 
-        case "title_updated":
-          if (msg.title) {
-            onTitleUpdated?.(msg.sessionId ?? "", msg.title);
-          }
+        case "run.aborted":
+          dispatch({ type: "ERROR", message: `已取消: ${event.reason}` });
           break;
 
         default:
-          // 忽略未知类型的消息
           break;
       }
     },
     [dispatch, onTitleUpdated],
   );
 
-  // ── WebSocket 连接 ──
-  const { status, send, approve } = useWebSocket({
+  const { status, send, approve, answer, abort, setPlanMode } = useWebSocket({
     sessionId: sessionId ?? null,
     onMessage,
   });
 
-  // ── 发送消息 ──
   const handleSend = useCallback(
     (content: string) => {
-      // 1. dispatch ADD_USER_MESSAGE
       dispatch({
         type: "ADD_USER_MESSAGE",
         id: crypto.randomUUID(),
         content,
       });
-      // 2. dispatch ADD_ASSISTANT_MESSAGE
       dispatch({
         type: "ADD_ASSISTANT_MESSAGE",
         id: crypto.randomUUID(),
       });
-      // 3. ws.send(content)
       send(content);
     },
     [dispatch, send],
   );
 
-  // ── 审批回调 ──
   const handleApprove = useCallback(
     (callId: string, approved: boolean) => {
       approve(callId, approved);
@@ -164,26 +195,52 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
     [approve],
   );
 
-  // ── 自动滚到底部 ──
+  const handlePlanApprove = useCallback(
+    (callId: string, selectedProposalIds: string[]) => {
+      approve(callId, true, { selectedProposalIds });
+    },
+    [approve],
+  );
+
+  const handlePlanReject = useCallback(
+    (callId: string, feedback: string) => {
+      approve(callId, false, feedback ? { feedback } : {});
+    },
+    [approve],
+  );
+
+  // ── 停止当前 run ──
+  const handleStop = useCallback(() => {
+    abort("用户停止");
+  }, [abort]);
+
+  const handleAnswer = useCallback(
+    (value: string) => {
+      const pending = state.pendingQuestion;
+      if (!pending) return;
+      answer(pending.questionId, value);
+      dispatch({ type: "QUESTION_RESOLVED", questionId: pending.questionId });
+    },
+    [answer, dispatch, state.pendingQuestion],
+  );
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [state.messages]);
 
-  // ── 判断 Agent 是否正在思考/响应 ──
-  const isStreaming = useMemo(() => {
-    if (state.messages.length === 0) return false;
-    const last = state.messages[state.messages.length - 1];
-    return last.role === "assistant" && last.isStreaming;
-  }, [state.messages]);
+  // 以 run 生命周期为准切换 Send/Stop，避免个别消息状态异常时按钮卡住
+  const isStreaming = state.runStatus === "running";
+  const planMode = state.planMode ?? true;
+  const [planMinimized, setPlanMinimized] = useState(false);
 
-  // ── 历史消息加载状态 ──
-  const [historyLoading, setHistoryLoading] = useState(false);
+  // 新的一次计划确认出现时，重新展开模态框
+  useEffect(() => {
+    setPlanMinimized(false);
+  }, [state.pendingPlanApproval?.callId]);
 
-  // ── sessionId 变化时加载历史消息 ──
   useEffect(() => {
     if (!sessionId) {
-      // 无会话时清空消息
-      dispatch({ type: "LOAD_MESSAGES", messages: [] });
+      dispatch({ type: "RESET_MESSAGES" });
       setHistoryLoading(false);
       return;
     }
@@ -191,39 +248,35 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
     let cancelled = false;
 
     const loadHistory = async () => {
-      // 立即清空旧消息，避免短暂显示上一会话内容
-      dispatch({ type: "LOAD_MESSAGES", messages: [] });
+      dispatch({ type: "RESET_MESSAGES" });
       setHistoryLoading(true);
 
       try {
         const res = await fetch(`/api/sessions/${sessionId}/history`);
-
         if (!res.ok) {
-          // 404 = 会话不存在；其他错误记录日志
           if (res.status !== 404) {
             console.error(
-              `[ChatArea] Failed to load history for ${sessionId}: HTTP ${res.status}`,
+              `[ChatArea] Failed to load history: HTTP ${res.status}`,
             );
           }
           return;
         }
 
-        const rows: DBMessageRow[] = await res.json();
-
+        const data = (await res.json()) as
+          | { messages?: DBMessageRow[] }
+          | DBMessageRow[];
+        const rows = Array.isArray(data) ? data : (data.messages ?? []);
         if (cancelled) return;
-
-        const messages = dbMessagesToMessages(rows);
-        dispatch({ type: "LOAD_MESSAGES", messages });
-      } catch (err) {
-        if (cancelled) return;
-        console.error(
-          `[ChatArea] Error loading history for ${sessionId}:`,
-          err,
-        );
-      } finally {
+        dispatch({
+          type: "LOAD_MESSAGES",
+          messages: dbMessagesToMessages(rows),
+        });
+      } catch (error) {
         if (!cancelled) {
-          setHistoryLoading(false);
+          console.error("[ChatArea] Failed to load history", error);
         }
+      } finally {
+        if (!cancelled) setHistoryLoading(false);
       }
     };
 
@@ -234,7 +287,6 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
     };
   }, [sessionId, dispatch]);
 
-  // ── 无活跃会话时的引导页 ──
   if (!sessionId) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-gray-950">
@@ -251,7 +303,6 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
     );
   }
 
-  // ── 历史消息加载中 ──
   if (historyLoading) {
     return (
       <div className="flex-1 flex flex-col bg-gray-950 h-full">
@@ -260,27 +311,86 @@ export function ChatArea({ sessionId, onTitleUpdated }: ChatAreaProps) {
             Loading messages...
           </p>
         </div>
-        <InputBar
-          onSend={handleSend}
-          disabled={true}
-          isStreaming={false}
-        />
+        <InputBar onSend={handleSend} disabled isStreaming={false} />
       </div>
     );
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-gray-950 h-full">
-      {/* ── 消息列表 ── */}
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-gray-950">
+      <div className="flex items-center justify-between gap-3 border-b border-gray-800 px-4 py-2">
+        <div className="min-w-0">
+          <span className="text-xs font-medium text-gray-300">计划模式</span>
+          <span className="ml-2 text-[11px] text-gray-500">
+            先扫描并提交方案，确认后再改文件
+          </span>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={planMode}
+          aria-label="切换计划模式"
+          disabled={status !== "connected" || isStreaming}
+          onClick={() => setPlanMode(!planMode)}
+          className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+            planMode
+              ? "border-purple-500/60 bg-purple-500/15 text-purple-200"
+              : "border-gray-700 bg-gray-900 text-gray-400"
+          }`}
+        >
+          {planMode ? "已开启" : "已关闭"}
+        </button>
+      </div>
+
       <MessageList messages={state.messages} onApprove={handleApprove} />
 
-      {/* ── 自动滚动锚点 ── */}
       <div ref={messagesEndRef} />
 
-      {/* ── 输入栏 ── */}
+      {state.pendingPlanApproval && (
+        <PlanApprovalCard
+          key={state.pendingPlanApproval.callId}
+          callId={state.pendingPlanApproval.callId}
+          summary={state.pendingPlanApproval.summary}
+          proposals={state.pendingPlanApproval.proposals}
+          {...(state.pendingPlanApproval.expiresAt
+            ? { expiresAt: state.pendingPlanApproval.expiresAt }
+            : {})}
+          disabled={status !== "connected"}
+          minimized={planMinimized}
+          onMinimize={() => setPlanMinimized(true)}
+          onRestore={() => setPlanMinimized(false)}
+          onApprove={handlePlanApprove}
+          onReject={handlePlanReject}
+        />
+      )}
+
+      {state.pendingQuestion && (
+        <QuestionCard
+          question={state.pendingQuestion.question}
+          {...(state.pendingQuestion.options
+            ? { options: state.pendingQuestion.options }
+            : {})}
+          allowFreeText={state.pendingQuestion.allowFreeText}
+          onSubmit={handleAnswer}
+        />
+      )}
+
+      {/* 任务结束提示：明确告知本轮 run 已结束 */}
+      {state.runStatus === "completed" && (
+        <p className="px-4 pt-2 text-center text-xs text-green-400">
+          ✓ 本轮任务已结束
+        </p>
+      )}
+      {state.runStatus === "failed" && (
+        <p className="px-4 pt-2 text-center text-xs text-red-400">
+          ✕ 本轮任务失败
+        </p>
+      )}
+
       <InputBar
         onSend={handleSend}
-        disabled={status !== "connected" || isStreaming}
+        onStop={handleStop}
+        disabled={status !== "connected" || state.pendingQuestion !== undefined}
         isStreaming={isStreaming}
       />
     </div>

@@ -52,6 +52,38 @@ describe("MessageList", () => {
     expect(screen.getByText("world")).toBeInTheDocument();
   });
 
+  it("assistant 气泡固定宽度，user 气泡保持自适应", () => {
+    const msgs: Message[] = [
+      {
+        id: "a1",
+        role: "assistant",
+        content: "short",
+        isStreaming: false,
+        toolCalls: [],
+      },
+      {
+        id: "u1",
+        role: "user",
+        content: "question",
+        isStreaming: false,
+        toolCalls: [],
+      },
+    ];
+    render(<MessageList messages={msgs} onApprove={vi.fn()} />);
+
+    const assistantBubble = screen
+      .getByText("short")
+      .closest(".rounded-2xl");
+    expect(assistantBubble?.className).toContain("w-[85%]");
+    expect(assistantBubble?.className).toContain("max-w-3xl");
+
+    const userBubble = screen
+      .getByText("question")
+      .closest(".rounded-2xl");
+    expect(userBubble?.className).toContain("max-w-[80%]");
+    expect(userBubble?.className).not.toContain("w-[85%]");
+  });
+
   it("应渲染多条消息", () => {
     const msgs: Message[] = [
       {

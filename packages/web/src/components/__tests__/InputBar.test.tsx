@@ -85,4 +85,69 @@ describe("InputBar", () => {
     render(<InputBar onSend={vi.fn()} disabled />);
     expect(screen.getByPlaceholderText(/Agent is thinking/)).toBeInTheDocument();
   });
+
+  it("输入法组合期间按 Enter 不发送，组合结束后才发送", () => {
+    const onSend = vi.fn();
+    render(<InputBar onSend={onSend} />);
+    const textarea = screen.getByPlaceholderText(/Type a message/);
+    fireEvent.change(textarea, { target: { value: "你好" } });
+
+    fireEvent.compositionStart(textarea);
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(onSend).not.toHaveBeenCalled();
+
+    fireEvent.compositionEnd(textarea);
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(onSend).toHaveBeenCalledWith("你好");
+  });
+
+  it("isComposing 的 Enter 不触发发送", () => {
+    const onSend = vi.fn();
+    render(<InputBar onSend={onSend} />);
+    const textarea = screen.getByPlaceholderText(/Type a message/);
+    fireEvent.change(textarea, { target: { value: "你好" } });
+
+    fireEvent.keyDown(textarea, { key: "Enter", isComposing: true });
+
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("IME keyCode 229 的 Enter 不触发发送", () => {
+    const onSend = vi.fn();
+    render(<InputBar onSend={onSend} />);
+    const textarea = screen.getByPlaceholderText(/Type a message/);
+    fireEvent.change(textarea, { target: { value: "你好" } });
+
+    fireEvent.keyDown(textarea, { key: "Enter", keyCode: 229 });
+
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("流式中应显示 Stop 而不是 Send", () => {
+    render(<InputBar onSend={vi.fn()} onStop={vi.fn()} isStreaming />);
+
+    expect(screen.getByText("Stop")).toBeInTheDocument();
+    expect(screen.queryByText("Send")).not.toBeInTheDocument();
+  });
+
+  it("流式中 textarea 应禁用", () => {
+    render(<InputBar onSend={vi.fn()} onStop={vi.fn()} isStreaming />);
+
+    expect(screen.getByPlaceholderText(/Agent is thinking/)).toBeDisabled();
+  });
+
+  it("点击 Stop 应触发 onStop", () => {
+    const onStop = vi.fn();
+    render(<InputBar onSend={vi.fn()} onStop={onStop} isStreaming />);
+
+    fireEvent.click(screen.getByText("Stop"));
+
+    expect(onStop).toHaveBeenCalledTimes(1);
+  });
+
+  it("未提供 onStop 时 Stop 按钮禁用", () => {
+    render(<InputBar onSend={vi.fn()} isStreaming />);
+
+    expect(screen.getByText("Stop")).toBeDisabled();
+  });
 });

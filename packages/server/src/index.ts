@@ -1,116 +1,43 @@
 /**
- * @code-agent/server —— Fastify API 服务端入口
- *
- * 此模块负责：
- * - 加载环境变量配置
- * - 创建 LLM 模型实例
- * - 注册所有内置工具
- * - 初始化数据库连接
- * - 构建并启动 Fastify HTTP + WebSocket 服务
- *
- * 启动命令：pnpm --filter @code-agent/server dev
+ * @code-agent/server —— Runtime Fastify 入口
  */
 
-import dotenv from "dotenv";
-import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-
-// .env 位于 monorepo 根目录，而非 packages/server
-const __dirname = dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: resolve(__dirname, "../../../.env") });
-import { loadConfig } from "./config.js";
-import { createServer } from "./gateway/server.js";
-import { createDb } from "./db/index.js";
 import {
-  createChatModel,
-  ToolRegistry,
-  // 内置工具
-  fileReadTool,
-  fileWriteTool,
-  fileListTool,
-  shellExecTool,
-  codeSearchTool,
-  gitStatusTool,
-  gitDiffTool,
-  gitLogTool,
-  gitCommitTool,
-  gitBranchTool,
-  webFetchTool,
-  // 沙箱
-  PermissionRegistry,
-  // Agent 基础设施
-  InMemoryEventBus,
-  InMemoryStateManager,
-  AgentRegistry,
-  FileCheckpointManager,
-  ExecutionEngine,
-  // Memory 三层记忆体系
-  InMemoryShortTermMemory,
-  InMemoryWorkingMemory,
-  FileLongTermMemory,
-} from "@code-agent/core";
-import type { IMemoryManager } from "@code-agent/core";
-import { GlobalConfigManager } from "@code-agent/core";
-
-// 降级模式所需
-import Fastify from "fastify";
-import fastifyCors from "@fastify/cors";
-import { errorHandler } from "./gateway/middleware/error.js";
-import configRoutes from "./gateway/routes/config.js";
-
-// ---------------------------------------------------------------------------
-// 服务端版本标识
-// ---------------------------------------------------------------------------
+  GlobalConfigManager,
+  createMutex,
+  createRuntime,
+  createRuntimeBootstrap,
+} from "@code-agent/runtime";
+import { loadConfig } from "./config.js";
+import { createServerDatabase } from "./db/server-db.js";
+import { createSqlitePorts } from "./stores/index.js";
+import { SessionService } from "./session/session-service.js";
+import { WorkspaceService } from "./workspace/workspace-service.js";
+import { WorkspaceWatcher } from "./workspace/watcher.js";
+import {
+  createRuntimeServer,
+  createSetupServer,
+} from "./gateway/runtime-server.js";
 
 export const SERVER_VERSION = "0.1.0";
 
-// ---------------------------------------------------------------------------
-// 重新导出（供外部引用）
-// ---------------------------------------------------------------------------
-
-// 数据库层
-export { createDb } from "./db/index.js";
-export { sessions, messages } from "./db/index.js";
-export { SessionRepository, MessageRepository } from "./db/index.js";
-export type { MessageRole, CreateMessageInput } from "./db/index.js";
-
-// Orchestrator（Agent 编排层）
-export { createOrchestratorGraph } from "./orchestrator/graph.js";
-export { OrchestratorState } from "./orchestrator/state.js";
-export type { SubTask, NextAction, TaskResult } from "./orchestrator/types.js";
-
-// Gateway
-export { createServer } from "./gateway/server.js";
-export { loadConfig } from "./config.js";
-export type { EnvConfig } from "./config.js";
-export type { AppOptions } from "./gateway/server.js";
-
-// ---------------------------------------------------------------------------
-// 主函数
-// ---------------------------------------------------------------------------
-
 async function main(): Promise<void> {
   console.log("=".repeat(50));
-  console.log("  code-agent server v" + SERVER_VERSION);
+  console.log(`  code-agent server v${SERVER_VERSION}`);
   console.log("=".repeat(50));
 
-  // 0. Check global config — if missing, enter downgrade mode
   const configManager = new GlobalConfigManager();
   if (!configManager.isConfigured()) {
-    console.log("[config] Global config not found — entering downgrade mode (setup required)");
-    console.log("[config] Visit the web UI to configure your LLM model, or run 'code-agent' CLI first.");
-
-    const app = Fastify({ logger: true });
-    await app.register(fastifyCors, { origin: true });
-    app.setErrorHandler(errorHandler);
-    await app.register(configRoutes, { prefix: "/api" });
-
-    await app.listen({ host: "0.0.0.0", port: 3000 });
-    console.log("[server] Downgrade mode — config API only at http://0.0.0.0:3000");
-    console.log("[server] Configure your LLM model via POST /api/config, then restart.");
+    const app = await createSetupServer();
+    const host = process.env.HOST ?? "127.0.0.1";
+    const port = Number(process.env.PORT ?? 3000);
+    await app.listen({ host, port });
+    console.log(
+      `[server] Setup mode — configure via http://${host}:${port}`,
+    );
 
     const shutdown = async () => {
-      console.log("\n[server] Shutting down...");
       await app.close();
       process.exit(0);
     };
@@ -119,158 +46,52 @@ async function main(): Promise<void> {
     return;
   }
 
-  // 1. 加载配置
   const cfg = loadConfig();
   console.log(`[config] LLM: ${cfg.LLM_PROVIDER}/${cfg.LLM_MODEL}`);
   console.log(`[config] Server: ${cfg.HOST}:${cfg.PORT}`);
   console.log(`[config] Workspace: ${cfg.WORKSPACE_PATH}`);
   console.log(`[config] Database: ${cfg.DB_PATH}`);
 
-  // 2. 创建 LLM 模型
-  const model = createChatModel({
-    provider: cfg.LLM_PROVIDER,
-    model: cfg.LLM_MODEL,
-    apiKey: cfg.LLM_API_KEY,
-    baseURL: cfg.LLM_BASE_URL,
-    maxRetries: cfg.LLM_MAX_RETRIES,
+  const bootstrap = createRuntimeBootstrap({
+    config: cfg,
+    writeLock: createMutex(),
+  });
+  const db = createServerDatabase(cfg.DB_PATH);
+  const ports = createSqlitePorts(db, bootstrap.checkpointStore);
+  const runtime = createRuntime(bootstrap.harness, {
+    ports,
+    orchestration: true,
   });
 
-  // 3. 注册所有内置工具
-  const toolRegistry = ToolRegistry.createDefault();
-  toolRegistry.register(fileReadTool);
-  toolRegistry.register(fileWriteTool);
-  toolRegistry.register(fileListTool);
-  toolRegistry.register(shellExecTool);
-  toolRegistry.register(codeSearchTool);
-  toolRegistry.register(gitStatusTool);
-  toolRegistry.register(gitDiffTool);
-  toolRegistry.register(gitLogTool);
-  toolRegistry.register(gitCommitTool);
-  toolRegistry.register(gitBranchTool);
-  toolRegistry.register(webFetchTool);
-  console.log(
-    `[tools] Registered ${toolRegistry.listAll().length} built-in tools`,
+  const sessionService = new SessionService(
+    runtime,
+    cfg.WORKSPACE_PATH,
   );
+  const workspace = new WorkspaceService(cfg.WORKSPACE_PATH);
+  const watcher = new WorkspaceWatcher(cfg.WORKSPACE_PATH);
+  await watcher.start();
 
-  // 注册权限策略（供 SandboxGuard 查询）
-  const permRegistry = PermissionRegistry.createDefault();
-  console.log(
-    `[sandbox] Registered ${permRegistry.listAll().length} tool permissions`,
-  );
-
-  // 4. 初始化 Agent 基础设施
-  const eventBus = new InMemoryEventBus();
-  const stateManager = new InMemoryStateManager(eventBus);
-
-  // 4a. 初始化三层记忆体系
-  const memoryManager: IMemoryManager = {
-    shortTerm: new InMemoryShortTermMemory(),
-    working: new InMemoryWorkingMemory(),
-    longTerm: new FileLongTermMemory("./data"),
-  };
-  console.log("[memory] Three-tier memory system initialized (ShortTerm + Working + LongTerm)");
-
-  // 4b. 初始化 Checkpoint + ExecutionEngine（注入 Memory）
-  const checkpointManager = new FileCheckpointManager("./data/checkpoints");
-  const executionEngine = new ExecutionEngine(checkpointManager, memoryManager, eventBus);
-  console.log("[agent] Infrastructure initialized (EventBus + StateManager + CheckpointManager + MemoryManager)");
-
-  // 5. 注册角色 Agent（注入 Checkpoint + Memory）
-  const agentRegistry = new AgentRegistry(eventBus, stateManager, checkpointManager, memoryManager);
-  await agentRegistry.createAgent("code", model, toolRegistry, {
-    workspacePath: cfg.WORKSPACE_PATH,
-    permissionRegistry: permRegistry,
-  });
-  await agentRegistry.createAgent("test", model, toolRegistry, {
-    workspacePath: cfg.WORKSPACE_PATH,
-    permissionRegistry: permRegistry,
-  });
-  await agentRegistry.createAgent("doc", model, toolRegistry, {
-    workspacePath: cfg.WORKSPACE_PATH,
-    permissionRegistry: permRegistry,
-  });
-  console.log("[AgentRegistry] Agents started:");
-  for (const agent of agentRegistry.getAllAgents()) {
-    console.log(`  - ${agent.role.name} (${agent.id})`);
-  }
-
-  // 5a. 扫描并恢复未完成的 checkpoint（服务重启后自动恢复中断的任务）
-  const pendingTaskIds = await checkpointManager.listTasks();
-  if (pendingTaskIds.length > 0) {
-    console.log(`[recovery] Found ${pendingTaskIds.length} pending checkpoint(s), resuming...`);
-    for (const taskId of pendingTaskIds) {
-      const snapshot = await checkpointManager.load(taskId);
-      if (!snapshot) continue;
-
-      // 查找原 agent（通过 agentId 匹配）
-      const agent = agentRegistry.getAgentById(snapshot.agentId);
-      if (!agent) {
-        console.log(`[recovery] Task ${taskId}: agent ${snapshot.agentId} not found, skipping`);
-        continue;
-      }
-
-      // 异步恢复（不阻塞服务启动）
-      executionEngine.resume(
-        taskId,
-        model,
-        toolRegistry.getToolsForAgent(
-          agent.capability,
-          { workspacePath: cfg.WORKSPACE_PATH, sessionId: `recovery-${taskId}` },
-          permRegistry,
-        ),
-        agent.role.systemPrompt,
-        { maxIterations: 15, timeoutMs: 360000 },
-      ).then((result) => {
-        console.log(`[recovery] Task ${taskId} resumed: status=${result.status}`);
-        // Only purge on success; preserve checkpoints for failed/timed-out tasks
-        if (result.status === 'success') {
-          checkpointManager.purge(taskId).catch((err) => {
-            console.error(
-              `[recovery] Failed to purge checkpoint for task "${taskId}":`,
-              err instanceof Error ? err.message : String(err),
-            );
-          });
-        }
-      }).catch((err) => {
-        console.error(`[recovery] Task ${taskId} resume failed:`, err);
-      });
-    }
-  } else {
-    console.log("[recovery] No pending checkpoints found");
-  }
-
-  // 6. 初始化数据库
-  const db = createDb(cfg.DB_PATH);
-  console.log(`[db] SQLite database initialized at ${cfg.DB_PATH}`);
-
-  // 7. 创建 Fastify 服务（注入 Agent 基础设施）
-  const app = await createServer({
-    model,
-    toolRegistry,
-    workspacePath: cfg.WORKSPACE_PATH,
-    permissionRegistry: permRegistry,
-    eventBus,
-    stateManager,
-    agentRegistry,
+  const app = await createRuntimeServer({
+    sessions: ports.sessions,
+    sessionService,
+    workspace,
+    watcher,
+    ...(bootstrap.memory ? { memory: bootstrap.memory } : {}),
   });
 
-  // 8. 挂载共享实例到 Fastify
-  // 注意：eventBus、stateManager、agentRegistry 已在 createServer() 中装饰
-  app.decorate("db", db);
-  app.decorate("permissionRegistry", permRegistry);
-  app.decorate("checkpointManager", checkpointManager);
-  app.decorate("executionEngine", executionEngine);
-
-  // 9. 启动服务
   await app.listen({ host: cfg.HOST, port: cfg.PORT });
   console.log(`[server] Running at http://${cfg.HOST}:${cfg.PORT}`);
 
-  // 优雅关闭
   const shutdown = async () => {
     console.log("\n[server] Shutting down gracefully...");
-    console.log("[agent] Stopping all agents...");
-    await agentRegistry.shutdown();
-    console.log("[db] Closing database...");
+    watcher.stop();
+    await sessionService.disposeAll();
+    await runtime.dispose();
+    try {
+      db.close();
+    } catch {
+      // ignore
+    }
     await app.close();
     console.log("[server] Goodbye!");
     process.exit(0);
@@ -280,11 +101,6 @@ async function main(): Promise<void> {
   process.on("SIGTERM", shutdown);
 }
 
-// ---------------------------------------------------------------------------
-// 启动
-// ---------------------------------------------------------------------------
-
-// 仅在作为入口直接执行时启动服务，import 时不触发副作用
 const runningFile = fileURLToPath(import.meta.url);
 const isEntryPoint =
   process.argv[1] === runningFile ||
@@ -292,9 +108,9 @@ const isEntryPoint =
   process.argv[1]?.endsWith("/server/src/index.ts");
 
 if (isEntryPoint) {
-  main().catch((err) => {
+  main().catch((error) => {
     console.error("[server] Fatal error during startup:");
-    console.error(err);
-    process.exit(0);
+    console.error(error);
+    process.exit(1);
   });
 }

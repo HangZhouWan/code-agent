@@ -1,203 +1,144 @@
 /**
- * config.ts 单元测试
+ * Server 配置入口测试
  *
- * 覆盖：
- * - loadConfig 正常加载与默认值
- * - LLM_API_KEY 缺失时抛出 ZodError
- * - z.coerce.number() 字符串转数字
- * - 可选字段 LLM_BASE_URL
+ * 配置合并逻辑由 core 统一实现；这里验证 server 包装层与默认值。
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
-import { z } from "zod";
+import { afterEach, describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { loadConfig } from "../config.js";
 
-// ---------------------------------------------------------------------------
-// 辅助
-// ---------------------------------------------------------------------------
+const tempDirs: string[] = [];
 
-/** 可用的最小环境变量集 */
-const MINIMAL_ENV = {
-  LLM_API_KEY: "sk-test-key-123",
-  LLM_PROVIDER: "openai",
-  LLM_MODEL: "gpt-4o",
-  HOST: "0.0.0.0",
-  PORT: "3000",
-  WORKSPACE_PATH: "./workspace",
-  DB_PATH: ".agent/data/code-agent.db",
-};
-
-function setEnv(vars: Record<string, string | undefined>) {
-  for (const [key, value] of Object.entries(vars)) {
-    if (value === undefined) {
-      delete process.env[key];
-    } else {
-      process.env[key] = value;
-    }
-  }
+function makeTempDir(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), `code-agent-server-${prefix}-`));
+  tempDirs.push(dir);
+  return dir;
 }
 
-// ---------------------------------------------------------------------------
-// 测试
-// ---------------------------------------------------------------------------
+function baseOptions(workspacePath: string, homeDir: string) {
+  return {
+    workspacePath,
+    homeDir,
+    cwd: workspacePath,
+    loadDotEnv: false,
+    logger: () => {},
+  } as const;
+}
+
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 describe("loadConfig", () => {
-  beforeEach(() => {
-    // 重置环境变量
-    for (const key of Object.keys(MINIMAL_ENV)) {
-      delete process.env[key];
-    }
-    delete process.env.LLM_BASE_URL;
-    delete process.env.LLM_MAX_RETRIES;
-  });
+  it("加载完整配置并应用默认值", () => {
+    const workspace = makeTempDir("workspace");
+    const home = makeTempDir("home");
 
-  // ── 正常加载 ──
-
-  it("应该加载完整配置并返回正确的值", () => {
-    setEnv(MINIMAL_ENV);
-    const cfg = loadConfig();
+    const cfg = loadConfig({
+      ...baseOptions(workspace, home),
+      env: {
+        LLM_PROVIDER: "openai",
+        LLM_MODEL: "gpt-4o",
+        LLM_API_KEY: "sk-test",
+      },
+    });
 
     expect(cfg.LLM_PROVIDER).toBe("openai");
     expect(cfg.LLM_MODEL).toBe("gpt-4o");
-    expect(cfg.LLM_API_KEY).toBe("sk-test-key-123");
-    expect(cfg.HOST).toBe("0.0.0.0");
+    expect(cfg.LLM_API_KEY).toBe("sk-test");
+    expect(cfg.HOST).toBe("127.0.0.1");
     expect(cfg.PORT).toBe(3000);
-    expect(cfg.WORKSPACE_PATH).toBe("./workspace");
-    expect(cfg.DB_PATH).toBe(".agent/data/code-agent.db");
+    expect(cfg.WORKSPACE_PATH).toBe(workspace);
+    expect(cfg.DB_PATH).toBe(join(workspace, ".agent", "data", "code-agent.db"));
+    expect(cfg.paths.workspacePath).toBe(workspace);
   });
 
-  // ── 默认值 ──
+  it("环境变量覆盖默认值并做类型转换", () => {
+    const workspace = makeTempDir("workspace");
+    const home = makeTempDir("home");
 
-  it("LLM_PROVIDER 默认应为 openai", () => {
-    setEnv({ LLM_API_KEY: "sk-abc" });
-    const cfg = loadConfig();
-    expect(cfg.LLM_PROVIDER).toBe("openai");
-  });
+    const cfg = loadConfig({
+      ...baseOptions(workspace, home),
+      env: {
+        LLM_API_KEY: "sk-test",
+        HOST: "0.0.0.0",
+        PORT: "8080",
+        LLM_MAX_RETRIES: "5",
+      },
+    });
 
-  it("LLM_MODEL 默认应为 gpt-4o", () => {
-    setEnv({ LLM_API_KEY: "sk-abc" });
-    const cfg = loadConfig();
-    expect(cfg.LLM_MODEL).toBe("gpt-4o");
-  });
-
-  it("HOST 默认应为 0.0.0.0", () => {
-    setEnv({ LLM_API_KEY: "sk-abc" });
-    const cfg = loadConfig();
     expect(cfg.HOST).toBe("0.0.0.0");
-  });
-
-  it("PORT 默认应为 3000（number 类型）", () => {
-    setEnv({ LLM_API_KEY: "sk-abc" });
-    const cfg = loadConfig();
-    expect(cfg.PORT).toBe(3000);
-    expect(typeof cfg.PORT).toBe("number");
-  });
-
-  it("WORKSPACE_PATH 默认应为 ./workspace", () => {
-    setEnv({ LLM_API_KEY: "sk-abc" });
-    const cfg = loadConfig();
-    expect(cfg.WORKSPACE_PATH).toBe("./workspace");
-  });
-
-  it("DB_PATH 默认应为 .agent/data/code-agent.db", () => {
-    setEnv({ LLM_API_KEY: "sk-abc" });
-    const cfg = loadConfig();
-    expect(cfg.DB_PATH).toBe(".agent/data/code-agent.db");
-  });
-
-  it("LLM_MAX_RETRIES 默认应为 3", () => {
-    setEnv({ LLM_API_KEY: "sk-abc" });
-    const cfg = loadConfig();
-    expect(cfg.LLM_MAX_RETRIES).toBe(3);
-  });
-
-  // ── LLM_API_KEY 必填 ──
-
-  it("LLM_API_KEY 缺失时应抛出 ZodError", () => {
-    // 不设置任何环境变量
-    expect(() => loadConfig()).toThrow(z.ZodError);
-  });
-
-  it("LLM_API_KEY 缺失时的错误信息应包含路径提示", () => {
-    try {
-      loadConfig();
-      expect.unreachable("应该抛出 ZodError");
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        const paths = err.errors.map((e) => e.path.join("."));
-        expect(paths).toContain("LLM_API_KEY");
-      } else {
-        throw err;
-      }
-    }
-  });
-
-  // ── z.coerce.number() ──
-
-  it("PORT 字符串应被 coerce 为 number", () => {
-    setEnv({ LLM_API_KEY: "sk-abc", PORT: "8080" });
-    const cfg = loadConfig();
     expect(cfg.PORT).toBe(8080);
-    expect(typeof cfg.PORT).toBe("number");
-  });
-
-  it("LLM_MAX_RETRIES 字符串应被 coerce 为 number", () => {
-    setEnv({ LLM_API_KEY: "sk-abc", LLM_MAX_RETRIES: "5" });
-    const cfg = loadConfig();
     expect(cfg.LLM_MAX_RETRIES).toBe(5);
-    expect(typeof cfg.LLM_MAX_RETRIES).toBe("number");
   });
 
-  // ── 可选字段 ──
+  it("读取全局 config.json（setup 写入后 server 可读）", () => {
+    const workspace = makeTempDir("workspace");
+    const home = makeTempDir("home");
+    mkdirSync(join(home, ".code-agent"), { recursive: true });
+    writeFileSync(
+      join(home, ".code-agent", "config.json"),
+      JSON.stringify({
+        LLM_PROVIDER: "anthropic",
+        LLM_MODEL: "claude-sonnet-4-5",
+        LLM_API_KEY: "sk-ant-test",
+      }),
+      "utf-8",
+    );
 
-  it("LLM_BASE_URL 不设置时应为 undefined", () => {
-    setEnv({ LLM_API_KEY: "sk-abc" });
-    const cfg = loadConfig();
-    expect(cfg.LLM_BASE_URL).toBeUndefined();
+    const cfg = loadConfig({
+      ...baseOptions(workspace, home),
+      env: {},
+    });
+
+    expect(cfg.LLM_PROVIDER).toBe("anthropic");
+    expect(cfg.LLM_MODEL).toBe("claude-sonnet-4-5");
+    expect(cfg.LLM_API_KEY).toBe("sk-ant-test");
   });
 
-  it("LLM_BASE_URL 设置时应有值", () => {
-    setEnv({ LLM_API_KEY: "sk-abc", LLM_BASE_URL: "https://api.proxy.com/v1" });
-    const cfg = loadConfig();
-    expect(cfg.LLM_BASE_URL).toBe("https://api.proxy.com/v1");
+  it("DB_PATH 可覆盖默认数据库位置", () => {
+    const workspace = makeTempDir("workspace");
+    const home = makeTempDir("home");
+    const dbPath = join(home, "custom.db");
+
+    const cfg = loadConfig({
+      ...baseOptions(workspace, home),
+      env: { LLM_API_KEY: "sk-test", DB_PATH: dbPath },
+    });
+
+    expect(cfg.DB_PATH).toBe(dbPath);
   });
 
-  // ── LLM_PROVIDER 枚举 ──
+  it("需要 API Key 的 provider 缺失 key 时抛错", () => {
+    const workspace = makeTempDir("workspace");
+    const home = makeTempDir("home");
 
-  it("LLM_PROVIDER 应接受 openai", () => {
-    setEnv({ LLM_API_KEY: "sk-abc", LLM_PROVIDER: "openai" });
-    expect(() => loadConfig()).not.toThrow();
+    expect(() =>
+      loadConfig({
+        ...baseOptions(workspace, home),
+        env: {},
+      }),
+    ).toThrow();
   });
 
-  it("LLM_PROVIDER 应接受 anthropic", () => {
-    setEnv({ LLM_API_KEY: "sk-abc", LLM_PROVIDER: "anthropic" });
-    expect(() => loadConfig()).not.toThrow();
-  });
+  it("openai-compatible 允许无 API Key", () => {
+    const workspace = makeTempDir("workspace");
+    const home = makeTempDir("home");
 
-  it("LLM_PROVIDER 应接受 openai-compatible", () => {
-    setEnv({ LLM_API_KEY: "sk-abc", LLM_PROVIDER: "openai-compatible" });
-    expect(() => loadConfig()).not.toThrow();
-  });
+    const cfg = loadConfig({
+      ...baseOptions(workspace, home),
+      env: {
+        LLM_PROVIDER: "openai-compatible",
+        LLM_MODEL: "llama3",
+      },
+    });
 
-  it("LLM_PROVIDER 为无效值时应抛出 ZodError", () => {
-    setEnv({ LLM_API_KEY: "sk-abc", LLM_PROVIDER: "invalid-provider" });
-    expect(() => loadConfig()).toThrow(z.ZodError);
-  });
-
-  // ── 类型验证 ──
-
-  it("返回的配置对象应有正确的类型", () => {
-    setEnv(MINIMAL_ENV);
-    const cfg = loadConfig();
-
-    // 验证每个字段的类型
-    expect(typeof cfg.LLM_PROVIDER).toBe("string");
-    expect(typeof cfg.LLM_MODEL).toBe("string");
-    expect(typeof cfg.LLM_API_KEY).toBe("string");
-    expect(typeof cfg.HOST).toBe("string");
-    expect(typeof cfg.PORT).toBe("number");
-    expect(typeof cfg.WORKSPACE_PATH).toBe("string");
-    expect(typeof cfg.DB_PATH).toBe("string");
-    expect(typeof cfg.LLM_MAX_RETRIES).toBe("number");
+    expect(cfg.LLM_PROVIDER).toBe("openai-compatible");
+    expect(cfg.LLM_API_KEY).toBe("");
   });
 });

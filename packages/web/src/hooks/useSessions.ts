@@ -6,18 +6,9 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import type { SessionSummary } from "@code-agent/protocol";
 
-// ---------------------------------------------------------------------------
-// 类型定义
-// ---------------------------------------------------------------------------
-
-/** 会话摘要（从 GET /api/sessions 返回） */
-export interface SessionSummary {
-  id: string;
-  title: string;
-  createdAt: string;
-  updatedAt: string;
-}
+export type { SessionSummary };
 
 /** useSessions 返回值 */
 export interface UseSessionsReturn {
@@ -67,8 +58,10 @@ export function useSessions(): UseSessionsReturn {
         setSessions([]);
         return;
       }
-      const data: SessionSummary[] = await res.json();
-      setSessions(data);
+      const data = (await res.json()) as
+        | { sessions?: SessionSummary[] }
+        | SessionSummary[];
+      setSessions(Array.isArray(data) ? data : (data.sessions ?? []));
     } catch (err) {
       console.error("[useSessions] Error fetching sessions:", err);
       // 静默处理：保留已有数据
@@ -133,7 +126,7 @@ export function useSessions(): UseSessionsReturn {
       const trimmed = title.trim();
       if (!trimmed || trimmed.length > 200) return false;
       try {
-        const res = await fetch(`/api/sessions/${id}`, {
+        const res = await fetch(`/api/sessions/${id}/title`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ title: trimmed }),
