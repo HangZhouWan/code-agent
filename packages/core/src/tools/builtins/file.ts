@@ -359,7 +359,7 @@ export const codeSearchTool: ToolDefinition<z.ZodObject<{
     path: z.string().default(".").describe("搜索目录"),
     glob: z.string().optional().describe("文件过滤，例如 *.ts"),
     maxResults: z.number().int().min(1).max(500).default(50),
-    contextLines: z.number().int().min(0).max(5).optional(),
+    contextLines: z.number().int().min(0).max(10).optional(),
   }),
   permission: "allow",
   sideEffect: "none",
@@ -370,7 +370,13 @@ export const codeSearchTool: ToolDefinition<z.ZodObject<{
       return toolError(`禁止搜索运行时/构建目录: ${ignored}`, "VALIDATION");
     }
     const relativePath = path.relative(ctx.workspacePath, fullPath) || ".";
-    const grepArgs = ["-rn", "--color=never", "-m", String(args.maxResults)];
+    // 使用扩展正则（-E），支持模型常用的 |、()、\w、\s 等写法
+    const grepArgs = [
+      "-rnE",
+      "--color=never",
+      "-m",
+      String(args.maxResults),
+    ];
     if (args.glob) grepArgs.push(`--include=${args.glob}`);
     if (args.contextLines) grepArgs.push(`-C`, String(args.contextLines));
     grepArgs.push("--", args.pattern, relativePath);
@@ -391,10 +397,12 @@ export const codeSearchTool: ToolDefinition<z.ZodObject<{
       if (ctx.signal?.aborted) {
         return toolError("搜索已取消", "ABORTED");
       }
-      return toolError(
-        error instanceof Error ? error.message : String(error),
-        "TOOL_FAILED",
-      );
+      const detail =
+        error instanceof Error ? error.message : String(error);
+      const hint = /not balanced|invalid|repetition|unmatched/i.test(detail)
+        ? "\n提示：code_search 使用扩展正则。请简化模式，或转义字面量括号/花括号后重试。"
+        : "";
+      return toolError(`${detail}${hint}`, "TOOL_FAILED");
     }
   },
 };

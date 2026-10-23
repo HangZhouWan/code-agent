@@ -57,7 +57,11 @@ export class ToolExecutor {
   ): Promise<ToolResult> {
     const tool = this.tools.get(call.name);
     if (!tool) {
-      return toolError(`Unknown tool: ${call.name}`, "VALIDATION");
+      const available = [...this.tools.keys()].sort().join(", ");
+      return toolError(
+        `Unknown tool: ${call.name}. Available tools: ${available || "(none)"}`,
+        "VALIDATION",
+      );
     }
     return executeTool(tool, call.args, ctx, this.dependencies);
   }

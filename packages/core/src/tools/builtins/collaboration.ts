@@ -130,7 +130,8 @@ export function createCollaborationTools(
     name: ToolNames.SUBMIT_PROPOSALS,
     description:
       "计划模式下提交 1-4 个具体改进方案并等待用户批准。" +
-      "必须先只读调研；用户批准前不得修改文件。",
+      "必须先只读调研；用户批准前不得修改文件。" +
+      "必须提供 summary 和 proposals；若多个方案标记 recommended，只采用第一个。",
     schema: z.object({
       summary: z.string().min(1).max(2_000).describe("整体调研结论"),
       proposals: z
@@ -164,8 +165,17 @@ export function createCollaborationTools(
     sideEffect: "none",
     async execute(args, ctx): Promise<ToolResult> {
       const proposals = args.proposals as CodeProposal[];
+      // 推荐项是提示性的：多个 recommended 时只保留第一个，避免整单校验失败
+      let recommendedSeen = false;
+      const normalized = proposals.map((proposal) => {
+        if (!proposal.recommended) return proposal;
+        if (recommendedSeen) return { ...proposal, recommended: false };
+        recommendedSeen = true;
+        return proposal;
+      });
+
       const ids = new Set<string>();
-      for (const proposal of proposals) {
+      for (const proposal of normalized) {
         if (ids.has(proposal.id)) {
           return toolError(
             `Invalid proposals: duplicate id "${proposal.id}"`,
@@ -182,15 +192,9 @@ export function createCollaborationTools(
           }
         }
       }
-      if (proposals.filter((proposal) => proposal.recommended).length > 1) {
-        return toolError(
-          "Invalid proposals: at most one proposal may be recommended",
-          "VALIDATION",
-        );
-      }
 
       const outcome = await service.submitProposals(
-        { summary: args.summary, proposals },
+        { summary: args.summary, proposals: normalized },
         ctx,
       );
       const instruction = !outcome.planMode

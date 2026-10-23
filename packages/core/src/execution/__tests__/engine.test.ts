@@ -381,6 +381,60 @@ describe("native tool calling", () => {
     ).toBe(true);
   });
 
+  it("未知工具返回可用工具列表", async () => {
+    const model = new ScriptedModel([
+      new AIMessage({
+        content: "",
+        tool_calls: [
+          { id: "u1", name: "write_placeholder", args: {} },
+        ],
+      }),
+      new AIMessage({ content: "done" }),
+    ]);
+    const engine = new AgentExecutionEngine(model);
+
+    const result = await engine.invoke(
+      input([echoTool()]),
+      scope().scope,
+    );
+
+    expect(result.status).toBe("success");
+    assertHasToolMessage(model.calls[1], "Available tools:");
+    assertHasToolMessage(model.calls[1], "echo");
+  });
+
+  it("同一工具连续失败时先提醒，第三次停止", async () => {
+    const failTool: ToolDefinition = {
+      name: "boom",
+      description: "always fails",
+      schema: z.object({}),
+      permission: "allow",
+      sideEffect: "none",
+      execute: async () => {
+        throw new Error("boom");
+      },
+    };
+    const failCall = () =>
+      new AIMessage({
+        content: "",
+        tool_calls: [{ id: "b1", name: "boom", args: {} }],
+      });
+    const model = new ScriptedModel([failCall(), failCall(), failCall()]);
+    const engine = new AgentExecutionEngine(model);
+
+    const result = await engine.invoke(
+      input([failTool]),
+      scope().scope,
+    );
+
+    expect(result.status).toBe("failed");
+    expect(
+      model.calls[2]?.some((message) =>
+        String(message.content).includes("failed repeatedly"),
+      ),
+    ).toBe(true);
+  });
+
   it("confirm 工具经过审批，拒绝时把错误反馈给模型", async () => {
     const requestApproval = vi.fn(async () => false);
     const model = new ScriptedModel([

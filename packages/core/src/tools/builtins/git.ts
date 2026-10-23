@@ -2,6 +2,8 @@
  * Git 工具（新契约）
  */
 
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { z } from "zod";
 import { simpleGit } from "simple-git";
 import type { ToolContext, ToolDefinition, ToolResult } from "../base.js";
@@ -12,6 +14,21 @@ function git(ctx: ToolContext) {
   return simpleGit(ctx.workspacePath);
 }
 
+/**
+ * 检查工作区是否为 git 仓库。
+ *
+ * 输入：工具上下文
+ * 输出：非仓库时返回可操作的错误结果，否则返回 null
+ */
+function ensureGitRepo(ctx: ToolContext): ToolResult | null {
+  if (existsSync(join(ctx.workspacePath, ".git"))) return null;
+  return toolError(
+    "Workspace is not a git repository. Do not retry git tools; " +
+      "ask the user before running git init.",
+    "VALIDATION",
+  );
+}
+
 export const gitStatusTool: ToolDefinition = {
   name: ToolNames.GIT_STATUS,
   description: "查看 Git 工作区状态（已修改、已暂存、未跟踪）。",
@@ -19,6 +36,8 @@ export const gitStatusTool: ToolDefinition = {
   permission: "allow",
   sideEffect: "none",
   async execute(_args, ctx): Promise<ToolResult> {
+    const notRepo = ensureGitRepo(ctx);
+    if (notRepo) return notRepo;
     const status = await git(ctx).status();
     return toolOk(JSON.stringify(status, null, 2));
   },
@@ -40,6 +59,8 @@ export const gitDiffTool: ToolDefinition<z.ZodObject<{
   permission: "allow",
   sideEffect: "none",
   async execute(args, ctx): Promise<ToolResult> {
+    const notRepo = ensureGitRepo(ctx);
+    if (notRepo) return notRepo;
     const options: string[] = [];
     if (args.staged) options.push("--staged");
     if (args.base) options.push(args.base);
@@ -62,6 +83,8 @@ export const gitLogTool: ToolDefinition<z.ZodObject<{
   permission: "allow",
   sideEffect: "none",
   async execute(args, ctx): Promise<ToolResult> {
+    const notRepo = ensureGitRepo(ctx);
+    if (notRepo) return notRepo;
     const log = await git(ctx).log({
       maxCount: args.maxCount,
       ...(args.path ? { file: args.path } : {}),
@@ -88,6 +111,8 @@ export const gitAddTool: ToolDefinition<z.ZodObject<{
   permission: "confirm",
   sideEffect: "mutating",
   async execute(args, ctx): Promise<ToolResult> {
+    const notRepo = ensureGitRepo(ctx);
+    if (notRepo) return notRepo;
     await git(ctx).add(args.paths);
     return toolOk(`已暂存 ${args.paths.length} 个文件`, { paths: args.paths });
   },
@@ -104,6 +129,8 @@ export const gitCommitTool: ToolDefinition<z.ZodObject<{
   permission: "confirm",
   sideEffect: "mutating",
   async execute(args, ctx): Promise<ToolResult> {
+    const notRepo = ensureGitRepo(ctx);
+    if (notRepo) return notRepo;
     try {
       const result = await git(ctx).commit(args.message);
       return toolOk(`提交成功: ${result.commit}`, {
@@ -132,6 +159,8 @@ export const gitBranchTool: ToolDefinition<z.ZodObject<{
   permission: "confirm",
   sideEffect: "mutating",
   async execute(args, ctx): Promise<ToolResult> {
+    const notRepo = ensureGitRepo(ctx);
+    if (notRepo) return notRepo;
     const g = git(ctx);
     if (args.name) {
       if (args.checkout) {

@@ -60,6 +60,52 @@ const FILE_WRITE_NUDGE =
   "You have not created or modified any file. This task requires a file change. " +
   "Use file_write (or file_edit) now, then summarize the result.";
 
+/** 同一工具连续失败时的提示与熔断 */
+const REPEATED_FAILURE_NUDGE = (tool: string, code: string): string =>
+  `Tool "${tool}" has failed repeatedly with ${code}. Do not retry the same call. ` +
+  "Change approach: use a different tool or arguments, or call ask_user if you are blocked.";
+
+interface FailureTracker {
+  key: string | null;
+  count: number;
+  nudged: boolean;
+}
+
+/**
+ * 记录工具失败，连续同类失败时返回 nudge/stop。
+ *
+ * 输入：跟踪器、工具名、工具结果
+ * 输出：none / nudge（第 2 次）/ stop（第 3 次）
+ */
+function trackToolFailure(
+  tracker: FailureTracker,
+  toolName: string,
+  result: { ok: boolean; errorCode?: string },
+): "none" | "nudge" | "stop" {
+  if (result.ok) {
+    tracker.key = null;
+    tracker.count = 0;
+    tracker.nudged = false;
+    return "none";
+  }
+
+  const key = `${toolName}:${result.errorCode ?? "TOOL_FAILED"}`;
+  if (tracker.key === key) {
+    tracker.count++;
+  } else {
+    tracker.key = key;
+    tracker.count = 1;
+    tracker.nudged = false;
+  }
+
+  if (tracker.count >= 3) return "stop";
+  if (tracker.count === 2 && !tracker.nudged) {
+    tracker.nudged = true;
+    return "nudge";
+  }
+  return "none";
+}
+
 /** 方案已批准但模型没有落地时，提示一次立即实现 */
 const PLAN_IMPLEMENT_NUDGE =
   "The user approved the selected proposals. Implement them now with file_write/file_edit " +
@@ -421,6 +467,11 @@ export class AgentExecutionEngine implements AgentInvoker {
     let nudgedForFileWrite = false;
     let nudgedForTruncation = false;
     let nudgedForPlanImplementation = false;
+    const failureTracker: FailureTracker = {
+      key: null,
+      count: 0,
+      nudged: false,
+    };
 
     for (let step = 0; step < maxIterations; step++) {
       if (controller.signal.aborted) {
@@ -600,6 +651,36 @@ export class AgentExecutionEngine implements AgentInvoker {
           }),
         );
 
+        const repeatAction = trackToolFailure(
+          failureTracker,
+          call.name,
+          result,
+        );
+        if (repeatAction === "stop") {
+          return this.failure(
+            input,
+            "failed",
+            serializeError(
+              new Error(
+                `Tool "${call.name}" failed repeatedly with ${
+                  result.errorCode ?? "TOOL_FAILED"
+                }; stopped to avoid a retry loop`,
+              ),
+              "TOOL_FAILED",
+            ),
+          );
+        }
+        if (repeatAction === "nudge") {
+          messages.push(
+            new HumanMessage({
+              content: REPEATED_FAILURE_NUDGE(
+                call.name,
+                result.errorCode ?? "TOOL_FAILED",
+              ),
+            }),
+          );
+        }
+
         scope.emit?.({
           type: "tool.finished",
           callId,
@@ -648,6 +729,11 @@ export class AgentExecutionEngine implements AgentInvoker {
     let nudgedForFileWrite = false;
     let nudgedForTruncation = false;
     let nudgedForPlanImplementation = false;
+    const failureTracker: FailureTracker = {
+      key: null,
+      count: 0,
+      nudged: false,
+    };
 
     for (let step = 0; step < maxIterations; step++) {
       if (controller.signal.aborted) {
@@ -800,6 +886,36 @@ export class AgentExecutionEngine implements AgentInvoker {
           content: `[tool result: ${call.name}]\n${result.content}`,
         }),
       );
+
+      const repeatAction = trackToolFailure(
+        failureTracker,
+        call.name,
+        result,
+      );
+      if (repeatAction === "stop") {
+        return this.failure(
+          input,
+          "failed",
+          serializeError(
+            new Error(
+              `Tool "${call.name}" failed repeatedly with ${
+                result.errorCode ?? "TOOL_FAILED"
+              }; stopped to avoid a retry loop`,
+            ),
+            "TOOL_FAILED",
+          ),
+        );
+      }
+      if (repeatAction === "nudge") {
+        messages.push(
+          new HumanMessage({
+            content: REPEATED_FAILURE_NUDGE(
+              call.name,
+              result.errorCode ?? "TOOL_FAILED",
+            ),
+          }),
+        );
+      }
     }
 
     return this.timeoutResult(input, toolHistory, maxIterations);

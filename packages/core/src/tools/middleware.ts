@@ -164,10 +164,15 @@ export async function executeTool(
     ctx.plan?.required &&
     !ctx.plan.isApproved()
   ) {
+    const shellHint =
+      tool.name === ToolNames.SHELL_EXEC
+        ? " shell_exec is always blocked in plan mode, even for read-only commands; " +
+          "use file_list, file_read, file_glob, code_search, git_status, or git_diff instead."
+        : "";
     return toolError(
       `Plan approval required: mutating tool "${tool.name}" is blocked. ` +
         `Investigate with read-only tools, then call ${ToolNames.SUBMIT_PROPOSALS} ` +
-        `with 1-4 concrete proposals and wait for the user to approve.`,
+        `with 1-4 concrete proposals and wait for the user to approve.${shellHint}`,
       "PLAN_APPROVAL_REQUIRED",
     );
   }

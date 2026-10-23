@@ -85,9 +85,15 @@ describe("resolveWorkspacePath", () => {
 });
 
 describe("evaluateShellCommand", () => {
-  it("允许普通命令", () => {
+  it("允许普通命令和安全重定向", () => {
     expect(evaluateShellCommand("ls -la").level).toBe("allow");
     expect(evaluateShellCommand("pnpm test").level).toBe("allow");
+    expect(evaluateShellCommand("pnpm test 2>/dev/null").level).toBe(
+      "allow",
+    );
+    expect(evaluateShellCommand("echo hi >/dev/stdout").level).toBe(
+      "allow",
+    );
   });
 
   it("拒绝高危命令", () => {
@@ -97,6 +103,9 @@ describe("evaluateShellCommand", () => {
       "deny",
     );
     expect(evaluateShellCommand("git push origin main").level).toBe("deny");
+    expect(evaluateShellCommand("cat /dev/sda > /dev/sdb").level).toBe(
+      "deny",
+    );
   });
 });
 

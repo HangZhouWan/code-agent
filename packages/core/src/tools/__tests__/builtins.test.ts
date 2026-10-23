@@ -15,6 +15,7 @@ import type { ToolContext, ToolDefinition, ToolResult } from "../base.js";
 import { normalizeToolResult } from "../base.js";
 import {
   codeSearchTool,
+  gitStatusTool,
   fileEditTool,
   fileGlobTool,
   fileListTool,
@@ -222,6 +223,31 @@ describe("file tools", () => {
     expect(result.ok).toBe(true);
     expect(result.content).toContain("src/a.ts");
   });
+
+  it("code_search 支持扩展正则和 6 行上下文", async () => {
+    const workspace = makeWorkspace();
+    writeFileSync(
+      join(workspace, "src", "c.ts"),
+      "export function loadUser(id: string) {\n  return id;\n}\n",
+      "utf-8",
+    );
+    const result = await runTool(
+      codeSearchTool,
+      { pattern: "function \\w+\\(", path: ".", contextLines: 6 },
+      ctx(workspace),
+    );
+    expect(result.ok).toBe(true);
+    expect(result.content).toContain("src/c.ts");
+  });
+
+  it("git_status 在非仓库工作区返回可操作错误", async () => {
+    const workspace = makeWorkspace();
+    const result = await runTool(gitStatusTool, {}, ctx(workspace));
+    expect(result.ok).toBe(false);
+    expect(result.errorCode).toBe("VALIDATION");
+    expect(result.content).toContain("not a git repository");
+    expect(result.content).toContain("ask the user");
+  });
 });
 
 describe("run_tests detection", () => {
@@ -398,7 +424,7 @@ describe("collaboration tools", () => {
     expect(result.content).toContain("duplicate id");
   });
 
-  it("submit_proposals 拒绝多个推荐方案", async () => {
+  it("submit_proposals 只保留第一个推荐方案", async () => {
     const result = await runTool(
       submitProposals,
       {
@@ -410,8 +436,8 @@ describe("collaboration tools", () => {
       },
       ctx(makeWorkspace()),
     );
-    expect(result.errorCode).toBe("VALIDATION");
-    expect(result.content).toContain("recommended");
+    expect(result.ok).toBe(true);
+    expect(result.content).toContain('"status": "approved"');
   });
 
   it("submit_proposals 拒绝工作区外路径", async () => {
